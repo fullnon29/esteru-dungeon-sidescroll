@@ -540,10 +540,10 @@ const Core = (function () {
   }
   function activeSquads(s) { // 슬롯 순서대로, 코스트 풀 안에서 유효한 분대만
     const out = []; let used = 0;
-    (s.squads || []).slice(0, squadSlots(s)).forEach(q => { if (q.type && !squadErr(s, q) && used + SQUADS[q.type].cost <= squadCap(s)) { used += SQUADS[q.type].cost; out.push(q); } });
+    (s.squads || []).slice(0, squadSlots(s)).forEach(q => { if (q.type && !out.some(o => o.type === q.type) && !squadErr(s, q) && used + SQUADS[q.type].cost <= squadCap(s)) { used += SQUADS[q.type].cost; out.push(q); } }); // 같은 종류는 효과가 겹치지 않아 첫 슬롯만 발동
     return out;
   }
-  const squadUsed = s => (s.squads || []).slice(0, squadSlots(s)).reduce((a, q) => a + (q.type && !squadErr(s, q) ? SQUADS[q.type].cost : 0), 0);
+  const squadUsed = s => activeSquads(s).reduce((a, q) => a + SQUADS[q.type].cost, 0);
   const squadUnits = s => activeSquads(s).flatMap(q => q.members.map(id => s.units.find(u => u.id === id)));
   function setSquad(s, idx, type) {
     s.squads = s.squads || []; while (s.squads.length <= idx) s.squads.push({ type: null, members: [] });

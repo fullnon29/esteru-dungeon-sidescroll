@@ -4,7 +4,7 @@
 
 ## 실행/검증
 - 로컬: `python -m http.server 8123` → http://localhost:8123 (`.claude/launch.json`의 `dungeon-game`)
-- 밸런스 봇: `node sim_test.js` (클리어까지 약 43~63회가 정상 범위), `node tune.js` 계열(격자 튜닝), `node map_test.js` (맵 500층 유효성)
+- 밸런스 봇(`bot.js`: 제작·전직·분대·조합·요리사 보급·피로 로테이션을 쓰는 봇): `node sim_test.js`(1회, 로그 출력), `node bot.js 6 --compare`(6회 시행 + 기능별 끈 결과 비교), `node tune.js`(TUNE 격자 튜닝), `node map_test.js`(맵 500층 유효성). 확장 전 원작 규칙의 클리어 회차는 약 43~63회였고, 확장 후 목표 범위는 아직 미정(현재 중앙값 약 160회).
 - 엑셀 목록 재생성: `node ref/dump_data.js` → `python ref/make_xlsx.py` (ref/ 는 이 저장소에 없음)
 
 ## 구조

@@ -114,7 +114,7 @@
     for (let i = 0; i < slots; i++) {
       const q = (s.squads && s.squads[i]) || { type: null, members: [] }, err = q.type ? C.squadErr(s, q) : '종류 미선택';
       const act = q.type && !err && C.activeSquads(s).includes(s.squads[i]);
-      h += `<div class="card"><div class="row"><b>슬롯 ${i + 1}</b><span class="${act ? 'good' : 'dim'}">${act ? '● 발동 대기' : q.type && !err ? '○ 코스트 초과' : '○ 비활성'}</span></div>
+      h += `<div class="card"><div class="row"><b>슬롯 ${i + 1}</b><span class="${act ? 'good' : 'dim'}">${act ? '● 발동 대기' : q.type && !err ? (s.squads.slice(0, i).some(o => o.type === q.type && !C.squadErr(s, o)) ? '○ 중복 종류(효과 안 겹침)' : '○ 코스트 초과') : '○ 비활성'}</span></div>
         <div class="pol"><label>분대</label><select data-sqtype="${i}"><option value="">— 없음 —</option>${Object.entries(SQ).map(([k, d]) => `<option value="${k}" ${q.type === k ? 'selected' : ''}>${d.icon} ${d.name} (코스트 ${d.cost})</option>`).join('')}</select>
         ${q.type ? SQ[q.type].req.map((r, p) => `<label>${C.CLASSES[r].name}</label><select data-sqm="${i}" data-pos="${p}">${unitOpts(q, p)}</select>`).join('') : ''}</div>
         ${q.type ? `<div class="d dim" style="font-size:12px;margin-top:4px">${SQ[q.type].icon} ${SQ[q.type].desc}${err ? ` · <span class="warn">${esc(err)}</span>` : ''}</div>` : ''}</div>`;
