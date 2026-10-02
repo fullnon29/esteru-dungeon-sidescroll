@@ -20,6 +20,16 @@ const Core = (function () {
   };
   const ROW_TXT = { front: '전열 전용', back: '후열 전용', any: '전·후열' };
 
+  /* ---------- 등급 (용병·아이템 공통, DEVNOTE P1) ---------- */
+  // mul=아이템 수치 배율, grow=용병 성장 배율, hireMul=고용비, costAdd=편성 코스트 가산, luck=용병 행운 범위, chance=아이템 기본 확률
+  const RARITY = {
+    N: { name: '일반', color: '#9aa0a6', mul: 1, grow: 1.0, hireMul: 1, costAdd: 0, luck: [0, 5], chance: 0.70, opts: 0 },
+    U: { name: '우수', color: '#5cc26b', mul: 1.1, grow: 1.1, hireMul: 1.5, costAdd: 1, luck: [3, 10], chance: 0.22, opts: 0 },
+    H: { name: '고급', color: '#4a90e2', mul: 1.25, grow: 1.2, hireMul: 2.5, costAdd: 2, luck: [6, 15], chance: 0.07, opts: 1 },
+    L: { name: '전설', color: '#e0b030', mul: 1.5, grow: 1.35, hireMul: 5, costAdd: 3, luck: [10, 25], chance: 0.01, opts: 2 },
+  };
+  const RAR_ORDER = ['N', 'U', 'H', 'L'];
+
   /* ---------- 스킬 (장비 착용 시 사용 / 숙련되면 영구 습득) ---------- */
   const SKILLS = {
     power:  { name: '강타', type: 'single', mult: 1.9, uses: 4, master: 12 },
@@ -33,6 +43,7 @@ const Core = (function () {
     holy:   { name: '턴 언데드', type: 'holy', mult: 2.4, range: 4, magic: true, uses: 3, master: 10 },
     antidote:{ name: '해독', type: 'cure', uses: 4, master: 8 },
     guard:  { name: '방어태세', type: 'guard', uses: 3, master: 8 },
+    flurry: { name: '연속 찌르기', type: 'flurry', mult: 0.9, uses: 4, master: 12 },
   };
 
   /* ---------- 장비 ---------- */
@@ -71,22 +82,74 @@ const Core = (function () {
   it('r_boots', '질풍의 반지', 'acc2', 2, { spd: 3, eva: 0.08 });
   it('r_blessr', '수호의 반지', 'acc2', 3, { hp: 100, def: 10, skill: 'bless' });
   it('r_crown', '용사의 인장', 'acc2', 5, { atk: 50, def: 40, hp: 300 });
+  // 신규 직업 전용 장비 — 제작 전용(Phase 3). 대장간 도입 전(CRAFT_ENABLED=false)에는 상점에서 임시 판매.
+  const CRAFT_ENABLED = false;
+  it('w_knuckle', '철제 권갑', 'weapon', 1, { atk: 6, eva: 0.02, craft: true });
+  it('w_claw', '강철 권갑', 'weapon', 3, { atk: 36, spd: 2, skill: 'power', craft: true });
+  it('w_dfist', '용투 권갑', 'weapon', 4, { atk: 76, spd: 3, skill: 'cleave', craft: true });
+  it('a_mrobe', '마도사의 로브', 'armor', 2, { def: 9, hp: 35, atk: 5, craft: true });
+  it('a_archrobe', '대마도사의 로브', 'armor', 4, { def: 30, hp: 140, atk: 14, craft: true });
+  it('s_dagger', '보조 단검', 'sub', 1, { atk: 4, eva: 0.03, craft: true });
+  it('s_twin', '쌍날 단도', 'sub', 3, { atk: 22, spd: 2, eva: 0.05, skill: 'flurry', craft: true });
+  it('s_fang', '그림자 송곳니', 'sub', 4, { atk: 45, spd: 3, eva: 0.08, skill: 'flurry', craft: true });
+
+  /* ---------- 직업 제한 (DEVNOTE 1-B) ---------- */
+  const FRONT2 = ['warrior', 'knight'];
+  const RESTRICT = {
+    w_dagger: ['thief', 'elf', 'monk'], w_sword: ['warrior', 'knight', 'elf'], w_bow: ['elf', 'thief'], w_longbow: ['elf', 'thief'],
+    w_great: ['warrior'], w_lance: FRONT2, w_flame: ['warrior', 'knight', 'mage'], w_saint: FRONT2,
+    w_rod: ['mage'], w_icerod: ['mage'], w_mace: ['priest', 'knight'],
+    w_knuckle: ['monk'], w_claw: ['monk'], w_dfist: ['monk'],
+    s_buckler: ['warrior', 'knight', 'thief', 'elf', 'priest'], s_shield: FRONT2, s_tower: FRONT2, s_book: ['mage', 'priest'], s_holybook: ['priest'],
+    s_dagger: ['thief'], s_twin: ['thief'], s_fang: ['thief'],
+    a_leather: ['warrior', 'monk', 'elf', 'thief'], a_chain: ['warrior', 'knight', 'elf', 'thief', 'monk'], a_plate: FRONT2, a_mithril: FRONT2,
+    a_robe: ['priest', 'mage'], a_dragon: ['warrior', 'knight', 'monk'], a_mrobe: ['mage'], a_archrobe: ['mage'],
+    c_cape: ['thief', 'elf'],
+  };
+  for (const id in RESTRICT) ITEMS[id].classes = RESTRICT[id];
+  const canUse = (u, i) => !i || !i.classes || i.classes.includes(u.cls);
 
   // 전설 장비("!"): 매 드롭마다 무작위 이름/효과
   const LEG_PRE = ['고대의', '불멸의', '저주받은', '신들의', '서리의', '폭풍의', '황혼의'];
   function makeLegend(floor) {
     const slot = pick(Object.keys(SLOTS)), t = clamp(Math.ceil(floor / 10) + 1, 2, 5);
     const k = [0, 1, 1, 3, 6, 10][t] || 3;
-    const base = { weapon: ['검', '창', '지팡이', '활'], sub: ['방패', '성서'], armor: ['갑주', '로브'], acc1: ['목걸이', '망토', '투구'], acc2: ['반지'] }[slot];
-    const o = { slot, tier: t, price: TIER_PRICE[t] * 2, legend: true };
-    o.name = pick(LEG_PRE) + ' ' + pick(base) + '!';
+    const base = { weapon: ['검', '창', '지팡이', '활', '권갑'], sub: ['방패', '성서'], armor: ['갑주', '로브'], acc1: ['목걸이', '망토', '투구'], acc2: ['반지'] }[slot];
+    const LEG_CLS = { 검: ['warrior', 'knight', 'elf'], 창: FRONT2, 지팡이: ['mage', 'priest'], 활: ['elf', 'thief'], 권갑: ['monk'], 방패: FRONT2.concat('priest'), 성서: ['priest'], 갑주: FRONT2, 로브: ['mage', 'priest'], 망토: ['thief', 'elf'] };
+    const o = { slot, tier: t, price: TIER_PRICE[t] * 2, legend: true, rarity: 'L' };
+    const bn = pick(base);
+    o.name = pick(LEG_PRE) + ' ' + bn + '!';
+    if (LEG_CLS[bn]) o.classes = LEG_CLS[bn];
     if (slot === 'weapon') o.atk = Math.round(14 * k * rnd(1.1, 1.5));
     else if (slot === 'armor' || slot === 'sub') { o.def = Math.round(8 * k * rnd(1.1, 1.5)); o.hp = Math.round(25 * k); }
     else { o.hp = Math.round(30 * k * rnd(0.8, 1.4)); o.atk = Math.round(4 * k * rnd(0.8, 1.4)); o.spd = ri(1, 4); }
-    if (Math.random() < 0.7) o.skill = pick(Object.keys(SKILLS));
+    if (Math.random() < 0.7) o.skill = pick(Object.keys(SKILLS).filter(k => k !== 'flurry'));
     o.id = 'L' + Date.now().toString(36) + ri(100, 999);
     ITEMS[o.id] = o;
     return o.id;
+  }
+  // 우수/고급 장비: 기본 장비에 등급 배율과 옵션을 입혀 새 항목으로 생성(세이브에 저장 — registerLegend)
+  const OPT_POOL = ['hp', 'def', 'atk', 'spd', 'eva'];
+  function makeRarityItem(baseId, rar) {
+    const b = ITEMS[baseId], R = RARITY[rar], k = [0, 1, 2, 4, 7, 12][b.tier] || 1;
+    const o = Object.assign({}, b, { id: baseId + '~' + rar + Date.now().toString(36) + ri(100, 999), rarity: rar, gen: true, base: baseId, name: R.name + ' ' + b.name });
+    for (const st of ['atk', 'def', 'hp']) if (o[st]) o[st] = Math.round(o[st] * R.mul);
+    const used = new Set();
+    for (let n = 0; n < R.opts; n++) {
+      let st; do { st = pick(OPT_POOL); } while (used.has(st)); used.add(st);
+      o[st] = (o[st] || 0) + ({ hp: 12 * k, def: 2 * k, atk: 2 * k, spd: 1, eva: 0.03 }[st]);
+    }
+    o.price = Math.round(b.price * R.mul * (1 + R.opts * 0.3));
+    ITEMS[o.id] = o;
+    return o.id;
+  }
+  const partyLuck = party => party && party.length ? party.reduce((a, u) => a + (u.luck || 0), 0) / party.length : 0;
+  // 등급 판정: 기본 확률 + 행운(파티 평균 1당 +0.4%p, 상한 +15%p) + 보스/정예 가산
+  function rollRarity(luck, kind) {
+    let b = Math.min(0.15, luck * 0.004) + (kind === 'boss' ? 0.12 : kind === 'elite' ? 0.05 : 0);
+    const pL = RARITY.L.chance + b * 0.3, pH = RARITY.H.chance + b * 0.7, pU = RARITY.U.chance;
+    const r = Math.random();
+    if (r < pL) return 'L'; if (r < pL + pH) return 'H'; if (r < pL + pH + pU) return 'U'; return 'N';
   }
 
   const CONS = {
@@ -162,8 +225,13 @@ const Core = (function () {
   function maxCharges(u, sid) { return SKILLS[sid].uses + ((u.learned || []).includes(sid) ? 1 : 0); }
   function resetCharges(u) { u.charges = {}; for (const s of skillsOf(u)) u.charges[s] = maxCharges(u, s); }
   function ensureCharges(u) { u.charges = u.charges || {}; for (const s of skillsOf(u)) if (u.charges[s] === undefined) u.charges[s] = maxCharges(u, s); }
+  const rarOf = u => RARITY[u.rar] ? u.rar : 'N';
+  const growOf = u => u.growMul || RARITY[rarOf(u)].grow;
+  const costOf = u => CLASSES[u.cls].cost + RARITY[rarOf(u)].costAdd;
+  const hireCost = u => Math.round(CLASSES[u.cls].hire * RARITY[rarOf(u)].hireMul);
+  const canLead = u => rarOf(u) === 'H' || rarOf(u) === 'L';
   function stats(u) {
-    const c = CLASSES[u.cls], L = u.lv - 1;
+    const c = CLASSES[u.cls], L = (u.lv - 1) * growOf(u);
     let hp = Math.round(c.hp * (1 + TUNE.growHp * L * (c.hpGrow || 1))), atk = Math.round(c.atk * (1 + TUNE.growAtk * L)), def = Math.round(c.def * (1 + TUNE.growDef * L)), spd = c.spd, eva = c.eva, rng = c.range;
     for (const slot in SLOTS) {
       const i = ITEMS[u.equip[slot]]; if (!i) continue;
@@ -173,17 +241,40 @@ const Core = (function () {
   }
 
   /* ---------- 세이브 ---------- */
+  // [이름, 직업, 시작 고용, 등급] — 12명은 기존 세이브와 id 호환(1~12), 13~18은 v3 신규. (요리사 2명은 Phase 2에서 19~20으로 추가)
   const ROSTER = [
-    ['레온', 'warrior', 1], ['아델', 'knight', 0], ['실비아', 'elf', 1], ['마르코', 'mage', 0], ['루나', 'priest', 1], ['핀', 'thief', 1],
-    ['가론', 'monk', 0], ['헬가', 'warrior', 0], ['오스카', 'knight', 0], ['에리스', 'mage', 0], ['티티스', 'elf', 0], ['세라', 'priest', 0],
+    ['레온', 'warrior', 1, 'H'], ['아델', 'knight', 0, 'N'], ['실비아', 'elf', 1, 'N'], ['마르코', 'mage', 0, 'N'], ['루나', 'priest', 1, 'N'], ['핀', 'thief', 1, 'N'],
+    ['가론', 'monk', 0, 'N'], ['헬가', 'warrior', 0, 'N'], ['오스카', 'knight', 0, 'N'], ['에리스', 'mage', 0, 'N'], ['티티스', 'elf', 0, 'N'], ['세라', 'priest', 0, 'N'],
+    ['카이', 'thief', 0, 'U'], ['바울', 'monk', 0, 'U'], ['이사벨', 'knight', 0, 'U'], ['리아', 'elf', 0, 'U'], ['클로에', 'priest', 0, 'H'], ['카산드라', 'mage', 0, 'L'],
   ];
+  const lumin = r => RARITY[r].luck;
+  function mkUnit(i, r, legacy) {
+    const rar = r[3] || 'N';
+    const u = { id: i + 1, name: r[0], cls: r[1], rar, lv: 1, exp: 0, hp: 0, equip: { weapon: null, sub: null, armor: null, acc1: null, acc2: null }, learned: [], mastery: {}, charges: {}, hired: !!r[2] };
+    u.growMul = RARITY[rar].grow;
+    u.luck = legacy ? lumin(rar)[0] : (rar === 'L' ? lumin(rar)[0] : ri(lumin(rar)[0], lumin(rar)[1])); // 전설은 고용 주사위로 확정
+    return u;
+  }
+  // 고용 처리. 전설은 주사위(성장 배율 1.25~1.45, 결과에 따라 시작 행운 상승, 실패 없음)
+  function hireUnit(s, u) {
+    const cost = hireCost(u); if (s.gold < cost || u.hired) return null;
+    s.gold -= cost; u.hired = true;
+    let dice = null;
+    if (rarOf(u) === 'L' && !u.rolled) {
+      const g = Math.round(rnd(1.25, 1.45) * 100) / 100, R = RARITY.L.luck;
+      u.growMul = g; u.luck = clamp(Math.round(R[0] + (g - 1.25) / 0.2 * (R[1] - R[0]) * 0.6 + rnd(0, (R[1] - R[0]) * 0.4)), R[0], R[1]);
+      u.rolled = true; dice = { grow: g, luck: u.luck };
+    }
+    u.hp = stats(u).hp; resetCharges(u);
+    return { cost, dice };
+  }
   function newSave() {
-    const units = ROSTER.map((r, i) => ({ id: i + 1, name: r[0], cls: r[1], lv: 1, exp: 0, hp: 0, equip: { weapon: null, sub: null, armor: null, acc1: null, acc2: null }, learned: [], mastery: {}, charges: {}, hired: !!r[2] }));
+    const units = ROSTER.map((r, i) => mkUnit(i, r, false));
     const byName = n => units.find(u => u.name === n);
     byName('레온').equip.weapon = 'w_sword'; byName('실비아').equip.weapon = 'w_bow';
     byName('루나').equip.weapon = 'w_mace'; byName('핀').equip.weapon = 'w_dagger';
     const s = {
-      v: 2, gold: 600, day: 1, maxFloor: 1, cleared: false, units,
+      v: 3, opts: { autoEquip: true, autoIdle: false }, gold: 600, day: 1, maxFloor: 1, cleared: false, units,
       gear: ['a_leather', 'a_leather', 's_buckler', 'r_power'], cons: { potion: 3, antidote: 1, escape: 1 },
       formation: {}, policy: { retreat: 25, skill: 'mid', explore: 'full', stance: 'attack', target: 'nearest', leader: 1, downRetreat: false },
       quests: { board: [], active: [], done: 0 }, qid: 1,
@@ -192,13 +283,26 @@ const Core = (function () {
     autoFormation(s); genQuests(s);
     return s;
   }
+  // v2 → v3: 기존 용병은 전부 일반(레온 포함 — 고급 시작은 새 게임 한정), 행운=등급 하한, 신규 용병 추가, 옵션 기본값
+  function migrateSave(s) {
+    if (!s || (s.v !== 2 && s.v !== 3)) return null;
+    s.opts = Object.assign({ autoEquip: true, autoIdle: false }, s.opts || {});
+    for (const u of s.units) {
+      if (!RARITY[u.rar]) u.rar = 'N';
+      if (!u.growMul) u.growMul = RARITY[u.rar].grow;
+      if (u.luck === undefined) u.luck = lumin(u.rar)[0];
+    }
+    ROSTER.forEach((r, i) => { if (!s.units.find(u => u.id === i + 1)) s.units.push(mkUnit(i, r, false)); });
+    s.v = 3;
+    return s;
+  }
   function restoreLegends(s) { // 저장된 전설 장비 정의 복원용
     (s.legends || []).forEach(l => { ITEMS[l.id] = l; });
   }
   function registerLegend(s, id) { s.legends = s.legends || []; if (!s.legends.find(l => l.id === id)) s.legends.push(ITEMS[id]); }
 
   const costCap = s => 10 + Math.floor(s.maxFloor / 4);
-  const usedCost = s => s.units.filter(u => u.hired && s.formation[u.id]).reduce((a, u) => a + CLASSES[u.cls].cost, 0);
+  const usedCost = s => s.units.filter(u => u.hired && s.formation[u.id]).reduce((a, u) => a + costOf(u), 0);
   function zoneOk(cls, y) {
     const r = CLASSES[cls].row;
     if (y < 5) return false;
@@ -212,14 +316,15 @@ const Core = (function () {
     if (!zoneOk(u.cls, y) || x < 0 || x >= GRID) return `${CLASSES[u.cls].name}은(는) ${ROW_TXT[CLASSES[u.cls].row]} 입니다`;
     const o = unitAt(s, x, y); if (o && o.id !== u.id) return '이미 다른 용병이 있습니다';
     const was = s.formation[u.id];
-    const used = usedCost(s) - (was ? CLASSES[u.cls].cost : 0) + CLASSES[u.cls].cost;
+    const used = usedCost(s) - (was ? costOf(u) : 0) + costOf(u);
     if (used > costCap(s)) return `코스트 초과 (${used}/${costCap(s)})`;
     s.formation[u.id] = [x, y]; return null;
   }
   function autoFormation(s) {
     s.formation = {};
     const xs = [4, 3, 5, 2, 6, 1, 7, 0, 8];
-    const order = s.units.filter(u => u.hired).sort((a, b) => b.lv - a.lv || CLASSES[a.cls].cost - CLASSES[b.cls].cost);
+    const ld = s.policy.leader; // 리더는 항상 먼저 편성(고급 이상이라 코스트가 높아 밀리는 것 방지)
+    const order = s.units.filter(u => u.hired).sort((a, b) => (b.id === ld) - (a.id === ld) || b.lv - a.lv || costOf(a) - costOf(b));
     for (const u of order) {
       const ys = CLASSES[u.cls].row === 'front' ? [5, 6] : CLASSES[u.cls].row === 'back' ? [8, 7] : [7, 8];
       let done = false;
@@ -257,11 +362,17 @@ const Core = (function () {
   }
 
   /* ---------- 드롭 ---------- */
-  function dropItem(floor) {
-    if (Math.random() < 0.06) { return makeLegend(floor); }
+  // o: { luck: 파티 평균 행운, kind: 'boss' | 'elite' }
+  function dropItem(floor, o) {
+    o = o || {};
+    const rar = rollRarity(o.luck || 0, o.kind);
+    if (rar === 'L') return makeLegend(floor);
     const tmax = Math.min(5, 1 + Math.floor(floor / 10));
-    const c = Object.values(ITEMS).filter(i => !i.legend && i.tier <= tmax && i.tier >= Math.max(1, tmax - 1));
-    return pick(c).id;
+    const c = Object.values(ITEMS).filter(i => !i.legend && !i.gen && !i.craft && i.tier <= tmax && i.tier >= Math.max(1, tmax - 1));
+    let pool = c;
+    if (o.party && Math.random() < 0.7) { const f = c.filter(i => o.party.some(u => canUse(u, i))); if (f.length) pool = f; } // 현재 파티가 쓸 수 있는 장비 위주
+    const base = pick(pool).id;
+    return rar === 'N' ? base : makeRarityItem(base, rar);
   }
 
   /* ---------- 전투 ---------- */
@@ -340,11 +451,11 @@ const Core = (function () {
       const e = b.exp, s = b.save;
       e.loot.gold += c.gold; e.kills++;
       giveExp(b, c.exp);
-      if (Math.random() < (c.boss ? 1 : 0.1)) { const id = dropItem(b.floor); if (ITEMS[id].legend) registerLegend(s, id); e.loot.items.push(id); ev(b, { k: 'log', m: `🎁 ${ITEMS[id].name} 획득`, c: 'good' }); }
+      if (Math.random() < (c.boss ? 1 : 0.1)) { const id = dropItem(b.floor, { party: e.party, luck: partyLuck(e.party), kind: c.boss ? 'boss' : c.elite ? 'elite' : null }); if (ITEMS[id].legend || ITEMS[id].gen) registerLegend(s, id); e.loot.items.push(id); ev(b, { k: 'log', m: `🎁 ${ITEMS[id].name} 획득`, c: 'good' }); }
       questEvent(s, 'hunt', c.fam, (m, cl) => ev(b, { k: 'log', m, c: cl }));
-      if (c.elite && Math.random() < 0.6) { const id = dropItem(b.floor); if (ITEMS[id].legend) registerLegend(s, id); e.loot.items.push(id); ev(b, { k: 'log', m: `☠️ 정예 몹 전리품: ${ITEMS[id].name}`, c: 'good' }); }
+      if (c.elite && Math.random() < 0.6) { const id = dropItem(b.floor, { party: e.party, luck: partyLuck(e.party), kind: 'elite' }); if (ITEMS[id].legend || ITEMS[id].gen) registerLegend(s, id); e.loot.items.push(id); ev(b, { k: 'log', m: `☠️ 정예 몹 전리품: ${ITEMS[id].name}`, c: 'good' }); }
       if (c.golden) {
-        const id = dropItem(b.floor); if (ITEMS[id].legend) registerLegend(s, id); e.loot.items.push(id);
+        const id = dropItem(b.floor, { party: e.party, luck: partyLuck(e.party) }); if (ITEMS[id].legend || ITEMS[id].gen) registerLegend(s, id); e.loot.items.push(id);
         e.bless = 4; e.goldenKills = (e.goldenKills || 0) + 1;
         ev(b, { k: 'log', m: `✨ ${c.name} 처치! 경험치 ${c.exp} · ${ITEMS[id].name} 획득 · 황금의 축복(3회 전투 공·방 +15%)`, c: 'good' });
       }
@@ -392,6 +503,7 @@ const Core = (function () {
       case 'healall': { ev(b, { k: 'fx', x: c.x, y: c.y, t: 'heal', n: sk.name, from: c }); allies.forEach(a => heal(b, c, a, c.atk * 1.0 + a.maxhp * 0.1)); break; }
       case 'cure': { const t = allies.find(a => a.poisoned); if (!t) return false; t.poisoned = false; t.u.poison = false; ev(b, { k: 'log', m: `💊 ${t.name}의 독이 해독됐다`, c: 'good' }); break; }
       case 'guard': { c.guard = b.t + 6; ev(b, { k: 'fx', x: c.x, y: c.y, t: 'skill', n: sk.name, from: c }); break; }
+      case 'flurry': { if (!inR.length) return false; const t = inR[0]; ev(b, { k: 'fx', x: t.x, y: t.y, t: 'skill', n: sk.name, from: c }); damage(b, c, t, sk.mult, false); if (t.alive) damage(b, c, t, sk.mult, false); break; }
     }
     if (c.u) consume(c, sid);
     return true;
@@ -628,7 +740,7 @@ const Core = (function () {
     const f = e.floor, g = Math.round(rnd(0.8, 1.4) * (30 + f * 15) * (big ? 2 : 1));
     e.loot.gold += g; e.chests++;
     let m = `📦 ${big ? '큰 ' : ''}보물상자! ${g}G`;
-    if (Math.random() < (big ? 0.8 : 0.35)) { const id = dropItem(f); if (ITEMS[id].legend) registerLegend(e.save, id); e.loot.items.push(id); m += ` + ${ITEMS[id].name}`; }
+    if (Math.random() < (big ? 0.8 : 0.35)) { const id = dropItem(f, { party: e.party, luck: partyLuck(e.party) }); if (ITEMS[id].legend || ITEMS[id].gen) registerLegend(e.save, id); e.loot.items.push(id); m += ` + ${ITEMS[id].name}`; }
     if (Math.random() < 0.3) { const k = pick(['potion', 'potion', 'antidote', 'elixir']); e.save.cons[k] = (e.save.cons[k] || 0) + 1; m += ` + ${CONS[k].name}`; }
     elog(e, m, 'good'); questEvent(e.save, 'chest', null, (mm, c) => elog(e, mm, c));
   }
@@ -644,6 +756,7 @@ const Core = (function () {
     s.day++;
     s.units.forEach(u => { u.hp = stats(u).hp; u.poison = false; resetCharges(u); });
     if (result === 'clear') s.cleared = true;
+    e.autoLog = (result !== 'wipe' && s.opts && s.opts.autoEquip) ? autoEquip(s, { idle: !!s.opts.autoIdle }) : [];
     genQuests(s);
   }
 
@@ -851,23 +964,47 @@ const Core = (function () {
   }
 
   /* ---------- 장비 관리 ---------- */
+  // 새로 장착할 때만 직업 제한을 검사(이미 착용 중인 기존 장비는 유지). 실패 시 false
   function equip(s, u, slot, itemId) {
-    const old = u.equip[slot]; if (old) s.gear.push(old);
-    if (itemId) { const i = s.gear.indexOf(itemId); if (i < 0) return; s.gear.splice(i, 1); }
+    if (itemId && !canUse(u, ITEMS[itemId])) return false;
+    const old = u.equip[slot]; if (itemId && s.gear.indexOf(itemId) < 0) return false;
+    if (old) s.gear.push(old);
+    if (itemId) s.gear.splice(s.gear.indexOf(itemId), 1);
     u.equip[slot] = itemId || null;
     u.hp = Math.min(u.hp, stats(u).hp); ensureCharges(u);
+    return true;
   }
-  function autoEquip(s) {
-    const score = i => (i.atk || 0) * 1.2 + (i.def || 0) + (i.hp || 0) * 0.15 + (i.skill ? 15 * i.tier : 0) + (i.spd || 0) * 4;
+  // 직업별 점수 가중치 (DEVNOTE 1-C)
+  const AUTO_W = {
+    warrior: { atk: 1.4, def: 0.8, hp: 0.12, spd: 5, eva: 20, sk: 12 },
+    monk:    { atk: 1.4, def: 0.7, hp: 0.12, spd: 6, eva: 25, sk: 12 },
+    thief:   { atk: 1.3, def: 0.5, hp: 0.10, spd: 6, eva: 30, sk: 10 },
+    knight:  { atk: 0.8, def: 1.4, hp: 0.25, spd: 2, eva: 10, sk: 14 },
+    elf:     { atk: 1.2, def: 0.6, hp: 0.10, spd: 6, eva: 40, sk: 12 },
+    mage:    { atk: 1.6, def: 0.5, hp: 0.10, spd: 3, eva: 10, sk: 20 },
+    priest:  { atk: 0.6, def: 1.0, hp: 0.22, spd: 2, eva: 10, sk: 14 },
+  };
+  const HEAL_SK = ['heal', 'bless', 'cure', 'antidote'];
+  function autoScore(u, i) {
+    const w = AUTO_W[u.cls] || AUTO_W.warrior;
+    let sc = (i.atk || 0) * w.atk + (i.def || 0) * w.def + (i.hp || 0) * w.hp + (i.spd || 0) * w.spd + (i.eva || 0) * w.eva * 10 + (i.range || 0) * 12;
+    if (i.skill) sc += w.sk * i.tier + (u.cls === 'priest' && HEAL_SK.includes(i.skill) ? 25 * i.tier : 0);
+    return sc;
+  }
+  // 귀환 시 자동 장비. o.idle=true 면 대기 중 용병도 포함. noAuto 장비는 배분·교체 모두 제외. 변경 내역 배열 반환
+  function autoEquip(s, o) {
+    o = o || {}; const log = [];
     for (const u of s.units) {
-      if (!u.hired) continue;
+      if (!u.hired || (!o.idle && !s.formation[u.id])) continue;
       for (const slot in SLOTS) {
-        const cur = ITEMS[u.equip[slot]], cands = s.gear.map(id => ITEMS[id]).filter(i => i.slot === slot);
+        const cur = ITEMS[u.equip[slot]]; if (cur && cur.noAuto) continue;
+        const cands = s.gear.map(id => ITEMS[id]).filter(i => i.slot === slot && !i.noAuto && canUse(u, i));
         if (!cands.length) continue;
-        cands.sort((a, b) => score(b) - score(a));
-        if (!cur || score(cands[0]) > score(cur)) equip(s, u, slot, cands[0].id);
+        cands.sort((a, b) => autoScore(u, b) - autoScore(u, a));
+        if (!cur || autoScore(u, cands[0]) > autoScore(u, cur)) { if (equip(s, u, slot, cands[0].id)) log.push(`${u.name}: ${SLOTS[slot]} ${cur ? cur.name : '없음'} → ${cands[0].name}`); }
       }
     }
+    return log;
   }
   function describe(i) {
     const p = [];
@@ -877,6 +1014,6 @@ const Core = (function () {
     return p.join(' ');
   }
 
-  return { GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, MW, MH, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
+  return { RARITY, RAR_ORDER, CRAFT_ENABLED, canUse, canLead, costOf, hireCost, hireUnit, migrateSave, partyLuck, rarOf, GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, MW, MH, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
 })();
 if (typeof module !== 'undefined') module.exports = Core; else window.Core = Core;

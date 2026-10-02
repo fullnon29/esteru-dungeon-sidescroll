@@ -14,7 +14,7 @@
     return C.newSave();
   }
   function fixSave(s) {
-    if (!s || s.v !== 2) return C.newSave();
+    s = C.migrateSave(s); if (!s) return C.newSave();
     C.restoreLegends(s);
     if (!['full', 'treasure', 'stairs'].includes(s.policy.explore)) s.policy.explore = 'full';
     return s;
@@ -26,7 +26,10 @@
 
   /* ---------- 유틸 ---------- */
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const itemName = id => { const i = C.ITEMS[id]; return i ? `<span class="${i.legend ? 'legend' : ''}">${esc(i.name)}</span>` : '-'; };
+  const itemName = id => { const i = C.ITEMS[id]; if (!i) return '-'; const r = i.rarity && i.rarity !== 'N' ? C.RARITY[i.rarity] : null; return `<span class="${i.legend ? 'legend' : ''}" ${r && !i.legend ? `style="color:${r.color}"` : ''}>${esc(i.name)}</span>`; };
+  const rarTag = u => { const k = C.rarOf(u); return k !== 'N' ? `<span style="color:${C.RARITY[k].color}" title="${C.RARITY[k].name} 등급">[${C.RARITY[k].name}]</span>` : ''; };
+  const luckHint = u => { const l = u.luck || 0; return l >= 18 ? '행운이 넘쳐 보인다' : l >= 10 ? '운이 좋아 보인다' : l >= 4 ? '평범한 운' : '운이 별로 없어 보인다'; };
+  const leadCands = list => { const e = list.filter(C.canLead); return e.length ? e : list; };
   const pct = (a, b) => Math.max(0, Math.min(100, a / b * 100));
   const hpCls = p => p < 25 ? 'lo' : p < 55 ? 'mid' : '';
   const party = () => S.save.units.filter(u => u.hired && S.save.formation[u.id]);
@@ -58,10 +61,10 @@
 
   /* ---------- 정책 UI ---------- */
   function polHTML(inExp) {
-    const p = S.save.policy, cands = inExp && S.exp ? S.exp.party : party();
+    const p = S.save.policy, cands = leadCands(inExp && S.exp ? S.exp.party : party());
     const o = (v, cur, t) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${t}</option>`;
     return `<div class="pol">
-      <label title="리더가 살아 있으면 공·방 +8%, 쓰러지면 −10%">리더</label><select data-pol="leader">${cands.map(u => o(u.id, p.leader, `${u.name} (${C.CLASSES[u.cls].name})`)).join('') || '<option>-</option>'}</select>
+      <label title="리더가 살아 있으면 공·방 +8%, 쓰러지면 −10% (고급 이상만 지정 가능 — 해당자가 없으면 누구나)">리더</label><select data-pol="leader">${cands.map(u => o(u.id, p.leader, `${u.name} (${C.CLASSES[u.cls].name})`)).join('') || '<option>-</option>'}</select>
       <label title="파티 평균 HP가 이 값 아래로 떨어지면 후퇴를 시도합니다">후퇴 기준 <b id="retv">${p.retreat}%</b></label><input type="range" min="0" max="70" step="5" value="${p.retreat}" data-pol="retreat" aria-label="후퇴 기준">
       <label title="스킬을 쓸 확률(치유 계열은 필요하면 항상 사용)">스킬 빈도</label><select data-pol="skill">${o('low', p.skill, '낮음')}${o('mid', p.skill, '보통')}${o('high', p.skill, '높음')}</select>
       <label title="전진 공격: 적에게 다가감 / 진형 유지: 사거리에 들어온 적만 공격">전투 방침</label><select data-pol="stance">${o('attack', p.stance, '전진 공격')}${o('hold', p.stance, '진형 유지')}</select>
@@ -89,18 +92,18 @@
     const st = C.stats(u), c = C.CLASSES[u.cls], pos = S.save.formation[u.id];
     return `<div class="card click ${S.sel === u.id ? 'sel' : ''} ${pos && o.mark ? 'placed' : ''}" ${o.drag ? `data-unit="${u.id}"` : ''} data-act="${o.act}" data-id="${u.id}">
       <div class="ucard"><div class="pt" style="border-color:${c.color}">${portrait(u)}</div>
-      <div><div class="nm">${esc(u.name)} <span class="dim">${c.name} Lv${u.lv}</span></div><div class="st">HP ${st.hp} · 공 ${st.atk} · 방 ${st.def} · 속 ${st.spd.toFixed(1)} · 사거리 ${st.range}</div><div class="st">${C.ROW_TXT[c.row]}${pos ? ' · <span class="good">배치됨</span>' : ''}</div></div>
-      <div class="cost-badge" title="코스트 ${c.cost}">${c.cost}</div></div>${o.more || ''}</div>`;
+      <div title="${luckHint(u)}"><div class="nm">${esc(u.name)} ${rarTag(u)} <span class="dim">${c.name} Lv${u.lv}</span></div><div class="st">HP ${st.hp} · 공 ${st.atk} · 방 ${st.def} · 속 ${st.spd.toFixed(1)} · 사거리 ${st.range}</div><div class="st">${C.ROW_TXT[c.row]}${pos ? ' · <span class="good">배치됨</span>' : ''}</div></div>
+      <div class="cost-badge" title="코스트 ${C.costOf(u)}">${C.costOf(u)}</div></div>${o.more || ''}</div>`;
   }
   function advice() {
     const s = S.save, pt = party(), used = C.usedCost(s), cap = C.costCap(s), unplaced = s.units.filter(u => u.hired && !s.formation[u.id]);
     if (!pt.length) return { t: '용병 카드를 전장의 <b>파란 칸</b>으로 끌어다 놓아 편성하세요.' };
-    const fit = unplaced.filter(u => C.CLASSES[u.cls].cost <= cap - used).sort((a, b) => b.lv - a.lv)[0];
+    const fit = unplaced.filter(u => C.costOf(u) <= cap - used).sort((a, b) => b.lv - a.lv)[0];
     if (fit) return { t: `코스트 여유 <b>${cap - used}</b> — ${esc(fit.name)}(${C.CLASSES[fit.cls].name})도 편성할 수 있어요.` };
     if (!pt.some(u => u.cls === 'thief')) return { t: '<b>도적</b>이 없으면 함정을 그대로 밟고 잠긴 문을 열 수 없습니다.', tab: 'roster', l: '용병 보기' };
     if (!pt.some(u => C.skillsOf(u).includes('heal') || u.cls === 'priest')) return { t: '치유 수단이 없습니다. <b>회복약</b>을 넉넉히 준비하세요.', tab: 'shop', l: '상점 가기' };
     if ((s.cons.potion || 0) < 2) return { t: '회복약이 부족합니다.', tab: 'shop', l: '상점 가기' };
-    const cheap = s.units.filter(u => !u.hired).map(u => C.CLASSES[u.cls].hire).sort((a, b) => a - b)[0];
+    const cheap = s.units.filter(u => !u.hired).map(u => C.hireCost(u)).sort((a, b) => a - b)[0];
     if (cheap && s.gold >= cheap + C.wageOf(pt) + 100) return { t: '고용할 수 있는 용병이 있습니다.', tab: 'roster', l: '용병 보기' };
     return { t: '준비 완료! 우측 상단 <b>출격 준비</b>를 눌러 던전으로 향하세요.' };
   }
@@ -117,7 +120,7 @@
       h += `<div class="row" style="margin-bottom:8px"><button class="btn" data-act="autoeq" title="보관함 장비 중 가장 좋은 것을 자동 장착">🛡 전원 자동 장비</button><span class="dim">보관 장비 ${s.gear.length}개</span></div>`;
       h += s.units.map(u => {
         const c = C.CLASSES[u.cls];
-        if (!u.hired) return `<div class="card"><div class="ucard"><div class="pt" style="border-color:${c.color};opacity:.6">${portrait(u)}</div><div><div class="nm">${esc(u.name)} <span class="dim">${c.name}</span></div><div class="st">코스트 ${c.cost} · ${C.ROW_TXT[c.row]} · HP ${c.hp} 공 ${c.atk}</div></div><button class="btn sm" data-act="hire" data-id="${u.id}" ${s.gold < c.hire ? 'disabled title="골드가 부족합니다"' : ''}>고용 ${c.hire}G</button></div></div>`;
+        if (!u.hired) return `<div class="card"><div class="ucard"><div class="pt" style="border-color:${c.color};opacity:.6">${portrait(u)}</div><div><div title="${luckHint(u)}"><div class="nm">${esc(u.name)} ${rarTag(u)} <span class="dim">${c.name}</span></div><div class="st">코스트 ${C.costOf(u)} · ${C.ROW_TXT[c.row]} · HP ${c.hp} 공 ${c.atk}${C.rarOf(u) === 'L' ? ' · 🎲 고용 시 주사위' : ''}</div></div><button class="btn sm" data-act="hire" data-id="${u.id}" ${s.gold < C.hireCost(u) ? 'disabled title="골드가 부족합니다"' : ''}>고용 ${C.hireCost(u)}G</button></div></div>`;
         let det = '';
         if (S.detail === u.id) {
           det = `<div style="margin-top:8px">` + Object.keys(C.SLOTS).map(sl => {
@@ -135,7 +138,7 @@
     } else if (S.tab === 'shop') {
       const tmax = Math.min(3, 1 + Math.floor(s.maxFloor / 10));
       h += `<div class="sec-t">소모품</div>` + Object.entries(C.CONS).map(([k, v]) => `<div class="itm"><span><b>${v.name}</b><div class="d">${v.desc} · 보유 ${s.cons[k] || 0}</div></span><button class="btn sm" data-act="buycons" data-id="${k}" ${s.gold < v.price ? 'disabled title="골드가 부족합니다"' : ''}>${v.price}G</button></div>`).join('');
-      h += `<div class="sec-t">장비 (최고 층에 따라 등급 확대 · 현재 T${tmax}까지)</div>` + Object.values(C.ITEMS).filter(i => !i.legend && i.tier <= tmax).map(i => `<div class="itm"><span><b>${itemName(i.id)}</b> <span class="chip">T${i.tier}</span><div class="d">${C.SLOTS[i.slot]} · ${C.describe(i)}</div></span><button class="btn sm" data-act="buygear" data-id="${i.id}" ${s.gold < i.price ? 'disabled title="골드가 부족합니다"' : ''}>${i.price}G</button></div>`).join('');
+      h += `<div class="sec-t">장비 (최고 층에 따라 등급 확대 · 현재 T${tmax}까지)</div>` + Object.values(C.ITEMS).filter(i => !i.legend && !i.gen && i.tier <= tmax && (!i.craft || !C.CRAFT_ENABLED)).map(i => `<div class="itm"><span><b>${itemName(i.id)}</b> <span class="chip">T${i.tier}</span><div class="d">${C.SLOTS[i.slot]} · ${C.describe(i)}${i.classes ? ' · ' + i.classes.map(k => C.CLASSES[k].name).join('/') : ''}</div></span><button class="btn sm" data-act="buygear" data-id="${i.id}" ${s.gold < i.price ? 'disabled title="골드가 부족합니다"' : ''}>${i.price}G</button></div>`).join('');
       h += `<div class="sec-t">보관함 (판매가 = 절반)</div>` + (s.gear.length ? s.gear.map((id, idx) => { const i = C.ITEMS[id]; return `<div class="itm"><span>${itemName(id)}<div class="d">${C.SLOTS[i.slot]} · ${C.describe(i)}</div></span><button class="btn sm" data-act="sell" data-id="${idx}">${Math.floor(i.price / 2)}G 판매</button></div>`; }).join('') : '<div class="empty">비어있음</div>');
     } else if (S.tab === 'quest') {
       h += `<div class="sec-t">수주한 의뢰 (${s.quests.active.length}/3)</div>` + (s.quests.active.length ? s.quests.active.map(q => `<div class="card"><div class="row"><b>${q.title}</b><span class="gold">${q.reward}G</span></div><div class="bar"><i style="width:${pct(q.progress, q.need)}%"></i></div><div class="row dim" style="margin-top:4px"><span>${q.progress}/${q.need}</span><button class="btn sm" data-act="abandon" data-id="${q.id}">포기</button></div></div>`).join('') : '<div class="empty">수주한 의뢰가 없습니다</div>');
@@ -235,7 +238,7 @@
   }
   function startSortie() {
     const s = S.save, pt = party(), wage = C.wageOf(pt); if (!pt.length || s.gold < wage) return;
-    if (!pt.find(u => u.id === s.policy.leader)) s.policy.leader = pt[0].id;
+    const lc = leadCands(pt); if (!lc.find(u => u.id === s.policy.leader)) s.policy.leader = lc[0].id;
     s.gold -= wage; closeModal();
     S.exp = C.createExpedition(s, Math.min(S.startFloor, s.maxFloor)); S.paused = false; S.itemSel = null; S.itemOpen = false; S.acc = 0; S.floaters = []; S.resultShown = false; S.lastFloor = 0; S.sideTab = 'log'; S.sel = null;
     S.exp.log.push({ m: `🚪 ${S.exp.floor}층에서 탐사 개시! (급료 ${wage}G)`, c: 'floor' });
@@ -248,6 +251,7 @@
     openModal(`<h2>${t[0]}</h2><div class="${e.result === 'wipe' ? 'bad' : 'dim'}">${t[1]}</div>
       <div class="stat-grid"><div class="stat-box"><b>${e.reached}층</b><span>도달</span></div><div class="stat-box"><b>${e.kills}</b><span>처치</span></div><div class="stat-box"><b>${e.chests}</b><span>상자</span></div><div class="stat-box"><b>${e.result === 'wipe' ? Math.floor(e.loot.gold / 2) : e.loot.gold}G</b><span>획득 골드</span></div></div>
       ${e.result === 'wipe' ? '' : `<h3>획득 장비 (${items.length})</h3><div class="chips">${items.map(i => `<span class="chip">${itemName(i)}</span>`).join('') || '<span class="dim">없음</span>'}</div>`}
+      ${e.autoLog && e.autoLog.length ? `<h3>자동 장착 내역 (${e.autoLog.length})</h3><div class="dim" style="font-size:12.5px;max-height:130px;overflow:auto">${e.autoLog.map(l => `<div>${esc(l)}</div>`).join('')}</div>` : ''}
       <div class="foot"><button class="btn pri" data-m="result-camp" data-autofocus>캠프로</button></div>`, { lock: true });
   }
   function endExpedition() {
@@ -340,8 +344,8 @@
       case 'clearform': s.formation = {}; afterFormChange(); return;
       case 'detail': S.detail = S.detail === +id ? null : +id; renderCampBody(); return;
       case 'slot': slotModal(s.units.find(u => u.id === +id), b.dataset.slot); ev.stopPropagation(); return;
-      case 'autoeq': C.autoEquip(s); save(); toast('자동 장비 완료', 'good'); renderCampBody(); return;
-      case 'hire': { const u = s.units.find(x => x.id === +id), c = C.CLASSES[u.cls]; if (s.gold >= c.hire) { s.gold -= c.hire; u.hired = true; u.hp = C.stats(u).hp; C.resetCharges(u); save(); toast(`${u.name} 고용! 편성 탭에서 배치하세요`, 'good'); renderStats(); renderCampBody(); renderStageBar(); } return; }
+      case 'autoeq': { const lg = C.autoEquip(s, { idle: true }); save(); toast(lg.length ? `자동 장비 완료 (${lg.length}건 변경)` : '바꿀 장비가 없습니다', 'good'); renderCampBody(); return; }
+      case 'hire': { const u = s.units.find(x => x.id === +id), r = C.hireUnit(s, u); if (r) { save(); toast(r.dice ? `🎲 ${u.name} 고용! 성장 ×${r.dice.grow} · 행운이 따르는 듯하다` : `${u.name} 고용! 편성 탭에서 배치하세요`, 'good'); renderStats(); renderCampBody(); renderStageBar(); } return; }
       case 'buycons': { const v = C.CONS[id]; if (s.gold >= v.price) { s.gold -= v.price; s.cons[id] = (s.cons[id] || 0) + 1; save(); renderStats(); renderCampBody(); renderStageBar(); } return; }
       case 'buygear': { const i = C.ITEMS[id]; if (s.gold >= i.price) { s.gold -= i.price; s.gear.push(id); save(); renderStats(); renderCampBody(); } return; }
       case 'sell': { const gid = s.gear[+id]; s.gold += Math.floor(C.ITEMS[gid].price / 2); s.gear.splice(+id, 1); save(); renderStats(); renderCampBody(); return; }
@@ -372,15 +376,15 @@
   });
   for (const el of [$('sideBody'), modalEl]) {
     el.addEventListener('input', ev => { if (ev.target.dataset.pol === 'retreat') polChange(ev.target); });
-    el.addEventListener('change', ev => { const t = ev.target; if (t.dataset.pol) polChange(t); if (t.dataset.pref) prefChange(t); });
+    el.addEventListener('change', ev => { const t = ev.target; if (t.dataset.pol) polChange(t); if (t.dataset.pref) prefChange(t); if (t.dataset.opt) { S.save.opts[t.dataset.opt] = t.checked; save(); } });
   }
 
   /* ---------- 모달 동작 ---------- */
   function slotModal(u, slot) {
-    const s = S.save, list = s.gear.filter(id => C.ITEMS[id].slot === slot), uniq = [...new Set(list)], cur = C.ITEMS[u.equip[slot]];
+    const s = S.save, list = s.gear.filter(id => C.ITEMS[id].slot === slot && C.canUse(u, C.ITEMS[id])), uniq = [...new Set(list)], cur = C.ITEMS[u.equip[slot]];
     openModal(`<h2>${esc(u.name)} — ${C.SLOTS[slot]}</h2>
       ${u.equip[slot] ? `<div class="itm"><span>${itemName(u.equip[slot])} <span class="d">장착 중 · ${C.describe(cur)}</span></span><button class="btn sm" data-m="equip" data-u="${u.id}" data-slot="${slot}">해제</button></div>` : ''}
-      ${uniq.length ? uniq.map(id => `<div class="itm"><span>${itemName(id)} <span class="chip">T${C.ITEMS[id].tier}</span> ×${list.filter(x => x === id).length}<div class="d">${C.describe(C.ITEMS[id])}${cur || true ? ' · 변화 ' + (diffTxt(C.ITEMS[id], cur) || '없음') : ''}</div></span><button class="btn sm pri" data-m="equip" data-u="${u.id}" data-slot="${slot}" data-item="${id}">장착</button></div>`).join('') : '<div class="empty">보관 중인 장비가 없습니다.<br>상점에서 구입하거나 탐사에서 얻을 수 있습니다.</div>'}
+      ${uniq.length ? uniq.map(id => `<div class="itm"><span>${itemName(id)} <span class="chip">T${C.ITEMS[id].tier}</span> ×${list.filter(x => x === id).length}<div class="d">${C.describe(C.ITEMS[id])}${cur || true ? ' · 변화 ' + (diffTxt(C.ITEMS[id], cur) || '없음') : ''}</div></span><button class="btn sm pri" data-m="equip" data-u="${u.id}" data-slot="${slot}" data-item="${id}">장착</button></div>`).join('') : '<div class="empty">${C.CLASSES[u.cls].name}이(가) 쓸 수 있는 보관 장비가 없습니다.<br>상점에서 구입하거나 탐사에서 얻을 수 있습니다.</div>'}
       <div class="foot"><button class="btn" data-m="close">닫기</button></div>`);
   }
   const TUT = [
@@ -399,6 +403,9 @@
     openModal(`<h2>⚙ 설정</h2>
       <h3>화면</h3><label class="check"><input type="checkbox" data-pref="reduce" ${S.prefs.reduce ? 'checked' : ''}> 애니메이션 줄이기</label>
       <div class="pol" style="margin-top:6px"><label>기본 배속</label><select data-pref="speed">${SPEEDS.map(n => `<option value="${n}" ${S.prefs.speed === n ? 'selected' : ''}>×${n}</option>`).join('')}</select></div>
+      <h3>자동 장비</h3><label class="check"><input type="checkbox" data-opt="autoEquip" ${S.save.opts.autoEquip ? 'checked' : ''}> 귀환 시 획득 장비를 직업에 맞게 자동 장착</label>
+      <label class="check"><input type="checkbox" data-opt="autoIdle" ${S.save.opts.autoIdle ? 'checked' : ''}> 대기 중(미편성) 용병도 포함</label>
+      <div class="dim" style="font-size:12px">고급·전설의 고유 특수 스킬 장비는 자동 배분에서 제외됩니다.</div>
       <h3>디자인 에셋</h3><div class="dim">${r.provided ? `매니페스트에 ${r.provided}개 지정 · ${r.loaded}개 로드됨` : '아직 지정된 에셋이 없습니다 (이모지/도형으로 표시 중)'}${r.missingFile.length ? `<br><span class="warn">파일 없음: ${r.missingFile.slice(0, 6).join(', ')}${r.missingFile.length > 6 ? ' 외' : ''}</span>` : ''}<br>에셋을 올린 뒤 <code>assets/manifest.js</code>에 경로를 적으세요 (규격: <code>assets/README.md</code>).</div>
       <h3>저장 데이터</h3><div class="row" style="justify-content:flex-start"><button class="btn" data-m="export">내보내기</button><button class="btn" data-m="import-ask">불러오기</button><button class="btn dng" data-m="reset-ask">초기화</button></div><div id="ioBox"></div>
       <div class="foot"><button class="btn" data-m="tut-open">튜토리얼 다시 보기</button><button class="btn pri" data-m="close">닫기</button></div>`);
@@ -423,7 +430,7 @@
     else if (m === 'tut-done') { S.prefs.tutDone = true; savePrefs(); closeModal(); }
     else if (m === 'export') { const box = $('ioBox'); box.innerHTML = `<textarea readonly id="ioTa">${esc(JSON.stringify(s))}</textarea>`; const ta = $('ioTa'); ta.select(); try { navigator.clipboard.writeText(ta.value); toast('클립보드에 복사했습니다', 'good'); } catch (e) { /* 수동 복사 */ } }
     else if (m === 'import-ask') $('ioBox').innerHTML = `<textarea id="ioTa" placeholder="내보낸 데이터를 붙여넣으세요"></textarea><button class="btn pri" data-m="import-do" style="margin-top:6px">적용</button>`;
-    else if (m === 'import-do') { try { const d = JSON.parse($('ioTa').value); if (d.v !== 2) throw 0; S.save = fixSave(d); S.startFloor = S.save.maxFloor; save(); closeModal(); renderCamp(); toast('저장 데이터를 불러왔습니다', 'good'); } catch (e) { toast('올바른 저장 데이터가 아닙니다', 'bad'); } }
+    else if (m === 'import-do') { try { const d = JSON.parse($('ioTa').value); if (d.v !== 2 && d.v !== 3) throw 0; S.save = fixSave(d); S.startFloor = S.save.maxFloor; save(); closeModal(); renderCamp(); toast('저장 데이터를 불러왔습니다', 'good'); } catch (e) { toast('올바른 저장 데이터가 아닙니다', 'bad'); } }
     else if (m === 'reset-ask') confirmDlg('⚠ 데이터 초기화', '모든 진행 상황이 삭제되고 처음부터 시작합니다. 되돌릴 수 없습니다.', '초기화', () => { localStorage.removeItem(SAVE_KEY); S.save = C.newSave(); S.startFloor = 1; S._ents = {}; save(); renderCamp(); toast('초기화했습니다'); });
   });
 

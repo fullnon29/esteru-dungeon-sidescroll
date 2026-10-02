@@ -48,7 +48,7 @@ const Render = (function () {
       const p = S.save.formation[u.id]; if (!u.hired || !p) return;
       const c = C.CLASSES[u.cls]; S._ents = S._ents || {};
       let en = S._ents[u.id]; if (!en) en = S._ents[u.id] = { dx: p[0], dy: p[1] };
-      en.side = 'p'; en.name = u.name; en.icon = c.icon; en.color = c.color; en.x = p[0]; en.y = p[1]; en.size = 1; en.noBar = true; en.u = u; en.cost = c.cost; en.id = u.id; en.isLeader = u.id === S.save.policy.leader;
+      en.side = 'p'; en.name = u.name; en.icon = c.icon; en.color = c.color; en.x = p[0]; en.y = p[1]; en.size = 1; en.noBar = true; en.u = u; en.cost = Core.costOf(u); en.id = u.id; en.isLeader = u.id === S.save.policy.leader;
       out.push(en);
     });
     return out;

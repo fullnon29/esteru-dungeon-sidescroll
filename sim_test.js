@@ -2,8 +2,8 @@ const C=require('./core.js');
 const s=C.newSave();
 let runs=0;
 function buyCons(){ for(const k of ['potion','antidote']){ while((s.cons[k]||0)<3 && s.gold>200){s.gold-=C.CONS[k].price;s.cons[k]=(s.cons[k]||0)+1;} } }
-function hireAll(){ for(const u of s.units){ if(!u.hired && s.gold>C.CLASSES[u.cls].hire+300){s.gold-=C.CLASSES[u.cls].hire;u.hired=true;u.hp=C.stats(u).hp;C.resetCharges(u);} } }
-function shop(){ const tmax=Math.min(3,1+Math.floor(s.maxFloor/10)); for(const i of Object.values(C.ITEMS)){ if(i.legend||i.tier>tmax) continue; if(s.gold>i.price+400 && !s.gear.includes(i.id) && Math.random()<0.3){ s.gold-=i.price; s.gear.push(i.id);} } }
+function hireAll(){ for(const u of s.units){ if(!u.hired && s.gold>C.hireCost(u)+300) C.hireUnit(s,u); } }
+function shop(){ const tmax=Math.min(3,1+Math.floor(s.maxFloor/10)); for(const i of Object.values(C.ITEMS)){ if(i.legend||i.gen||i.tier>tmax||!s.units.some(u=>u.hired&&C.canUse(u,i))) continue; if(s.gold>i.price+400 && !s.gear.includes(i.id) && Math.random()<0.3){ s.gold-=i.price; s.gear.push(i.id);} } }
 const start=Date.now();
 while(!s.cleared && runs<400){
   runs++; hireAll(); shop(); C.autoEquip(s); C.autoFormation(s); buyCons();
