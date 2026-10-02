@@ -20,6 +20,16 @@ const Core = (function () {
     cook:    { hpGrow: 0.9, name: '요리사', icon: '🍳', cost: 2, hp: 85, atk: 9, def: 4, spd: 10, range: 1, hire: 180, color: '#d98c4a', row: 'back', eva: 0.05 },
   };
   const ROW_TXT = { front: '전열 전용', back: '후열 전용', any: '전·후열' };
+  // 전직 직업 (DEVNOTE 3-B): 기본 직업의 상위. 능력치 ×1.3(속도 +1), 코스트 +1. 직업 판정은 baseCls(u)를 사용.
+  const PROMO = {
+    warrior: ['swordsaint', '검성', '🌟', 'kenki'], knight: ['paladin', '성기사', '⚜️', 'sacred'], monk: ['monkmaster', '수도승', '☯️', 'renkan'],
+    elf: ['archmarshal', '궁수 대장', '🏹', 'pierce'], mage: ['archmage', '대마도사', '🌌', 'meteor'], priest: ['highpriest', '대사제', '👼', 'sanctuary'], thief: ['assassin', '암살자', '🥷', 'assassinate'],
+  };
+  for (const base in PROMO) {
+    const [id, name, icon, skill] = PROMO[base], b = CLASSES[base];
+    CLASSES[id] = Object.assign({}, b, { base, promo: true, name, icon, skill, cost: b.cost + 1, hp: Math.round(b.hp * 1.3), atk: Math.round(b.atk * 1.3), def: Math.round(b.def * 1.3), spd: b.spd + 1, hire: Math.round(b.hire * 2.5) });
+  }
+  const baseCls = u => (CLASSES[u.cls] && CLASSES[u.cls].base) || u.cls;
 
   /* ---------- 등급 (용병·아이템 공통, DEVNOTE P1) ---------- */
   // mul=아이템 수치 배율, grow=용병 성장 배율, hireMul=고용비, costAdd=편성 코스트 가산, luck=용병 행운 범위, chance=아이템 기본 확률
@@ -45,6 +55,14 @@ const Core = (function () {
     antidote:{ name: '해독', type: 'cure', uses: 4, master: 8 },
     guard:  { name: '방어태세', type: 'guard', uses: 3, master: 8 },
     flurry: { name: '연속 찌르기', type: 'flurry', mult: 0.9, uses: 4, master: 12 },
+    // 전직 전용 스킬 — 스킬셋 업로드 전까지의 임시 구성(기존 스킬 유형 재사용), 숙련 습득 대상 아님(master 99)
+    kenki:       { name: '검기 난무', type: 'adjacent', mult: 1.7, uses: 3, master: 99 },
+    sacred:      { name: '성스러운 일격', type: 'holy', mult: 2.2, range: 2, magic: true, uses: 3, master: 99 },
+    renkan:      { name: '연환권', type: 'flurry', mult: 1.1, uses: 3, master: 99 },
+    pierce:      { name: '관통 사격', type: 'line', mult: 1.3, range: 5, uses: 3, master: 99 },
+    meteor:      { name: '메테오', type: 'aoe', mult: 2.2, range: 5, magic: true, uses: 2, master: 99 },
+    sanctuary:   { name: '성역', type: 'healall', uses: 3, master: 99 },
+    assassinate: { name: '암살', type: 'single', mult: 3.2, uses: 3, master: 99 },
   };
 
   /* ---------- 장비 ---------- */
@@ -83,8 +101,8 @@ const Core = (function () {
   it('r_boots', '질풍의 반지', 'acc2', 2, { spd: 3, eva: 0.08 });
   it('r_blessr', '수호의 반지', 'acc2', 3, { hp: 100, def: 10, skill: 'bless' });
   it('r_crown', '용사의 인장', 'acc2', 5, { atk: 50, def: 40, hp: 300 });
-  // 신규 직업 전용 장비 — 제작 전용(Phase 3). 대장간 도입 전(CRAFT_ENABLED=false)에는 상점에서 임시 판매.
-  const CRAFT_ENABLED = false;
+  // 신규 직업 전용 장비 — 제작 전용(대장간 도면 필요, Phase 3). CRAFT_ENABLED=false 로 바꾸면 상점에서 임시 판매.
+  const CRAFT_ENABLED = true;
   it('w_knuckle', '철제 권갑', 'weapon', 1, { atk: 6, eva: 0.02, craft: true });
   it('w_claw', '강철 권갑', 'weapon', 3, { atk: 36, spd: 2, skill: 'power', craft: true });
   it('w_dfist', '용투 권갑', 'weapon', 4, { atk: 76, spd: 3, skill: 'cleave', craft: true });
@@ -111,7 +129,7 @@ const Core = (function () {
     c_cape: ['thief', 'elf'],
   };
   for (const id in RESTRICT) ITEMS[id].classes = RESTRICT[id];
-  const canUse = (u, i) => !i || !i.classes || i.classes.includes(u.cls);
+  const canUse = (u, i) => !i || !i.classes || i.classes.includes(baseCls(u));
 
   // 전설 장비("!"): 매 드롭마다 무작위 이름/효과
   const LEG_PRE = ['고대의', '불멸의', '저주받은', '신들의', '서리의', '폭풍의', '황혼의'];
@@ -243,6 +261,8 @@ const Core = (function () {
   const rarOf = u => RARITY[u.rar] ? u.rar : 'N';
   const growOf = u => u.growMul || RARITY[rarOf(u)].grow;
   const costOf = u => CLASSES[u.cls].cost + RARITY[rarOf(u)].costAdd;
+  const PROMO_PRICE = 2500;
+  function buyPromo(s) { if (s.gold < PROMO_PRICE) return false; s.gold -= PROMO_PRICE; s.promo = (s.promo || 0) + 1; return true; }
   function buyFood(s, n) { const c = n * TUNE.food.price; if (s.gold < c) return false; s.gold -= c; s.food = Math.round((s.food + n) * 100) / 100; return true; }
   const hireCost = u => Math.round(CLASSES[u.cls].hire * RARITY[rarOf(u)].hireMul);
   const canLead = u => rarOf(u) === 'H' || rarOf(u) === 'L';
@@ -292,7 +312,7 @@ const Core = (function () {
     byName('레온').equip.weapon = 'w_sword'; byName('실비아').equip.weapon = 'w_bow';
     byName('루나').equip.weapon = 'w_mace'; byName('핀').equip.weapon = 'w_dagger';
     const s = {
-      v: 3, opts: { autoEquip: true, autoIdle: false }, food: TUNE.food.start, gold: 600, day: 1, maxFloor: 1, cleared: false, units,
+      v: 3, opts: { autoEquip: true, autoIdle: false }, mats: {}, bps: Object.fromEntries(START_BPS.map(id => [id, true])), promo: 0, food: TUNE.food.start, gold: 600, day: 1, maxFloor: 1, cleared: false, units,
       gear: ['a_leather', 'a_leather', 's_buckler', 'r_power'], cons: { potion: 3, antidote: 1, escape: 1 },
       formation: {}, policy: { retreat: 25, skill: 'mid', explore: 'full', stance: 'attack', target: 'nearest', leader: 1, downRetreat: false },
       quests: { board: [], active: [], done: 0 }, qid: 1,
@@ -312,6 +332,7 @@ const Core = (function () {
       if (u.fatigue === undefined) u.fatigue = 100;
     }
     if (s.food === undefined) s.food = TUNE.food.start;
+    if (!s.mats) s.mats = {}; if (!s.bps) s.bps = Object.fromEntries(START_BPS.map(id => [id, true])); if (s.promo === undefined) s.promo = 0;
     ROSTER.forEach((r, i) => { if (!s.units.find(u => u.id === i + 1)) s.units.push(mkUnit(i, r, false)); });
     s.v = 3;
     return s;
@@ -380,6 +401,105 @@ const Core = (function () {
       s.quests.active = s.quests.active.filter(x => x !== q);
       log(`📜 의뢰 완료! [${q.title}] 보수 ${q.reward}G`, 'good');
     }
+  }
+
+  /* ---------- 재료 · 도면 · 대장간 (DEVNOTE 3-A) ---------- */
+  // 몹 계열 → [일반 재료, 정예 재료]. 보스는 층별 고유 희귀 재료('b5'…'b50'), 지형 재료는 테마별.
+  const FAM_MAT = { 슬라임: ['slime', 'e_slime'], 고블린: ['cloth', 'e_goblin'], 짐승: ['leather', 'e_beast'], 언데드: ['bone', 'e_undead'], 오크: ['iron', 'e_orc'], 골렘: ['stone', 'e_golem'], 악마: ['ash', 'e_demon'], 용족: ['scale', 'e_dragon'] };
+  const MATS = {
+    slime: '슬라임 점액', cloth: '낡은 천', leather: '질긴 가죽', bone: '뼈 조각', iron: '철 조각', stone: '돌 조각', ash: '검은 재', scale: '비늘 조각',
+    e_slime: '슬라임 핵', e_goblin: '고블린 문장', e_beast: '야수의 송곳니', e_undead: '망령의 파편', e_orc: '오크 전투 문양', e_golem: '골렘의 핵', e_demon: '악마의 뿔', e_dragon: '용의 심장 비늘',
+    b5: '고블린 대왕의 왕관', b10: '다크 엘프의 인장', b15: '독거미 여왕의 독낭', b20: '히드라의 송곳니', b25: '골렘 군주의 심장석', b30: '리치 왕의 두개골', b35: '흑기사의 흑철', b40: '라프닐의 역린', b45: '심연의 용안', b50: '흑왕의 파편',
+    t_swamp: '늪의 진흙', t_desert: '사막의 유리', t_river: '강변의 수정', t_volcano: '용암석', t_resonance: '공진 결정',
+  };
+  const matKind = id => id[0] === 'b' && /^b\d+$/.test(id) ? 'boss' : id.startsWith('e_') ? 'elite' : id.startsWith('t_') ? 'terrain' : 'common';
+  const BOSS_FLOOR = [5, 15, 25, 35, 45]; // 장비 티어(1~5) → 요구 보스 재료 층
+  const FAMS = Object.keys(FAM_MAT);
+  const famOfItem = id => FAMS[[...id].reduce((a, ch) => a + ch.charCodeAt(0), 0) % FAMS.length];
+  function addMats(bag, id, n) { bag[id] = Math.round(((bag[id] || 0) + n) * 100) / 100; }
+  // 제작 가능 기반 장비: 직업 전용(craft) + 고급/전설 업그레이드용 일반 장비(T2+, 직업 제한 있는 것)
+  const craftBases = () => Object.values(ITEMS).filter(i => !i.legend && !i.gen && (i.craft || (i.tier >= 2 && i.classes))).map(i => i.id);
+  const START_BPS = ['w_knuckle', 'w_cleaver', 's_dagger', 'a_mrobe'];
+  function rollBlueprint(s, floor, kind) {
+    const tmax = Math.min(5, 2 + Math.floor(floor / 10)), pool = craftBases().filter(id => ITEMS[id].tier <= tmax && !(s.bps && s.bps[id]));
+    if (!pool.length) return null;
+    const ex = pool.filter(id => ITEMS[id].craft), ordinary = pool.filter(id => !ITEMS[id].craft);
+    return pick(ex.length && (!ordinary.length || Math.random() < 0.6) ? ex : ordinary);
+  }
+  // 적 처치 시 재료·도면·전직서 드롭 (일반 < 정예 < 보스)
+  function dropLoot(b, c) {
+    const e = b.exp, L = e.loot; L.mats = L.mats || {}; L.bps = L.bps || []; L.promo = L.promo || 0;
+    const fm = FAM_MAT[c.fam], log = (m) => ev(b, { k: 'log', m, c: 'good' }), add = (id, n) => { addMats(L.mats, id, n); return `${MATS[id]} ×${n}`; };
+    const got = [];
+    if (c.boss) {
+      got.push(add('b' + b.floor, 1));
+      const fams = [...new Set(poolOf(b.floor).map(x => x.fam))].filter(f => FAM_MAT[f]); for (let k = 0; k < 2; k++) { const f = pick(fams); if (f) got.push(add(FAM_MAT[f][0], ri(1, 2))); }
+      if (Math.random() < 0.45) { const id = rollBlueprint(b.exp.save, b.floor, 'boss'); if (id && !L.bps.includes(id)) { L.bps.push(id); got.push(`📐도면 ${ITEMS[id].name}`); } }
+      if (Math.random() < 0.25) { L.promo++; got.push('📜전직서'); }
+    } else if (c.elite && fm) {
+      got.push(add(fm[0], ri(1, 2))); if (Math.random() < 0.7) got.push(add(fm[1], 1));
+      if (Math.random() < 0.08) { const id = rollBlueprint(b.exp.save, b.floor, 'elite'); if (id && !L.bps.includes(id)) { L.bps.push(id); got.push(`📐도면 ${ITEMS[id].name}`); } }
+    } else if (fm && !c.golden && !c.special && Math.random() < 0.3) got.push(add(fm[0], 1));
+    const th = b.exp.map && b.exp.map.themes;
+    if (th && th.length && !c.special && Math.random() < (c.boss || c.elite ? 0.6 : 0.18)) got.push(add('t_' + pick(th), 1));
+    if (got.length && (c.boss || c.elite)) log(`🎒 재료 획득: ${got.join(', ')}`);
+  }
+  // 제작 레시피: grade 'N'(전용 장비만) / 'H' 고급 / 'L' 전설. 전설은 보스 재료 3개 필수.
+  function recipeOf(baseId, grade) {
+    const b = ITEMS[baseId], t = b.tier, fam = famOfItem(baseId), up = t >= 3 ? 1 : 0;
+    const R = { N: { c: 3 + t, e: 1 + up, bs: 1, tr: 0, g: 1 }, H: { c: 5 + t, e: 2 + up, bs: 2, tr: 0, g: 2 }, L: { c: 8 + t, e: 3 + up, bs: 3, tr: 2, g: 4 } }[grade];
+    return { base: baseId, grade, gold: Math.max(100, Math.round(b.price * R.g)), need: [[FAM_MAT[fam][0], R.c], [FAM_MAT[fam][1], R.e], ['b' + BOSS_FLOOR[t - 1], R.bs]], terrain: R.tr };
+  }
+  const terrainHave = s => Object.keys(s.mats || {}).filter(k => k.startsWith('t_')).reduce((a, k) => a + Math.floor(s.mats[k]), 0);
+  function canCraft(s, baseId, grade) {
+    const b = ITEMS[baseId]; if (!b || !(s.bps && s.bps[baseId])) return '도면이 없습니다';
+    if (grade === 'N' && !b.craft) return '이 장비의 일반 등급은 제작하지 않습니다 (드롭·상점)';
+    const r = recipeOf(baseId, grade);
+    if (s.gold < r.gold) return '골드가 부족합니다';
+    for (const [m, n] of r.need) if ((s.mats[m] || 0) < n) return `${MATS[m]} 부족`;
+    if (terrainHave(s) < r.terrain) return '지형 재료 부족';
+    return null;
+  }
+  function craft(s, baseId, grade) {
+    const why = canCraft(s, baseId, grade); if (why) return { err: why };
+    const r = recipeOf(baseId, grade); s.gold -= r.gold;
+    for (const [m, n] of r.need) addMats(s.mats, m, -n);
+    let left = r.terrain; for (const k of Object.keys(s.mats).filter(k => k.startsWith('t_')).sort((a, b) => s.mats[b] - s.mats[a])) { const x = Math.min(left, Math.floor(s.mats[k])); addMats(s.mats, k, -x); left -= x; }
+    // 행운: 확률로 한 등급 상승 (파티 평균 행운 1당 +0.4%p, 상한 15%p)
+    const luck = partyLuck(s.units.filter(u => u.hired && s.formation[u.id]));
+    let rar = grade; const up = Math.random() < Math.min(0.15, luck * 0.004); if (up && rar !== 'L') rar = RAR_ORDER[RAR_ORDER.indexOf(rar) + 1];
+    let id = baseId;
+    if (rar !== 'N') { id = makeRarityItem(baseId, rar); registerLegend(s, id); }
+    s.gear.push(id);
+    return { id, rar, upgraded: up && rar !== grade };
+  }
+
+  /* ---------- 전직 (DEVNOTE 3-B) ---------- */
+  const PROMO_LV = 20;
+  const canPromote = u => !CLASSES[u.cls].promo && !!PROMO[u.cls] && u.lv >= PROMO_LV;
+  function promote(s, u) {
+    if (!canPromote(u)) return `Lv${PROMO_LV} 이상의 기본 직업만 전직할 수 있습니다`;
+    if ((s.promo || 0) <= 0) return '전직서가 없습니다';
+    const [id, , , skill] = PROMO[u.cls]; s.promo--; u.cls = id;
+    u.learned = u.learned || []; if (!u.learned.includes(skill)) u.learned.push(skill);
+    ensureCharges(u); u.hp = stats(u).hp;
+    if (s.formation[u.id] && usedCost(s) > costCap(s)) delete s.formation[u.id]; // 코스트 +1로 상한을 넘으면 편성에서 제외
+    return null;
+  }
+
+  /* ---------- 직업 조합 보너스 (DEVNOTE 3-C) ---------- */
+  // 상한 5%대(비전투 효과 예외). 같은 직업 3명 이상이면 모든 보너스 없음(중복 억제).
+  function comboOf(party) {
+    const out = { list: [], all: 1, def: 1, skillUses: 0, rangePlus: 0, foodMul: 1, dup: false };
+    if (!party.length) return out;
+    const cnt = {}; party.forEach(u => { const k = baseCls(u); cnt[k] = (cnt[k] || 0) + 1; });
+    if (Object.values(cnt).some(n => n >= 3)) { out.dup = true; return out; }
+    if (cnt.warrior && cnt.priest && cnt.thief) { out.all = 1.03; out.list.push({ name: '균형 편성', desc: '전 스탯 +3%' }); }
+    if (party.filter(u => CLASSES[u.cls].row === 'front').length >= 3) { out.def = 1.05; out.list.push({ name: '전열 방벽', desc: '방어 +5% (전열 3명 이상)' }); }
+    if (cnt.mage && cnt.priest) { out.skillUses = 1; out.list.push({ name: '후열 합주', desc: '모든 스킬 사용 횟수 +1' }); }
+    if (cnt.elf) { out.rangePlus = 1; out.list.push({ name: '엘프의 눈', desc: '원거리 직업 사거리 +1' }); }
+    if (cnt.cook) { out.foodMul = 0.85; out.list.push({ name: '야전 취사', desc: '식량 소모 −15%' }); }
+    return out;
   }
 
   /* ---------- 드롭 ---------- */
@@ -481,8 +601,9 @@ const Core = (function () {
     for (const u of exp.party) {
       if (u.hp <= 0) continue;
       const p = s.formation[u.id], st = stats(u);
-      units.push({ side: 'p', u, name: u.name, icon: CLASSES[u.cls].icon, color: CLASSES[u.cls].color, x: p[0], y: p[1], dx: p[0], dy: p[1], hp: u.hp, maxhp: st.hp, atk: st.atk, def: st.def, spd: st.spd, eva: st.eva, range: st.range, magic: u.cls === 'mage' || u.cls === 'priest', gauge: rnd(0, 6), alive: true, guard: 0, poisoned: !!u.poison, isLeader: u.id === leaderId, size: 1 });
+      units.push({ side: 'p', u, name: u.name, icon: CLASSES[u.cls].icon, color: CLASSES[u.cls].color, x: p[0], y: p[1], dx: p[0], dy: p[1], hp: u.hp, maxhp: st.hp, atk: st.atk, def: st.def, spd: st.spd, eva: st.eva, range: st.range, magic: baseCls(u) === 'mage' || baseCls(u) === 'priest', gauge: rnd(0, 6), alive: true, guard: 0, poisoned: !!u.poison, isLeader: u.id === leaderId, size: 1 });
     }
+    units.forEach(c => applyCombo(c, exp.combo)); // 직업 조합 보너스
     const occ = new Set(), enemies = [];
     const free = () => { for (let k = 0; k < 60; k++) { const x = ri(0, 8), y = ri(0, 3); if (!occ.has(x + ',' + y)) { occ.add(x + ',' + y); return [x, y]; } } return [ri(0, 8), ri(0, 3)]; };
     for (const id of group.tpls) {
@@ -505,7 +626,12 @@ const Core = (function () {
   const ev = (b, o) => b.events.push(o);
 
   function setHp(c, v) { c.hp = clamp(Math.round(v), 0, c.maxhp); if (c.u) c.u.hp = c.hp; }
-  function syncPlayer(c) { const st = stats(c.u); c.maxhp = st.hp; c.atk = st.atk; c.def = st.def; c.spd = st.spd; c.eva = st.eva; c.range = st.range; c.hp = c.u.hp; }
+  function applyCombo(c, cb) {
+    if (!cb || cb.dup) return;
+    c.atk = Math.round(c.atk * cb.all); c.def = Math.round(c.def * cb.all * cb.def); c.spd *= cb.all; c.maxhp = Math.round(c.maxhp * cb.all);
+    if (cb.rangePlus && c.range >= 3) c.range += cb.rangePlus;
+  }
+  function syncPlayer(c, cb) { const st = stats(c.u); c.maxhp = st.hp; c.atk = st.atk; c.def = st.def; c.spd = st.spd; c.eva = st.eva; c.range = st.range; c.hp = c.u.hp; applyCombo(c, cb); }
 
   function damage(b, att, tgt, mult, magic, skill) {
     if (!tgt.alive) return;
@@ -525,9 +651,9 @@ const Core = (function () {
     if (c.side === 'e') {
       const e = b.exp, s = b.save;
       e.loot.gold += c.gold; e.kills++;
-      giveExp(b, c.exp);
+      giveExp(b, c.exp); dropLoot(b, c);
       // 요리사 동행 시 식용 몹을 식량으로 (유독 몹은 해독 처리해 ×0.8)
-      if (c.edible && c.edible !== 'none' && b.units.some(o => o.side === 'p' && o.alive && o.u && o.u.cls === 'cook')) {
+      if (c.edible && c.edible !== 'none' && b.units.some(o => o.side === 'p' && o.alive && o.u && baseCls(o.u) === 'cook')) {
         const Y = TUNE.food.yield;
         const n = Math.round((Y[0] + Y[1] * b.floor) * (c.boss ? 4 : c.elite ? 1.5 : 1) * (c.premium ? 2 : 1) * (c.edible === 'poison' ? 0.8 : 1) * 100) / 100;
         s.food = Math.round((s.food + n) * 100) / 100; b.foodGain = (b.foodGain || 0) + n;
@@ -551,7 +677,7 @@ const Core = (function () {
       const u = c.u; u.exp += amt;
       while (u.exp >= needExp(u.lv) && u.lv < MAXLV) {
         u.exp -= needExp(u.lv); const old = c.maxhp; u.lv++;
-        const nm = stats(u).hp; u.hp = Math.min(nm, u.hp + (nm - old)); syncPlayer(c);
+        const nm = stats(u).hp; u.hp = Math.min(nm, u.hp + (nm - old)); syncPlayer(c, b.exp.combo);
         ev(b, { k: 'log', m: `⭐ ${u.name} Lv${u.lv} 으로 상승!`, c: 'good' });
       }
     }
@@ -644,7 +770,7 @@ const Core = (function () {
     if (d <= c.range) {
       ev(b, { k: 'fx', x: t.x, y: t.y, t: 'atk', from: c });
       damage(b, c, t, 1, c.magic);
-      if (c.u && c.u.cls === 'monk' && t.alive && Math.random() < 0.35) damage(b, c, t, 0.8, false);
+      if (c.u && baseCls(c.u) === 'monk' && t.alive && Math.random() < 0.35) damage(b, c, t, 0.8, false);
     } else if (c.side === 'e' || b.policy.stance === 'attack' || (b.pHurt !== undefined && b.t - b.pHurt < 6)) { if (cellTh(b, c) === 'swamp' && (c.mv = !c.mv)) return; moveToward(b, c, t); } // 늪: 이동이 절반으로 느려짐
   }
   function stepBattle(b, dt) {
@@ -800,7 +926,7 @@ const Core = (function () {
 
   /* ---------- 원정 ---------- */
   const wageOf = party => party.reduce((a, u) => a + 10 + u.lv * 4, 0);
-  const hasThief = e => e.party.some(u => u.cls === 'thief' && u.hp > 0);
+  const hasThief = e => e.party.some(u => baseCls(u) === 'thief' && u.hp > 0);
   const elog = (e, m, c) => { e.log.push({ m, c: c || '' }); e.events.push({ k: 'log', m, c }); };
   function reveal(e) {
     const m = e.map, { x, y } = e.pos;
@@ -823,7 +949,9 @@ const Core = (function () {
   function createExpedition(save, startFloor) {
     const party = save.units.filter(u => u.hired && save.formation[u.id] && canSortie(u));
     party.forEach(u => { u.poison = false; ensureCharges(u); });
-    const e = { save, party, floor: startFloor, map: null, pos: null, trail: [], directive: null, path: [], phase: 'explore', moveT: 0.5, healT: 0, battle: null, log: [], events: [], loot: { gold: 0, items: [] }, kills: 0, done: false, result: null, chests: 0, reached: startFloor, text: '', startFloor };
+    const combo = comboOf(party);
+    if (combo.skillUses) party.forEach(u => { for (const k in u.charges) u.charges[k] += combo.skillUses; }); // 후열 합주: 귀환 시 resetCharges 로 원복
+    const e = { combo, comboFood: combo.foodMul, save, party, floor: startFloor, map: null, pos: null, trail: [], directive: null, path: [], phase: 'explore', moveT: 0.5, healT: 0, battle: null, log: [], events: [], loot: { gold: 0, items: [] }, kills: 0, done: false, result: null, chests: 0, reached: startFloor, text: '', startFloor };
     save.maxFloor = Math.max(save.maxFloor, startFloor);
     setFloor(e, startFloor);
     return e;
@@ -849,10 +977,14 @@ const Core = (function () {
   function finish(e, result) {
     const s = e.save; e.done = true; e.result = result; e.phase = 'done';
     if (result === 'wipe') { s.gold += Math.floor(e.loot.gold * 0.5); e.lost = true; }
-    else { s.gold += e.loot.gold; e.loot.items.forEach(i => s.gear.push(i)); }
+    else {
+      s.gold += e.loot.gold; e.loot.items.forEach(i => s.gear.push(i));
+      for (const k in (e.loot.mats || {})) addMats(s.mats, k, e.loot.mats[k]);
+      (e.loot.bps || []).forEach(id => { s.bps[id] = true; }); s.promo = (s.promo || 0) + (e.loot.promo || 0);
+    }
     s.day++;
     // 피로 회복 (2-A): 휴식 +25 / 출전 +5. 승려 동행 시 ×1.5(최대 2명, 상한 ×2.0), 요리사 동행 시 식사 +2(최대 2명)
-    { const F = TUNE.fatigue, healers = Math.min(2, e.party.filter(u => u.cls === 'priest').length), cooks = Math.min(2, e.party.filter(u => u.cls === 'cook').length);
+    { const F = TUNE.fatigue, healers = Math.min(2, e.party.filter(u => baseCls(u) === 'priest').length), cooks = Math.min(2, e.party.filter(u => baseCls(u) === 'cook').length);
       const mul = 1 + 0.5 * healers, bonus = F.cook * cooks, went = new Set(e.party.map(u => u.id));
       e.fatLog = { mul, bonus };
       for (const u of s.units) { if (!u.hired) continue; u.fatigue = Math.min(100, Math.round(fatOf(u) + (went.has(u.id) ? F.work : F.rest) * mul + bonus)); if (!canSortie(u)) delete s.formation[u.id]; } }
@@ -994,7 +1126,7 @@ const Core = (function () {
   // 이동 1칸마다 식량 소모(2-B). 식량이 0이면 피로 가속 하락 → 피로 0 이면 HP 서서히 감소
   function consumeFood(e) {
     const s = e.save, live = e.party.filter(u => u.hp > 0);
-    const need = live.length * TUNE.food.perStep * (e.foodMul || 1);
+    const need = live.length * TUNE.food.perStep * (e.foodMul || 1) * (e.comboFood || 1);
     if (s.food >= need) { s.food = Math.round((s.food - need) * 10000) / 10000; return; }
     s.food = 0;
     if (!e.starved) { e.starved = true; elog(e, '🍖 식량이 바닥났다! 피로가 쌓인다 — 귀환을 권한다', 'bad'); }
@@ -1116,9 +1248,9 @@ const Core = (function () {
   };
   const HEAL_SK = ['heal', 'bless', 'cure', 'antidote'];
   function autoScore(u, i) {
-    const w = AUTO_W[u.cls] || AUTO_W.warrior;
+    const w = AUTO_W[baseCls(u)] || AUTO_W.warrior;
     let sc = (i.atk || 0) * w.atk + (i.def || 0) * w.def + (i.hp || 0) * w.hp + (i.spd || 0) * w.spd + (i.eva || 0) * w.eva * 10 + (i.range || 0) * 12;
-    if (i.skill) sc += w.sk * i.tier + (u.cls === 'priest' && HEAL_SK.includes(i.skill) ? 25 * i.tier : 0);
+    if (i.skill) sc += w.sk * i.tier + (baseCls(u) === 'priest' && HEAL_SK.includes(i.skill) ? 25 * i.tier : 0);
     return sc;
   }
   // 귀환 시 자동 장비. o.idle=true 면 대기 중 용병도 포함. noAuto 장비는 배분·교체 모두 제외. 변경 내역 배열 반환
@@ -1144,6 +1276,6 @@ const Core = (function () {
     return p.join(' ');
   }
 
-  return { THEMES, floorThemes, fatOf, fatMul, canSortie, buyFood, RARITY, RAR_ORDER, CRAFT_ENABLED, canUse, canLead, costOf, hireCost, hireUnit, migrateSave, partyLuck, rarOf, GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, MW, MH, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
+  return { PROMO_PRICE, buyPromo, MATS, matKind, FAM_MAT, craftBases, recipeOf, canCraft, craft, terrainHave, PROMO, PROMO_LV, canPromote, promote, comboOf, baseCls, THEMES, floorThemes, fatOf, fatMul, canSortie, buyFood, RARITY, RAR_ORDER, CRAFT_ENABLED, canUse, canLead, costOf, hireCost, hireUnit, migrateSave, partyLuck, rarOf, GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, MW, MH, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
 })();
 if (typeof module !== 'undefined') module.exports = Core; else window.Core = Core;

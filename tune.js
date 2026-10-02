@@ -6,7 +6,7 @@ function runBot(maxRuns) {
   let runs = 0, earlyWipes = 0, wipes = 0, early = 0;
   const buyCons = () => { for (const k of ['potion', 'antidote']) { while ((s.cons[k] || 0) < 3 && s.gold > 200) { s.gold -= C.CONS[k].price; s.cons[k] = (s.cons[k] || 0) + 1; } } };
   const hireAll = () => { for (const u of s.units) { if (!u.hired && s.gold > C.hireCost(u) + 300) C.hireUnit(s, u); } };
-  const shop = () => { const tmax = Math.min(3, 1 + Math.floor(s.maxFloor / 10)); for (const i of Object.values(C.ITEMS)) { if (i.legend || i.gen || i.tier > tmax || !s.units.some(u => u.hired && C.canUse(u, i))) continue; if (s.gold > i.price + 400 && !s.gear.includes(i.id) && Math.random() < 0.3) { s.gold -= i.price; s.gear.push(i.id); } } };
+  const shop = () => { const tmax = Math.min(3, 1 + Math.floor(s.maxFloor / 10)); for (const i of Object.values(C.ITEMS)) { if (i.legend || i.gen || i.craft || i.tier > tmax || !s.units.some(u => u.hired && C.canUse(u, i))) continue; if (s.gold > i.price + 400 && !s.gear.includes(i.id) && Math.random() < 0.3) { s.gold -= i.price; s.gear.push(i.id); } } };
   while (!s.cleared && runs < maxRuns) {
     runs++; hireAll(); shop(); if (s.food < 40) C.buyFood(s, Math.min(40 - Math.floor(s.food), Math.floor(s.gold / 6))); C.autoEquip(s); C.autoFormation(s); buyCons();
     const e = C.createExpedition(s, Math.max(1, s.maxFloor - (runs % 3)));
