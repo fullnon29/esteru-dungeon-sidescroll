@@ -17,6 +17,7 @@ const Core = (function () {
     mage:    { hpGrow: 0.8, name: '마술사', icon: '🔮', cost: 4, hp: 70, atk: 20, def: 2, spd: 9, range: 3, hire: 280, color: '#8a5cc8', row: 'back', eva: 0 },
     priest:  { hpGrow: 0.8, name: '승려', icon: '✨', cost: 4, hp: 80, atk: 8, def: 3, spd: 9, range: 3, hire: 260, color: '#d8c35a', row: 'back', eva: 0 },
     thief:   { hpGrow: 0.8, name: '도적', icon: '🗡️', cost: 2, hp: 75, atk: 12, def: 3, spd: 16, range: 1, hire: 160, color: '#5a5f6b', row: 'back', eva: 0.2 },
+    cook:    { hpGrow: 0.9, name: '요리사', icon: '🍳', cost: 2, hp: 85, atk: 9, def: 4, spd: 10, range: 1, hire: 180, color: '#d98c4a', row: 'back', eva: 0.05 },
   };
   const ROW_TXT = { front: '전열 전용', back: '후열 전용', any: '전·후열' };
 
@@ -89,6 +90,8 @@ const Core = (function () {
   it('w_dfist', '용투 권갑', 'weapon', 4, { atk: 76, spd: 3, skill: 'cleave', craft: true });
   it('a_mrobe', '마도사의 로브', 'armor', 2, { def: 9, hp: 35, atk: 5, craft: true });
   it('a_archrobe', '대마도사의 로브', 'armor', 4, { def: 30, hp: 140, atk: 14, craft: true });
+  it('w_cleaver', '식칼', 'weapon', 1, { atk: 7, craft: true });
+  it('w_wok', '무쇠 프라이팬', 'weapon', 3, { atk: 34, def: 6, skill: 'guard', craft: true });
   it('s_dagger', '보조 단검', 'sub', 1, { atk: 4, eva: 0.03, craft: true });
   it('s_twin', '쌍날 단도', 'sub', 3, { atk: 22, spd: 2, eva: 0.05, skill: 'flurry', craft: true });
   it('s_fang', '그림자 송곳니', 'sub', 4, { atk: 45, spd: 3, eva: 0.08, skill: 'flurry', craft: true });
@@ -96,13 +99,14 @@ const Core = (function () {
   /* ---------- 직업 제한 (DEVNOTE 1-B) ---------- */
   const FRONT2 = ['warrior', 'knight'];
   const RESTRICT = {
-    w_dagger: ['thief', 'elf', 'monk'], w_sword: ['warrior', 'knight', 'elf'], w_bow: ['elf', 'thief'], w_longbow: ['elf', 'thief'],
+    w_cleaver: ['cook'], w_wok: ['cook'],
+    w_dagger: ['thief', 'elf', 'monk', 'cook'], w_sword: ['warrior', 'knight', 'elf'], w_bow: ['elf', 'thief'], w_longbow: ['elf', 'thief'],
     w_great: ['warrior'], w_lance: FRONT2, w_flame: ['warrior', 'knight', 'mage'], w_saint: FRONT2,
     w_rod: ['mage'], w_icerod: ['mage'], w_mace: ['priest', 'knight'],
     w_knuckle: ['monk'], w_claw: ['monk'], w_dfist: ['monk'],
-    s_buckler: ['warrior', 'knight', 'thief', 'elf', 'priest'], s_shield: FRONT2, s_tower: FRONT2, s_book: ['mage', 'priest'], s_holybook: ['priest'],
+    s_buckler: ['warrior', 'knight', 'thief', 'elf', 'priest', 'cook'], s_shield: FRONT2, s_tower: FRONT2, s_book: ['mage', 'priest'], s_holybook: ['priest'],
     s_dagger: ['thief'], s_twin: ['thief'], s_fang: ['thief'],
-    a_leather: ['warrior', 'monk', 'elf', 'thief'], a_chain: ['warrior', 'knight', 'elf', 'thief', 'monk'], a_plate: FRONT2, a_mithril: FRONT2,
+    a_leather: ['warrior', 'monk', 'elf', 'thief', 'cook'], a_chain: ['warrior', 'knight', 'elf', 'thief', 'monk', 'cook'], a_plate: FRONT2, a_mithril: FRONT2,
     a_robe: ['priest', 'mage'], a_dragon: ['warrior', 'knight', 'monk'], a_mrobe: ['mage'], a_archrobe: ['mage'],
     c_cape: ['thief', 'elf'],
   };
@@ -204,6 +208,11 @@ const Core = (function () {
     40: { name: '마룡 라프닐', icon: '🐉', hp: 11, atk: 1.8, def: 1.5, spd: 10, range: 2, magic: true, skills: ['fire', 'cleave'] },
     50: { name: '흑왕', icon: '👑', hp: 14, atk: 2.0, def: 1.7, spd: 11, range: 2, magic: true, skills: ['cleave', 'fire', 'thunder'] },
   };
+  // 식용 태그 (DEVNOTE 2-D): 'harmless' 무해 / 'poison' 유독(요리사가 해독 처리해 식량화) / 'none' 식용불가. premium=고급 식량(×2)
+  const EDIBLE = { slime: 'harmless', goblin: 'harmless', gobarch: 'harmless', bat: 'poison', spider: 'poison', orc: 'harmless', shaman: 'harmless', wyvern: 'harmless', dragon: 'harmless', ggob: 'harmless', gbat: 'poison' };
+  const PREMIUM = new Set(['wyvern', 'dragon']);
+  ENEMIES.concat(GOLDEN, SPECIALS).forEach(t => { t.edible = EDIBLE[t.id] || 'none'; });
+  { const BE = { 5: 'harmless', 15: 'poison', 20: 'poison', 40: 'harmless', 45: 'harmless' }; for (const f in BOSSES) BOSSES[f].edible = BE[f] || 'none'; BOSSES[40].premium = BOSSES[45].premium = true; }
   const bandOf = f => Math.min(4, Math.floor((f - 1) / 10));
   const poolOf = f => { const b = bandOf(f); return ENEMIES.filter(e => e.band === b || e.band === b - 1); };
   const famsOf = f => [...new Set(poolOf(f).map(e => e.fam))];
@@ -213,7 +222,9 @@ const Core = (function () {
      경험치 누적표(레벨 2~49)는 원작 그대로, 50레벨은 간격을 이어 붙임. */
   const EXP_CUM = [0, 0, 100, 200, 400, 700, 1200, 1900, 2900, 4200, 5700, 7500, 9500, 13500, 19000, 26000, 34000, 46000, 60000, 76000, 94000, 114000, 136000, 160000, 186000, 214000, 244000, 276000, 310000, 346000, 384000, 424000, 466000, 510000, 560000, 620000, 690000, 770000, 860000, 960000, 1080000, 1230000, 1400000, 1550000, 1720000, 1910000, 2120000, 2320000, 2540000, 2800000, 3100000];
   // 조정값 (시뮬레이터로 튜닝). 성장은 원작처럼 "레벨당 선형 증가" — HP는 완만, ATK/DEF는 기본값 대비 크게.
-  const TUNE = { expScale: 1, growHp: 0.035, growAtk: 0.12, growDef: 0.30, eHp: 0.30, eAtk: 0.12, eDef: 0.15, eHp10: 0.18, eAtk10: 0.13 };
+  // food: perStep=이동 1칸·1명당 소모, price=개당 가격, yield=[기본, 층당] 식용 몹 처치 시 식량(요리사 동행), start=새 게임 식량
+  // fatigue: rest=휴식 용병 귀환 회복, work=출전 용병 귀환 회복, death=전투불능 시 감소, starve=식량 0 이동당 피로 감소
+  const TUNE = { food: { perStep: 0.012, price: 6, yield: [0.4, 0.03], start: 20 }, fatigue: { rest: 25, work: 5, death: 25, starve: 0.25, cook: 2 }, expScale: 1, growHp: 0.035, growAtk: 0.12, growDef: 0.30, eHp: 0.30, eAtk: 0.12, eDef: 0.15, eHp10: 0.18, eAtk10: 0.13 };
   const needExp = lv => Math.max(1, Math.round((EXP_CUM[Math.min(lv + 1, 50)] - EXP_CUM[lv]) * TUNE.expScale));
   // 적 1마리 경험치: 원작 일반 적 EXP 2(1층) → 약 1700(후반) 의 지수 곡선
   const enemyExp = (f, boss) => Math.round(2 * Math.pow(850, (f - 1) / 49) * (boss ? 8 + 20 * f / 50 : 1));
@@ -225,9 +236,14 @@ const Core = (function () {
   function maxCharges(u, sid) { return SKILLS[sid].uses + ((u.learned || []).includes(sid) ? 1 : 0); }
   function resetCharges(u) { u.charges = {}; for (const s of skillsOf(u)) u.charges[s] = maxCharges(u, s); }
   function ensureCharges(u) { u.charges = u.charges || {}; for (const s of skillsOf(u)) if (u.charges[s] === undefined) u.charges[s] = maxCharges(u, s); }
+  // 피로도 (DEVNOTE 2-A): 100=정상. 50 미만 공·방 −10% / 25 미만 −25%·회피 −10%p / 0 출격 불가
+  const fatOf = u => u.fatigue === undefined ? 100 : u.fatigue;
+  const fatMul = u => { const f = fatOf(u); return f >= 50 ? 1 : f >= 25 ? 0.9 : 0.75; };
+  const canSortie = u => fatOf(u) > 0;
   const rarOf = u => RARITY[u.rar] ? u.rar : 'N';
   const growOf = u => u.growMul || RARITY[rarOf(u)].grow;
   const costOf = u => CLASSES[u.cls].cost + RARITY[rarOf(u)].costAdd;
+  function buyFood(s, n) { const c = n * TUNE.food.price; if (s.gold < c) return false; s.gold -= c; s.food = Math.round((s.food + n) * 100) / 100; return true; }
   const hireCost = u => Math.round(CLASSES[u.cls].hire * RARITY[rarOf(u)].hireMul);
   const canLead = u => rarOf(u) === 'H' || rarOf(u) === 'L';
   function stats(u) {
@@ -237,20 +253,22 @@ const Core = (function () {
       const i = ITEMS[u.equip[slot]]; if (!i) continue;
       rng += i.range || 0; hp += i.hp || 0; atk += i.atk || 0; def += i.def || 0; spd += i.spd || 0; eva += i.eva || 0;
     }
+    const fm = fatMul(u); atk = Math.round(atk * fm); def = Math.round(def * fm); if (fm < 0.8) eva = Math.max(0, eva - 0.1);
     return { hp, atk, def, spd, eva: Math.min(eva, 0.5), range: rng };
   }
 
   /* ---------- 세이브 ---------- */
-  // [이름, 직업, 시작 고용, 등급] — 12명은 기존 세이브와 id 호환(1~12), 13~18은 v3 신규. (요리사 2명은 Phase 2에서 19~20으로 추가)
+  // [이름, 직업, 시작 고용, 등급] — 12명은 기존 세이브와 id 호환(1~12), 13~18은 v3 신규, 19~20은 요리사(Phase 2)
   const ROSTER = [
     ['레온', 'warrior', 1, 'H'], ['아델', 'knight', 0, 'N'], ['실비아', 'elf', 1, 'N'], ['마르코', 'mage', 0, 'N'], ['루나', 'priest', 1, 'N'], ['핀', 'thief', 1, 'N'],
     ['가론', 'monk', 0, 'N'], ['헬가', 'warrior', 0, 'N'], ['오스카', 'knight', 0, 'N'], ['에리스', 'mage', 0, 'N'], ['티티스', 'elf', 0, 'N'], ['세라', 'priest', 0, 'N'],
     ['카이', 'thief', 0, 'U'], ['바울', 'monk', 0, 'U'], ['이사벨', 'knight', 0, 'U'], ['리아', 'elf', 0, 'U'], ['클로에', 'priest', 0, 'H'], ['카산드라', 'mage', 0, 'L'],
+    ['마르타', 'cook', 0, 'N'], ['구스타프', 'cook', 0, 'U'],
   ];
   const lumin = r => RARITY[r].luck;
   function mkUnit(i, r, legacy) {
     const rar = r[3] || 'N';
-    const u = { id: i + 1, name: r[0], cls: r[1], rar, lv: 1, exp: 0, hp: 0, equip: { weapon: null, sub: null, armor: null, acc1: null, acc2: null }, learned: [], mastery: {}, charges: {}, hired: !!r[2] };
+    const u = { id: i + 1, name: r[0], cls: r[1], rar, fatigue: 100, lv: 1, exp: 0, hp: 0, equip: { weapon: null, sub: null, armor: null, acc1: null, acc2: null }, learned: [], mastery: {}, charges: {}, hired: !!r[2] };
     u.growMul = RARITY[rar].grow;
     u.luck = legacy ? lumin(rar)[0] : (rar === 'L' ? lumin(rar)[0] : ri(lumin(rar)[0], lumin(rar)[1])); // 전설은 고용 주사위로 확정
     return u;
@@ -274,7 +292,7 @@ const Core = (function () {
     byName('레온').equip.weapon = 'w_sword'; byName('실비아').equip.weapon = 'w_bow';
     byName('루나').equip.weapon = 'w_mace'; byName('핀').equip.weapon = 'w_dagger';
     const s = {
-      v: 3, opts: { autoEquip: true, autoIdle: false }, gold: 600, day: 1, maxFloor: 1, cleared: false, units,
+      v: 3, opts: { autoEquip: true, autoIdle: false }, food: TUNE.food.start, gold: 600, day: 1, maxFloor: 1, cleared: false, units,
       gear: ['a_leather', 'a_leather', 's_buckler', 'r_power'], cons: { potion: 3, antidote: 1, escape: 1 },
       formation: {}, policy: { retreat: 25, skill: 'mid', explore: 'full', stance: 'attack', target: 'nearest', leader: 1, downRetreat: false },
       quests: { board: [], active: [], done: 0 }, qid: 1,
@@ -291,7 +309,9 @@ const Core = (function () {
       if (!RARITY[u.rar]) u.rar = 'N';
       if (!u.growMul) u.growMul = RARITY[u.rar].grow;
       if (u.luck === undefined) u.luck = lumin(u.rar)[0];
+      if (u.fatigue === undefined) u.fatigue = 100;
     }
+    if (s.food === undefined) s.food = TUNE.food.start;
     ROSTER.forEach((r, i) => { if (!s.units.find(u => u.id === i + 1)) s.units.push(mkUnit(i, r, false)); });
     s.v = 3;
     return s;
@@ -313,6 +333,7 @@ const Core = (function () {
   function unitAt(s, x, y) { return s.units.find(u => u.hired && s.formation[u.id] && s.formation[u.id][0] === x && s.formation[u.id][1] === y); }
   function place(s, u, x, y) {
     if (!u.hired) return '고용하지 않은 용병입니다';
+    if (!canSortie(u)) return '피로가 한계입니다 (휴식 필요)';
     if (!zoneOk(u.cls, y) || x < 0 || x >= GRID) return `${CLASSES[u.cls].name}은(는) ${ROW_TXT[CLASSES[u.cls].row]} 입니다`;
     const o = unitAt(s, x, y); if (o && o.id !== u.id) return '이미 다른 용병이 있습니다';
     const was = s.formation[u.id];
@@ -324,7 +345,7 @@ const Core = (function () {
     s.formation = {};
     const xs = [4, 3, 5, 2, 6, 1, 7, 0, 8];
     const ld = s.policy.leader; // 리더는 항상 먼저 편성(고급 이상이라 코스트가 높아 밀리는 것 방지)
-    const order = s.units.filter(u => u.hired).sort((a, b) => (b.id === ld) - (a.id === ld) || b.lv - a.lv || costOf(a) - costOf(b));
+    const order = s.units.filter(u => u.hired && canSortie(u)).sort((a, b) => (b.id === ld) - (a.id === ld) || b.lv - a.lv || costOf(a) - costOf(b));
     for (const u of order) {
       const ys = CLASSES[u.cls].row === 'front' ? [5, 6] : CLASSES[u.cls].row === 'back' ? [8, 7] : [7, 8];
       let done = false;
@@ -387,6 +408,7 @@ const Core = (function () {
     const hp = Math.round((boss ? 60 : t.hp) * mul * hpm * (mod.hp || 1));
     return {
       side: 'e', tplId: t.id, floorKey: f, name: (mod.elite ? '정예 ' : '') + t.name, icon: t.icon, color: boss ? '#8b1f3f' : (t.golden ? '#b8860b' : (mod.elite ? '#6b2d8b' : '#7a3b3b')), golden: !!t.golden, elite: !!mod.elite, special: !!t.special, boss: !!boss, fam: t.fam || '보스', undead: !!t.undead,
+      edible: t.edible || 'none', premium: !!(t.premium || PREMIUM.has(t.id)),
       x, y, dx: x, dy: y, hp, maxhp: hp, atk: Math.round((boss ? 20 : t.atk) * scaleAtk(f) * am * (mod.atk || 1)), def: Math.round((boss ? 8 : t.def) * scaleDef(f) * dm * (mod.def || 1)),
       spd: t.spd, eva: 0, range: t.range, magic: !!t.magic, poison: t.poison || 0, skills: t.skills || null, gauge: rnd(0, 6), alive: true, guard: 0,
       exp: Math.round(enemyExp(f, boss) * (t.expMul || 1) * (mod.exp || 1)), gold: Math.round((5 + f * 2) * (boss ? 8 : 1) * (t.goldMul || 1) * (mod.gold || 1)), size: boss ? 1.5 : 1,
@@ -451,6 +473,12 @@ const Core = (function () {
       const e = b.exp, s = b.save;
       e.loot.gold += c.gold; e.kills++;
       giveExp(b, c.exp);
+      // 요리사 동행 시 식용 몹을 식량으로 (유독 몹은 해독 처리해 ×0.8)
+      if (c.edible && c.edible !== 'none' && b.units.some(o => o.side === 'p' && o.alive && o.u && o.u.cls === 'cook')) {
+        const Y = TUNE.food.yield;
+        const n = Math.round((Y[0] + Y[1] * b.floor) * (c.boss ? 4 : c.elite ? 1.5 : 1) * (c.premium ? 2 : 1) * (c.edible === 'poison' ? 0.8 : 1) * 100) / 100;
+        s.food = Math.round((s.food + n) * 100) / 100; b.foodGain = (b.foodGain || 0) + n;
+      }
       if (Math.random() < (c.boss ? 1 : 0.1)) { const id = dropItem(b.floor, { party: e.party, luck: partyLuck(e.party), kind: c.boss ? 'boss' : c.elite ? 'elite' : null }); if (ITEMS[id].legend || ITEMS[id].gen) registerLegend(s, id); e.loot.items.push(id); ev(b, { k: 'log', m: `🎁 ${ITEMS[id].name} 획득`, c: 'good' }); }
       questEvent(s, 'hunt', c.fam, (m, cl) => ev(b, { k: 'log', m, c: cl }));
       if (c.elite && Math.random() < 0.6) { const id = dropItem(b.floor, { party: e.party, luck: partyLuck(e.party), kind: 'elite' }); if (ITEMS[id].legend || ITEMS[id].gen) registerLegend(s, id); e.loot.items.push(id); ev(b, { k: 'log', m: `☠️ 정예 몹 전리품: ${ITEMS[id].name}`, c: 'good' }); }
@@ -461,6 +489,7 @@ const Core = (function () {
       }
     } else {
       b.fallen++; b.exp.fallFloor = b.floor; ev(b, { k: 'log', m: `💔 ${c.name} 전투불능!`, c: 'bad' });
+      if (c.u) c.u.fatigue = Math.max(0, fatOf(c.u) - TUNE.fatigue.death);
     }
   }
   function giveExp(b, amt) {
@@ -724,7 +753,7 @@ const Core = (function () {
     elog(e, `⬇ ${f}층에 도착했다`, 'floor');
   }
   function createExpedition(save, startFloor) {
-    const party = save.units.filter(u => u.hired && save.formation[u.id]);
+    const party = save.units.filter(u => u.hired && save.formation[u.id] && canSortie(u));
     party.forEach(u => { u.poison = false; ensureCharges(u); });
     const e = { save, party, floor: startFloor, map: null, pos: null, trail: [], directive: null, path: [], phase: 'explore', moveT: 0.5, healT: 0, battle: null, log: [], events: [], loot: { gold: 0, items: [] }, kills: 0, done: false, result: null, chests: 0, reached: startFloor, text: '', startFloor };
     save.maxFloor = Math.max(save.maxFloor, startFloor);
@@ -754,6 +783,11 @@ const Core = (function () {
     if (result === 'wipe') { s.gold += Math.floor(e.loot.gold * 0.5); e.lost = true; }
     else { s.gold += e.loot.gold; e.loot.items.forEach(i => s.gear.push(i)); }
     s.day++;
+    // 피로 회복 (2-A): 휴식 +25 / 출전 +5. 승려 동행 시 ×1.5(최대 2명, 상한 ×2.0), 요리사 동행 시 식사 +2(최대 2명)
+    { const F = TUNE.fatigue, healers = Math.min(2, e.party.filter(u => u.cls === 'priest').length), cooks = Math.min(2, e.party.filter(u => u.cls === 'cook').length);
+      const mul = 1 + 0.5 * healers, bonus = F.cook * cooks, went = new Set(e.party.map(u => u.id));
+      e.fatLog = { mul, bonus };
+      for (const u of s.units) { if (!u.hired) continue; u.fatigue = Math.min(100, Math.round(fatOf(u) + (went.has(u.id) ? F.work : F.rest) * mul + bonus)); if (!canSortie(u)) delete s.formation[u.id]; } }
     s.units.forEach(u => { u.hp = stats(u).hp; u.poison = false; resetCharges(u); });
     if (result === 'clear') s.cleared = true;
     e.autoLog = (result !== 'wipe' && s.opts && s.opts.autoEquip) ? autoEquip(s, { idle: !!s.opts.autoIdle }) : [];
@@ -889,8 +923,21 @@ const Core = (function () {
       if (spawnNear(e, g, 5, 8)) { e.spawned['b' + e.floor] = 1; elog(e, '🗡️ 노획물을 노리는 도적단이 나타났다!', 'warn'); }
     }
   }
+  // 이동 1칸마다 식량 소모(2-B). 식량이 0이면 피로 가속 하락 → 피로 0 이면 HP 서서히 감소
+  function consumeFood(e) {
+    const s = e.save, live = e.party.filter(u => u.hp > 0);
+    const need = live.length * TUNE.food.perStep * (e.foodMul || 1);
+    if (s.food >= need) { s.food = Math.round((s.food - need) * 10000) / 10000; return; }
+    s.food = 0;
+    if (!e.starved) { e.starved = true; elog(e, '🍖 식량이 바닥났다! 피로가 쌓인다 — 귀환을 권한다', 'bad'); }
+    for (const u of live) {
+      u.fatigue = Math.max(0, fatOf(u) - TUNE.fatigue.starve);
+      if (u.fatigue <= 0) u.hp = Math.max(1, u.hp - Math.max(1, Math.round(stats(u).hp * 0.015)));
+    }
+  }
   function stepMove(e) {
     const m = e.map, pol = e.save.policy, thief = hasThief(e);
+    consumeFood(e);
     const tot = e.party.reduce((a, u) => a + stats(u).hp, 0), cur = e.party.reduce((a, u) => a + u.hp, 0);
     if (cur / tot * 100 < pol.retreat) { elog(e, '🏃 체력이 한계다. 미궁에서 귀환한다', 'warn'); finish(e, 'retreat'); return; }
     if (pol.downRetreat && e.party.some(u => u.hp <= 0)) { elog(e, '전투불능자가 발생하여 귀환한다', 'warn'); finish(e, 'retreat'); return; }
@@ -937,6 +984,7 @@ const Core = (function () {
       }
       if (b.result === 'win') {
         b.group.alive = false; elog(e, '🏆 승리!', 'good');
+        if (b.foodGain) elog(e, `🍳 요리사가 몹을 손질했다 (식량 +${Math.round(b.foodGain * 10) / 10})`, 'good');
         if (b.group.chest) { b.group.chest.open = true; openChest(e, true); }
         if (b.fallen === 0) questEvent(e.save, 'flawless', null, (m, c) => elog(e, m, c));
         e.phase = 'explore'; e.moveT = -0.4; e.battle = null;
@@ -983,6 +1031,7 @@ const Core = (function () {
     elf:     { atk: 1.2, def: 0.6, hp: 0.10, spd: 6, eva: 40, sk: 12 },
     mage:    { atk: 1.6, def: 0.5, hp: 0.10, spd: 3, eva: 10, sk: 20 },
     priest:  { atk: 0.6, def: 1.0, hp: 0.22, spd: 2, eva: 10, sk: 14 },
+    cook:    { atk: 0.9, def: 0.9, hp: 0.18, spd: 3, eva: 15, sk: 12 },
   };
   const HEAL_SK = ['heal', 'bless', 'cure', 'antidote'];
   function autoScore(u, i) {
@@ -1014,6 +1063,6 @@ const Core = (function () {
     return p.join(' ');
   }
 
-  return { RARITY, RAR_ORDER, CRAFT_ENABLED, canUse, canLead, costOf, hireCost, hireUnit, migrateSave, partyLuck, rarOf, GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, MW, MH, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
+  return { fatOf, fatMul, canSortie, buyFood, RARITY, RAR_ORDER, CRAFT_ENABLED, canUse, canLead, costOf, hireCost, hireUnit, migrateSave, partyLuck, rarOf, GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, MW, MH, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
 })();
 if (typeof module !== 'undefined') module.exports = Core; else window.Core = Core;
