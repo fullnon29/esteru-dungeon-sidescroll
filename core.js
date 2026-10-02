@@ -261,6 +261,18 @@ const Core = (function () {
   const rarOf = u => RARITY[u.rar] ? u.rar : 'N';
   const growOf = u => u.growMul || RARITY[rarOf(u)].grow;
   const costOf = u => CLASSES[u.cls].cost + RARITY[rarOf(u)].costAdd;
+  // 요리사 자동 보급: 요리사가 출전 파티에 있으면 최소 5층 분량(층당 약 200걸음)까지 식량을 자동 구매해 채운다.
+  // 급료를 지불한 뒤 남은 골드 범위에서만 구매한다. 요리사가 없으면 null.
+  const SUPPLY_FLOORS = 5, STEPS_PER_FLOOR = 200;
+  function supplyPlan(s) {
+    const party = s.units.filter(u => u.hired && s.formation[u.id] && canSortie(u));
+    if (!party.some(u => baseCls(u) === 'cook')) return null;
+    const members = party.length + squadUnits(s).length;
+    const target = Math.round(members * TUNE.food.perStep * STEPS_PER_FLOOR * SUPPLY_FLOORS * comboOf(party).foodMul * 10) / 10;
+    const need = Math.max(0, Math.ceil(target - s.food)), avail = Math.max(0, s.gold - sortieWage(s));
+    const buy = Math.min(need, Math.floor(avail / TUNE.food.price));
+    return { target, need, buy, cost: buy * TUNE.food.price, short: buy < need };
+  }
   const PROMO_PRICE = 2500;
   function buyPromo(s) { if (s.gold < PROMO_PRICE) return false; s.gold -= PROMO_PRICE; s.promo = (s.promo || 0) + 1; return true; }
   function buyFood(s, n) { const c = n * TUNE.food.price; if (s.gold < c) return false; s.gold -= c; s.food = Math.round((s.food + n) * 100) / 100; return true; }
@@ -1350,6 +1362,6 @@ const Core = (function () {
     return p.join(' ');
   }
 
-  return { SQUADS, squadSlots, squadCap, squadUsed, squadErr, activeSquads, squadUnits, inSquad, setSquad, assignSquad, sortieWage, PROMO_PRICE, buyPromo, MATS, matKind, FAM_MAT, craftBases, recipeOf, canCraft, craft, terrainHave, PROMO, PROMO_LV, canPromote, promote, comboOf, baseCls, THEMES, floorThemes, fatOf, fatMul, canSortie, buyFood, RARITY, RAR_ORDER, CRAFT_ENABLED, canUse, canLead, costOf, hireCost, hireUnit, migrateSave, partyLuck, rarOf, GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, MW, MH, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
+  return { supplyPlan, SQUADS, squadSlots, squadCap, squadUsed, squadErr, activeSquads, squadUnits, inSquad, setSquad, assignSquad, sortieWage, PROMO_PRICE, buyPromo, MATS, matKind, FAM_MAT, craftBases, recipeOf, canCraft, craft, terrainHave, PROMO, PROMO_LV, canPromote, promote, comboOf, baseCls, THEMES, floorThemes, fatOf, fatMul, canSortie, buyFood, RARITY, RAR_ORDER, CRAFT_ENABLED, canUse, canLead, costOf, hireCost, hireUnit, migrateSave, partyLuck, rarOf, GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, MW, MH, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
 })();
 if (typeof module !== 'undefined') module.exports = Core; else window.Core = Core;

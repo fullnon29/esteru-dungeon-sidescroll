@@ -5,7 +5,7 @@
   const $ = id => document.getElementById(id);
   const cv = $('cv');
   const SPEEDS = [1, 2, 4, 8];
-  const S = { save: null, exp: null, tab: 'form', sideTab: 'log', sel: null, dragId: null, detail: null, paused: false, speed: 1, floaters: [], hover: null, startFloor: 1, acc: 0, itemSel: null, itemOpen: false, autoPaused: false, time: 0, resultShown: false, lastFloor: 0, logShown: 0, prefs: { reduce: false, speed: 1, tutDone: false } };
+  const S = { save: null, exp: null, tab: 'form', sideTab: 'log', sel: null, dragId: null, detail: null, paused: false, speed: 1, floaters: [], hover: null, startFloor: 1, acc: 0, itemSel: null, itemOpen: false, autoPaused: false, time: 0, resultShown: false, lastFloor: 0, logShown: 0, prefs: { reduce: false, speed: 1, shake: 1, tutDone: false } };
   Render.init(S, cv);
 
   /* ---------- 저장 ---------- */
@@ -281,6 +281,7 @@
       ${ok(has(u => C.baseCls(u) === 'thief'), '도적 동행 — 함정 해제·잠긴 문 개방 가능', '도적이 없습니다. 함정을 밟고 잠긴 문은 열 수 없습니다.')}
       ${ok(heal, '치유 수단 있음', '승려/치유 스킬이 없습니다. 회복약을 준비하세요.')}
       ${ok((s.cons.potion || 0) + (s.cons.elixir || 0) >= 2, `회복약 ${(s.cons.potion || 0) + (s.cons.elixir || 0)}개`, '회복약이 2개 미만입니다.')}
+      ${(() => { const sp = C.supplyPlan(s); return sp ? ok(!sp.short, `🍳 요리사 자동 보급: 최소 5층 분량(식량 ${sp.target}) 유지${sp.buy ? ` — 출격 시 ${sp.buy}개 구매 (−${sp.cost}G)` : ' — 이미 충분'}`, `🍳 요리사 보급: 골드가 부족해 ${sp.buy}개만 구매합니다 (5층 분량에는 ${sp.need - sp.buy}개 부족)`) : ''; })()}
       ${ok(s.food >= pt.length * C.TUNE.food.perStep * 600, `식량 ${Math.floor(s.food)} — 약 ${Math.floor(s.food / Math.max(1, pt.length * C.TUNE.food.perStep * 200))}층 분량${has(u => C.baseCls(u) === 'cook') ? ' (요리사 동행: 식용 몹을 식량으로)' : ''}`, `식량이 부족합니다 (약 ${Math.floor(s.food / Math.max(1, pt.length * C.TUNE.food.perStep * 200))}층 분량). 바닥나면 피로가 쌓입니다.`)}
       ${ok(!pt.some(u => C.fatOf(u) < 50), '파티 피로 양호', `피로 50 미만인 용병이 있습니다 (${pt.filter(u => C.fatOf(u) < 50).map(u => esc(u.name) + ' ' + Math.round(C.fatOf(u))).join(', ')}) — 공·방이 떨어집니다.`)}
       ${ok(s.gold >= wage, `급료 ${wage}G 지불 가능 (출격 후 ${(s.gold - wage).toLocaleString()}G)`, `골드가 부족합니다 (급료 ${wage}G)`)}
@@ -294,6 +295,8 @@
     const s = S.save, pt = party(), wage = C.sortieWage(s); if (!pt.length || s.gold < wage) return;
     const lc = leadCands(pt); if (!lc.find(u => u.id === s.policy.leader)) s.policy.leader = lc[0].id;
     s.gold -= wage; closeModal();
+    const sp = C.supplyPlan(s); // 요리사 자동 보급 (급료 지불 후 남은 골드로 5층 분량까지)
+    if (sp && sp.buy > 0 && C.buyFood(s, sp.buy)) toast(`🍳 요리사가 식량 ${sp.buy}개를 보급했습니다 (−${sp.cost}G)${sp.short ? ' — 골드가 부족해 5층 분량에는 못 미칩니다' : ''}`, sp.short ? 'bad' : 'good');
     S.exp = C.createExpedition(s, Math.min(S.startFloor, s.maxFloor)); S.paused = false; S.itemSel = null; S.itemOpen = false; S.acc = 0; S.floaters = []; S.resultShown = false; S.lastFloor = 0; S.sideTab = 'log'; S.sel = null;
     S.exp.log.push({ m: `🚪 ${S.exp.floor}층에서 탐사 개시! (급료 ${wage}G)`, c: 'floor' });
     setHint(''); renderStats(); setMode(); renderToolbar(); renderExpSide(); renderStageBar(); updateHud();
@@ -465,6 +468,7 @@
     openModal(`<h2>⚙ 설정</h2>
       <h3>화면</h3><label class="check"><input type="checkbox" data-pref="reduce" ${S.prefs.reduce ? 'checked' : ''}> 애니메이션 줄이기</label>
       <div class="pol" style="margin-top:6px"><label>기본 배속</label><select data-pref="speed">${SPEEDS.map(n => `<option value="${n}" ${S.prefs.speed === n ? 'selected' : ''}>×${n}</option>`).join('')}</select></div>
+      <div class="pol" style="margin-top:6px"><label title="치명타 타일 흔들림·범위 마법 화면 흔들림의 세기">흔들림 강도</label><select data-pref="shake">${[[0, '끔'], [1, '보통'], [1.6, '강하게'], [2.4, '최대']].map(([v, t]) => `<option value="${v}" ${S.prefs.shake === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
       <h3>자동 장비</h3><label class="check"><input type="checkbox" data-opt="autoEquip" ${S.save.opts.autoEquip ? 'checked' : ''}> 귀환 시 획득 장비를 직업에 맞게 자동 장착</label>
       <label class="check"><input type="checkbox" data-opt="autoIdle" ${S.save.opts.autoIdle ? 'checked' : ''}> 대기 중(미편성) 용병도 포함</label>
       <div class="dim" style="font-size:12px">고급·전설의 고유 특수 스킬 장비는 자동 배분에서 제외됩니다.</div>
@@ -474,7 +478,8 @@
   }
   function prefChange(t) {
     const k = t.dataset.pref;
-    if (k === 'reduce') { S.prefs.reduce = t.checked; document.body.classList.toggle('reduce', t.checked); } else if (k === 'speed') { S.prefs.speed = +t.value; S.speed = +t.value; if (S.exp) renderToolbar(); }
+    if (k === 'shake') S.prefs.shake = +t.value;
+    else if (k === 'reduce') { S.prefs.reduce = t.checked; document.body.classList.toggle('reduce', t.checked); } else if (k === 'speed') { S.prefs.speed = +t.value; S.speed = +t.value; if (S.exp) renderToolbar(); }
     savePrefs();
   }
   modalEl.addEventListener('click', ev => {

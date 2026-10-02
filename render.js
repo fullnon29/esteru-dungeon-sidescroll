@@ -27,12 +27,13 @@ const Render = (function () {
   }
 
   /* ---------- 이벤트 → 플로터 ---------- */
-  const reduced = () => document.body.classList.contains('reduce');
+  const reduced = () => document.body.classList.contains('reduce') || shakeK() <= 0;
+  const shakeK = () => (S && S.prefs && S.prefs.shake !== undefined ? S.prefs.shake : 1); // 흔들림 강도 배율 (설정)
   function procEvents(e) {
     S.areas = S.areas || []; S.tileShake = S.tileShake || {};
     for (const v of e.events) {
-      if (v.k === 'area') { S.areas.push({ cells: v.cells, col: v.col, age: 0 }); if (v.big && !reduced()) S.frameShake = { t: 0.28, d: 0.28, amp: 5 }; }
-      if (v.k === 'dmg' && v.crit && !reduced()) S.tileShake[v.x + ',' + v.y] = 0.25; // 치명타: 맞은 타일이 흔들림
+      if (v.k === 'area') { S.areas.push({ cells: v.cells, col: v.col, age: 0 }); if (v.big && !reduced()) S.frameShake = { t: 0.35, d: 0.35, amp: 12 * shakeK() }; }
+      if (v.k === 'dmg' && v.crit && !reduced()) S.tileShake[v.x + ',' + v.y] = 0.3; // 치명타: 맞은 타일이 흔들림
       if (v.k === 'dmg') S.floaters.push({ x: v.x, y: v.y, t: (v.crit ? '💥' : '') + (v.poison ? '☠' : '') + v.v, col: v.side === 'p' ? '#ff8a8a' : '#ffffff', age: 0, big: v.crit });
       else if (v.k === 'miss') S.floaters.push({ x: v.x, y: v.y, t: 'MISS', col: '#9fb2ff', age: 0 });
       else if (v.k === 'heal') S.floaters.push({ x: v.x, y: v.y, t: '+' + v.v, col: '#7cf0a0', age: 0 });
@@ -62,12 +63,12 @@ const Render = (function () {
     return '#' + [f(16), f(8), f(0)].map(v => v.toString(16).padStart(2, '0')).join('');
   }
   function drawBoard(dt) {
-    const camp = !S.exp, bt = S.exp && S.exp.battle ? S.exp.battle : null, hg = bt ? bt.hgt : null, terr = bt ? bt.terr : null, HST = 7;
+    const camp = !S.exp, bt = S.exp && S.exp.battle ? S.exp.battle : null, hg = bt ? bt.hgt : null, terr = bt ? bt.terr : null, HST = 14; // 고저차 1단 높이(2배)
     const elAt = (x, y) => hg ? hg[clamp(Math.round(y), 0, 8)][clamp(Math.round(x), 0, 8)] * HST : 0;
     // 흔들림: 화면(범위 마법) · 타일(치명타)
     ctx.save(); S.areas = S.areas || []; S.tileShake = S.tileShake || {};
     const fs = S.frameShake; if (fs && fs.t > 0) { const am = fs.amp * (fs.t / fs.d); ctx.translate((Math.random() - 0.5) * 2 * am, (Math.random() - 0.5) * 2 * am); fs.t -= dt; }
-    const jit = {}; for (const k in S.tileShake) { S.tileShake[k] -= dt; if (S.tileShake[k] <= 0) delete S.tileShake[k]; else { const am = 2.5 * (S.tileShake[k] / 0.25); jit[k] = [(Math.random() - 0.5) * 2 * am, (Math.random() - 0.5) * 2 * am]; } }
+    const jit = {}; for (const k in S.tileShake) { S.tileShake[k] -= dt; if (S.tileShake[k] <= 0) delete S.tileShake[k]; else { const am = 6 * shakeK() * (S.tileShake[k] / 0.3); jit[k] = [(Math.random() - 0.5) * 2 * am, (Math.random() - 0.5) * 2 * am]; } }
     const jOf = (x, y) => jit[x + ',' + y] || [0, 0];
     bgFill(camp ? 'camp' : 'arena', '#1a1d29', '#0b0d13');
     const floorNo = S.exp ? S.exp.floor : S.save.maxFloor;
@@ -146,7 +147,7 @@ const Render = (function () {
   /* ---------- 쿼터뷰 벽돌 미로 (지3 탐사 화면) ---------- */
   const MTW = 28, MTH = 14, MX = 338, MY = 46, WALL_H = 11, FLOOR_H = 3, ZOOM = 1.75;
   const misoXY = (gx, gy) => [MX + (gx - gy) * MTW / 2, MY + (gx + gy) * MTH / 2];
-  const HSTEP = 4; let curM = null;
+  const HSTEP = 8; let curM = null; // 미로 고저차 1단 높이(2배)
   const elevAt = (x, y) => curM && curM.hgt ? curM.hgt[clamp(Math.round(y), 0, curM.h - 1)][clamp(Math.round(x), 0, curM.w - 1)] * HSTEP : 0;
   const misoXYe = (gx, gy) => { const p = misoXY(gx, gy); return [p[0], p[1] - elevAt(gx, gy)]; };
   let bgCanvas = null, camXY = [338, 150];
@@ -253,8 +254,16 @@ const Render = (function () {
   }
   function mazeTile(ev) {
     const [px, py] = mouse(ev), mx = (px - 450) / ZOOM + camXY[0], my = (py - 280) / ZOOM + camXY[1];
-    const dx = (mx - MX) / (MTW / 2), dy = (my + 3 - MY) / (MTH / 2), gx = Math.round((dx + dy) / 2), gy = Math.round((dy - dx) / 2);
-    return gx >= 0 && gy >= 0 && gx < C.MW && gy < C.MH ? [gx, gy] : null;
+    const dx = (mx - MX) / (MTW / 2), dy = (my + 3 - MY) / (MTH / 2), bx = Math.round((dx + dy) / 2), by = Math.round((dy - dx) / 2);
+    // 고저차가 있으면 타일이 위로 솟아 평면 투영과 어긋나므로, 주변 타일의 (높이 반영) 화면 위치와 가장 가까운 칸을 고른다
+    let best = null, bd = 9;
+    for (let ox = -3; ox <= 3; ox++) for (let oy = -3; oy <= 3; oy++) {
+      const gx = bx + ox, gy = by + oy; if (gx < 0 || gy < 0 || gx >= C.MW || gy >= C.MH) continue;
+      const el = curM && curM.hgt ? curM.hgt[gy][gx] * HSTEP : 0, [sx, sy] = misoXY(gx, gy);
+      const d = Math.abs(mx - sx) / (MTW / 2) + Math.abs(my + 3 - (sy - el)) / (MTH / 2);
+      if (d < bd) { bd = d; best = [gx, gy]; }
+    }
+    return best && bd <= 1.2 ? best : null;
   }
   function draw(dt) {
     S.time += dt;
