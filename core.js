@@ -312,7 +312,7 @@ const Core = (function () {
     byName('레온').equip.weapon = 'w_sword'; byName('실비아').equip.weapon = 'w_bow';
     byName('루나').equip.weapon = 'w_mace'; byName('핀').equip.weapon = 'w_dagger';
     const s = {
-      v: 3, opts: { autoEquip: true, autoIdle: false }, mats: {}, bps: Object.fromEntries(START_BPS.map(id => [id, true])), promo: 0, food: TUNE.food.start, gold: 600, day: 1, maxFloor: 1, cleared: false, units,
+      v: 3, opts: { autoEquip: true, autoIdle: false }, squads: [], mats: {}, bps: Object.fromEntries(START_BPS.map(id => [id, true])), promo: 0, food: TUNE.food.start, gold: 600, day: 1, maxFloor: 1, cleared: false, units,
       gear: ['a_leather', 'a_leather', 's_buckler', 'r_power'], cons: { potion: 3, antidote: 1, escape: 1 },
       formation: {}, policy: { retreat: 25, skill: 'mid', explore: 'full', stance: 'attack', target: 'nearest', leader: 1, downRetreat: false },
       quests: { board: [], active: [], done: 0 }, qid: 1,
@@ -332,6 +332,7 @@ const Core = (function () {
       if (u.fatigue === undefined) u.fatigue = 100;
     }
     if (s.food === undefined) s.food = TUNE.food.start;
+    if (!s.squads) s.squads = [];
     if (!s.mats) s.mats = {}; if (!s.bps) s.bps = Object.fromEntries(START_BPS.map(id => [id, true])); if (s.promo === undefined) s.promo = 0;
     ROSTER.forEach((r, i) => { if (!s.units.find(u => u.id === i + 1)) s.units.push(mkUnit(i, r, false)); });
     s.v = 3;
@@ -355,6 +356,7 @@ const Core = (function () {
   function place(s, u, x, y) {
     if (!u.hired) return '고용하지 않은 용병입니다';
     if (!canSortie(u)) return '피로가 한계입니다 (휴식 필요)';
+    if (inSquad(s, u)) return '분대에 배정된 용병입니다 (분대 탭에서 해제)';
     if (!zoneOk(u.cls, y) || x < 0 || x >= GRID) return `${CLASSES[u.cls].name}은(는) ${ROW_TXT[CLASSES[u.cls].row]} 입니다`;
     const o = unitAt(s, x, y); if (o && o.id !== u.id) return '이미 다른 용병이 있습니다';
     const was = s.formation[u.id];
@@ -366,7 +368,7 @@ const Core = (function () {
     s.formation = {};
     const xs = [4, 3, 5, 2, 6, 1, 7, 0, 8];
     const ld = s.policy.leader; // 리더는 항상 먼저 편성(고급 이상이라 코스트가 높아 밀리는 것 방지)
-    const order = s.units.filter(u => u.hired && canSortie(u)).sort((a, b) => (b.id === ld) - (a.id === ld) || b.lv - a.lv || costOf(a) - costOf(b));
+    const order = s.units.filter(u => u.hired && canSortie(u) && !inSquad(s, u)).sort((a, b) => (b.id === ld) - (a.id === ld) || b.lv - a.lv || costOf(a) - costOf(b));
     for (const u of order) {
       const ys = CLASSES[u.cls].row === 'front' ? [5, 6] : CLASSES[u.cls].row === 'back' ? [8, 7] : [7, 8];
       let done = false;
@@ -502,6 +504,69 @@ const Core = (function () {
     return out;
   }
 
+  /* ---------- 분대 (DEVNOTE Phase 4) ---------- */
+  // 본대 전투를 돕는 화면 밖 지원 편성. 전용 코스트 풀을 쓰고, 요구 직업 조합을 모두 채워야 발동한다.
+  const SQUADS = {
+    cheer:    { name: '응원 분대', icon: '📣', cost: 7, req: ['priest', 'elf'], desc: '전투 시작 시 아군 전체 공·방 +10%' },
+    disrupt:  { name: '교란 분대', icon: '🌀', cost: 6, req: ['thief', 'mage'], desc: '적 전체 속도 −15%, 명중 −12%p' },
+    guardian: { name: '수호 분대', icon: '🛡️', cost: 8, req: ['knight', 'priest'], desc: '아군이 치명타로 쓰러질 때 전투당 1회 HP 1로 버팀' },
+    battery:  { name: '마법 포대 분대', icon: '☄️', cost: 11, req: ['mage', 'mage', 'priest'], desc: '9초마다 전범위 마법 (적이 많을수록 개별 피해 감소) · 마력공진 구역의 적은 맞지 않음' },
+    sniper:   { name: '저격 분대', icon: '🎯', cost: 8, req: ['elf', 'thief', 'elf'], desc: '7초마다 가장 위험한 적 저격 (보스는 피해 제한) · 마력공진 구역의 적은 지정 불가' },
+  };
+  const squadSlots = s => s.maxFloor >= 46 ? 4 : s.maxFloor >= 31 ? 3 : s.maxFloor >= 16 ? 2 : s.maxFloor >= 6 ? 1 : 0; // 5·15·30·45층 클리어
+  const squadCap = s => 6 + Math.floor(s.maxFloor / 3);
+  const inSquad = (s, u) => (s.squads || []).some(q => q.members.includes(u.id));
+  function squadErr(s, q) { // 편성이 유효하지 않은 이유(유효하면 null)
+    const d = SQUADS[q.type]; if (!d) return '분대 종류 미선택';
+    for (let i = 0; i < d.req.length; i++) {
+      const u = s.units.find(x => x.id === q.members[i]);
+      if (!u || !u.hired) return `${CLASSES[d.req[i]].name} 미배정`;
+      if (baseCls(u) !== d.req[i] || !canSortie(u)) return `${u.name}: 조건 불충족(직업·피로)`;
+      if (s.formation[u.id]) return `${u.name}은(는) 본대에 편성됨`;
+    }
+    return null;
+  }
+  function activeSquads(s) { // 슬롯 순서대로, 코스트 풀 안에서 유효한 분대만
+    const out = []; let used = 0;
+    (s.squads || []).slice(0, squadSlots(s)).forEach(q => { if (q.type && !squadErr(s, q) && used + SQUADS[q.type].cost <= squadCap(s)) { used += SQUADS[q.type].cost; out.push(q); } });
+    return out;
+  }
+  const squadUsed = s => (s.squads || []).slice(0, squadSlots(s)).reduce((a, q) => a + (q.type && !squadErr(s, q) ? SQUADS[q.type].cost : 0), 0);
+  const squadUnits = s => activeSquads(s).flatMap(q => q.members.map(id => s.units.find(u => u.id === id)));
+  function setSquad(s, idx, type) {
+    s.squads = s.squads || []; while (s.squads.length <= idx) s.squads.push({ type: null, members: [] });
+    s.squads[idx] = { type: type || null, members: type ? SQUADS[type].req.map(() => null) : [] };
+  }
+  function assignSquad(s, idx, pos, uid) {
+    const q = s.squads[idx]; if (!q || !q.type) return '분대 종류를 먼저 고르세요';
+    if (!uid) { q.members[pos] = null; return null; }
+    const u = s.units.find(x => x.id === uid); if (!u || !u.hired) return '고용한 용병만 배정할 수 있습니다';
+    if (baseCls(u) !== SQUADS[q.type].req[pos]) return `${CLASSES[SQUADS[q.type].req[pos]].name} 직업이 필요합니다`;
+    if (!canSortie(u)) return '피로가 한계입니다';
+    if (s.squads.some((o, i) => o.members.includes(uid) && !(i === idx && o.members[pos] === uid))) return '이미 다른 분대에 배정되어 있습니다';
+    delete s.formation[uid]; q.members[pos] = uid; return null;
+  }
+  const sortieWage = s => wageOf(s.units.filter(u => u.hired && s.formation[u.id] && canSortie(u)).concat(squadUnits(s)));
+  // 전투 중 분대 효과(마법 포대·저격): 마력공진 구역의 적은 대상에서 제외
+  function squadTick(b) {
+    if (!b.sq || !b.sq.size) return;
+    const foes = alive(b, 'e'), ps = alive(b, 'p'); if (!foes.length || !ps.length) return;
+    const avg = ps.reduce((a, c) => a + c.atk, 0) / ps.length, ok = o => cellTh(b, o) !== 'resonance', pseudo = { side: 'p', atk: avg, x: 4, y: 8, name: '분대', poison: 0 };
+    if (b.sq.has('battery') && b.t >= (b.nextBat || 6)) {
+      b.nextBat = b.t + 9; const tg = foes.filter(ok);
+      if (tg.length) { ev(b, { k: 'area', cells: tg.map(o => [o.x, o.y]), col: '#b48cff', big: true }); ev(b, { k: 'log', m: '☄️ 마법 포대 분대의 일제 포격!', c: 'good' }); const cap = Math.min(1, 3 / tg.length); tg.forEach(o => damage(b, pseudo, o, 1.4 * cap, true)); }
+      else ev(b, { k: 'log', m: '🔮 마력공진이 포격을 흩어 버렸다', c: 'warn' });
+    }
+    if (b.sq.has('sniper') && b.t >= (b.nextSnp || 5)) {
+      b.nextSnp = b.t + 7; const tg = foes.filter(ok).filter(o => o.alive).sort((p, q) => q.atk - p.atk)[0];
+      if (tg) {
+        let dmg = Math.max(1, Math.round(avg * 3.0 - tg.def * 0.25)); if (tg.boss) dmg = Math.min(dmg, Math.round(tg.maxhp * 0.06));
+        ev(b, { k: 'area', cells: [[tg.x, tg.y]], col: '#ffd24a', big: false }); ev(b, { k: 'log', m: `🎯 저격 분대가 ${tg.name}을(를) 저격!`, c: 'good' });
+        setHp(tg, tg.hp - dmg); ev(b, { k: 'dmg', x: tg.x, y: tg.y, v: dmg, crit: true, side: 'e' }); if (tg.hp <= 0) die(b, tg, pseudo);
+      }
+    }
+  }
+
   /* ---------- 드롭 ---------- */
   // o: { luck: 파티 평균 행운, kind: 'boss' | 'elite' }
   function dropItem(floor, o) {
@@ -611,10 +676,12 @@ const Core = (function () {
       else { const [x, y] = free(); enemies.push(mkEnemy(ENEMY_BY_ID[id], f, x, y, false, group.elite ? { hp: 1.8, atk: 1.25, def: 1.2, exp: 2.5, gold: 3, elite: true } : null)); }
     }
     const gT = group.golden ? ENEMY_BY_ID[group.tpls[0]] : null;
+    const sq = new Set((exp.squads || []).map(q => q.type));
+    if (sq.has('disrupt')) enemies.forEach(c => { c.spd *= 0.85; c.blind = 0.12; }); // 교란 분대
     const hgt = genHeights();
     const mp = exp.map, zt = mp && mp.tz && group.y !== undefined && mp.tz[group.y] ? mp.tz[group.y][group.x] : null;
     const terr = mp && mp.themes && mp.themes.length ? genTerrain(mp.themes, !!zt) : null;
-    return { terr, exp, save: s, floor: f, units: units.concat(enemies), t: 0, nextRetreatCheck: 1, events: [], result: null, guardian: !!group.boss, group, fallen: 0, policy: s.policy, hgt, golden: !!group.golden, fleeT: gT ? gT.fleeIn : 0, bless: (exp.bless || 0) > 0 };
+    return { sq, terr, exp, save: s, floor: f, units: units.concat(enemies), t: 0, nextRetreatCheck: 1, events: [], result: null, guardian: !!group.boss, group, fallen: 0, policy: s.policy, hgt, golden: !!group.golden, fleeT: gT ? gT.fleeIn : 0, bless: (exp.bless || 0) > 0 };
   }
   const alive = (b, side) => b.units.filter(c => c.alive && c.side === side);
   function leaderMul(b) {
@@ -626,21 +693,25 @@ const Core = (function () {
   const ev = (b, o) => b.events.push(o);
 
   function setHp(c, v) { c.hp = clamp(Math.round(v), 0, c.maxhp); if (c.u) c.u.hp = c.hp; }
-  function applyCombo(c, cb) {
-    if (!cb || cb.dup) return;
-    c.atk = Math.round(c.atk * cb.all); c.def = Math.round(c.def * cb.all * cb.def); c.spd *= cb.all; c.maxhp = Math.round(c.maxhp * cb.all);
-    if (cb.rangePlus && c.range >= 3) c.range += cb.rangePlus;
+  function applyCombo(c, cb) { // 조합 보너스 + 응원 분대(cb.cheer)
+    if (!cb) return;
+    const all = cb.dup ? 1 : cb.all, dx = cb.dup ? 1 : cb.def, ch = cb.cheer || 1;
+    c.atk = Math.round(c.atk * all * ch); c.def = Math.round(c.def * all * dx * ch); c.spd *= all; c.maxhp = Math.round(c.maxhp * all);
+    if (!cb.dup && cb.rangePlus && c.range >= 3) c.range += cb.rangePlus;
   }
   function syncPlayer(c, cb) { const st = stats(c.u); c.maxhp = st.hp; c.atk = st.atk; c.def = st.def; c.spd = st.spd; c.eva = st.eva; c.range = st.range; c.hp = c.u.hp; applyCombo(c, cb); }
 
   function damage(b, att, tgt, mult, magic, skill) {
     if (!tgt.alive) return;
-    if (!magic && Math.random() < tgt.eva - (cellTh(b, tgt) === 'river' ? 0.1 : 0)) { ev(b, { k: 'miss', x: tgt.x, y: tgt.y }); return; }
+    if (!magic && Math.random() < tgt.eva + (att.blind || 0) - (cellTh(b, tgt) === 'river' ? 0.1 : 0)) { ev(b, { k: 'miss', x: tgt.x, y: tgt.y }); return; }
     if (b.hgt) mult *= clamp(1 + 0.06 * (b.hgt[att.y][att.x] - b.hgt[tgt.y][tgt.x]), 0.8, 1.25);
     const a = att.atk * mulFor(b, att) * mult, d = tgt.def * (tgt.guard > b.t ? 2 : 1) * mulFor(b, tgt);
     let dmg = a * rnd(0.9, 1.1) - d * (magic ? 0.25 : 0.5);
     const crit = Math.random() < 0.08; if (crit) dmg *= 1.5;
     dmg = Math.max(Math.ceil(a * 0.1), Math.round(dmg));
+    if (tgt.side === 'p' && crit && b.sq && b.sq.has('guardian') && !b.guardUsed && tgt.hp - dmg <= 0) { // 수호 분대: 치명타로 쓰러질 때 전투당 1회 HP 1로 버팀
+      dmg = Math.max(0, tgt.hp - 1); b.guardUsed = true; ev(b, { k: 'log', m: `🛡️ 수호 분대가 ${tgt.name}의 쓰러짐을 막았다!`, c: 'good' });
+    }
     setHp(tgt, tgt.hp - dmg); if (tgt.side === 'p') b.pHurt = b.t;
     ev(b, { k: 'dmg', x: tgt.x, y: tgt.y, v: dmg, crit, side: tgt.side });
     if (att.poison && tgt.side === 'p' && !tgt.poisoned && Math.random() < att.poison) { tgt.poisoned = true; tgt.u.poison = true; ev(b, { k: 'log', m: `☠️ ${tgt.name}이(가) 독에 걸렸다!`, c: 'bad' }); }
@@ -798,6 +869,8 @@ const Core = (function () {
       if (!alive(b, 'e').length) { b.result = 'win'; return; }
       if (!alive(b, 'p').length) { b.result = 'lose'; return; }
     }
+    squadTick(b); // 분대 지원 사격
+    if (!alive(b, 'e').length) { b.result = 'win'; return; }
     // 황금 몹은 제한 시간이 지나면 도망친다
     if (b.fleeT && b.t >= b.fleeT) {
       const gm = b.units.find(c => c.side === 'e' && c.golden && c.alive);
@@ -949,9 +1022,10 @@ const Core = (function () {
   function createExpedition(save, startFloor) {
     const party = save.units.filter(u => u.hired && save.formation[u.id] && canSortie(u));
     party.forEach(u => { u.poison = false; ensureCharges(u); });
-    const combo = comboOf(party);
+    const combo = comboOf(party), squads = activeSquads(save); // 분대: 전투 지원(화면 밖)
+    if (squads.some(q => q.type === 'cheer')) combo.cheer = 1.1;
     if (combo.skillUses) party.forEach(u => { for (const k in u.charges) u.charges[k] += combo.skillUses; }); // 후열 합주: 귀환 시 resetCharges 로 원복
-    const e = { combo, comboFood: combo.foodMul, save, party, floor: startFloor, map: null, pos: null, trail: [], directive: null, path: [], phase: 'explore', moveT: 0.5, healT: 0, battle: null, log: [], events: [], loot: { gold: 0, items: [] }, kills: 0, done: false, result: null, chests: 0, reached: startFloor, text: '', startFloor };
+    const e = { combo, squads, squadMembers: squadUnits(save), comboFood: combo.foodMul, save, party, floor: startFloor, map: null, pos: null, trail: [], directive: null, path: [], phase: 'explore', moveT: 0.5, healT: 0, battle: null, log: [], events: [], loot: { gold: 0, items: [] }, kills: 0, done: false, result: null, chests: 0, reached: startFloor, text: '', startFloor };
     save.maxFloor = Math.max(save.maxFloor, startFloor);
     setFloor(e, startFloor);
     return e;
@@ -985,7 +1059,7 @@ const Core = (function () {
     s.day++;
     // 피로 회복 (2-A): 휴식 +25 / 출전 +5. 승려 동행 시 ×1.5(최대 2명, 상한 ×2.0), 요리사 동행 시 식사 +2(최대 2명)
     { const F = TUNE.fatigue, healers = Math.min(2, e.party.filter(u => baseCls(u) === 'priest').length), cooks = Math.min(2, e.party.filter(u => baseCls(u) === 'cook').length);
-      const mul = 1 + 0.5 * healers, bonus = F.cook * cooks, went = new Set(e.party.map(u => u.id));
+      const mul = 1 + 0.5 * healers, bonus = F.cook * cooks, went = new Set(e.party.concat(e.squadMembers || []).map(u => u.id));
       e.fatLog = { mul, bonus };
       for (const u of s.units) { if (!u.hired) continue; u.fatigue = Math.min(100, Math.round(fatOf(u) + (went.has(u.id) ? F.work : F.rest) * mul + bonus)); if (!canSortie(u)) delete s.formation[u.id]; } }
     s.units.forEach(u => { u.hp = stats(u).hp; u.poison = false; resetCharges(u); });
@@ -1126,7 +1200,7 @@ const Core = (function () {
   // 이동 1칸마다 식량 소모(2-B). 식량이 0이면 피로 가속 하락 → 피로 0 이면 HP 서서히 감소
   function consumeFood(e) {
     const s = e.save, live = e.party.filter(u => u.hp > 0);
-    const need = live.length * TUNE.food.perStep * (e.foodMul || 1) * (e.comboFood || 1);
+    const need = (live.length + (e.squadMembers ? e.squadMembers.length : 0)) * TUNE.food.perStep * (e.foodMul || 1) * (e.comboFood || 1);
     if (s.food >= need) { s.food = Math.round((s.food - need) * 10000) / 10000; return; }
     s.food = 0;
     if (!e.starved) { e.starved = true; elog(e, '🍖 식량이 바닥났다! 피로가 쌓인다 — 귀환을 권한다', 'bad'); }
@@ -1276,6 +1350,6 @@ const Core = (function () {
     return p.join(' ');
   }
 
-  return { PROMO_PRICE, buyPromo, MATS, matKind, FAM_MAT, craftBases, recipeOf, canCraft, craft, terrainHave, PROMO, PROMO_LV, canPromote, promote, comboOf, baseCls, THEMES, floorThemes, fatOf, fatMul, canSortie, buyFood, RARITY, RAR_ORDER, CRAFT_ENABLED, canUse, canLead, costOf, hireCost, hireUnit, migrateSave, partyLuck, rarOf, GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, MW, MH, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
+  return { SQUADS, squadSlots, squadCap, squadUsed, squadErr, activeSquads, squadUnits, inSquad, setSquad, assignSquad, sortieWage, PROMO_PRICE, buyPromo, MATS, matKind, FAM_MAT, craftBases, recipeOf, canCraft, craft, terrainHave, PROMO, PROMO_LV, canPromote, promote, comboOf, baseCls, THEMES, floorThemes, fatOf, fatMul, canSortie, buyFood, RARITY, RAR_ORDER, CRAFT_ENABLED, canUse, canLead, costOf, hireCost, hireUnit, migrateSave, partyLuck, rarOf, GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, MW, MH, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
 })();
 if (typeof module !== 'undefined') module.exports = Core; else window.Core = Core;

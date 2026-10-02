@@ -83,7 +83,7 @@
   }
 
   /* ---------- 사이드 패널 (캠프) ---------- */
-  const CAMP_TABS = [['form', '⚔', '편성'], ['roster', '👥', '용병'], ['tactics', '🧭', '전술'], ['forge', '🔨', '대장간'], ['shop', '🛒', '상점'], ['quest', '📜', '의뢰']];
+  const CAMP_TABS = [['form', '⚔', '편성'], ['roster', '👥', '용병'], ['tactics', '🧭', '전술'], ['squad', '🪖', '분대'], ['forge', '🔨', '대장간'], ['shop', '🛒', '상점'], ['quest', '📜', '의뢰']];
   const EXP_TABS = [['log', '📜', '기록'], ['tactics', '🧭', '전술'], ['info', '🗺', '정보']];
   function renderTabs() {
     const tabs = S.exp ? EXP_TABS : CAMP_TABS, cur = S.exp ? S.sideTab : S.tab;
@@ -93,13 +93,33 @@
     const st = C.stats(u), c = C.CLASSES[u.cls], pos = S.save.formation[u.id];
     return `<div class="card click ${S.sel === u.id ? 'sel' : ''} ${pos && o.mark ? 'placed' : ''}" ${o.drag ? `data-unit="${u.id}"` : ''} data-act="${o.act}" data-id="${u.id}">
       <div class="ucard"><div class="pt" style="border-color:${c.color}">${portrait(u)}</div>
-      <div title="${luckHint(u)}"><div class="nm">${esc(u.name)} ${rarTag(u)} <span class="dim">${c.name} Lv${u.lv}</span></div><div class="st">HP ${st.hp} · 공 ${st.atk} · 방 ${st.def} · 속 ${st.spd.toFixed(1)} · 사거리 ${st.range}</div><div class="st">${C.ROW_TXT[c.row]}${pos ? ' · <span class="good">배치됨</span>' : ''} · <span class="${C.fatOf(u) < 25 ? 'bad' : C.fatOf(u) < 50 ? 'warn' : 'dim'}" title="100=정상 · 50 미만 공·방 −10% · 25 미만 −25% · 0 출격 불가">피로 ${Math.round(C.fatOf(u))}</span></div></div>
+      <div title="${luckHint(u)}"><div class="nm">${esc(u.name)} ${rarTag(u)} <span class="dim">${c.name} Lv${u.lv}</span></div><div class="st">HP ${st.hp} · 공 ${st.atk} · 방 ${st.def} · 속 ${st.spd.toFixed(1)} · 사거리 ${st.range}</div><div class="st">${C.ROW_TXT[c.row]}${pos ? ' · <span class="good">배치됨</span>' : ''}${C.inSquad(S.save, u) ? ' · <span class="good">🪖 분대</span>' : ''} · <span class="${C.fatOf(u) < 25 ? 'bad' : C.fatOf(u) < 50 ? 'warn' : 'dim'}" title="100=정상 · 50 미만 공·방 −10% · 25 미만 −25% · 0 출격 불가">피로 ${Math.round(C.fatOf(u))}</span></div></div>
       <div class="cost-badge" title="코스트 ${C.costOf(u)}">${C.costOf(u)}</div></div>${o.more || ''}</div>`;
   }
   function comboHTML(pt) {
     const cb = C.comboOf(pt);
     if (cb.dup) return '<div class="dim" style="font-size:12.5px;margin:4px 0">⚠ 같은 직업이 3명 이상이라 조합 보너스가 없습니다.</div>';
     return cb.list.length ? `<div class="chips" style="margin:6px 0">${cb.list.map(x => `<span class="chip m" title="${x.desc}">✨ ${x.name}: ${x.desc}</span>`).join('')}</div>` : '<div class="dim" style="font-size:12.5px;margin:4px 0">조합 보너스 없음 — 전사+승려+도적 / 전열 3명 / 마술사+승려 / 엘프 / 요리사 편성 시 발동</div>';
+  }
+  function squadHTML(s) {
+    const slots = C.squadSlots(s), cap = C.squadCap(s), used = C.squadUsed(s), SQ = C.SQUADS;
+    if (!slots) return '<div class="empty">🔒 분대는 <b>5층을 클리어</b>(6층 도달)하면 해금됩니다.<br><span class="dim">분대는 화면 밖에서 본대 전투를 돕습니다 — 버프·디버프·즉사 방지·전범위 마법·저격.</span></div>';
+    let h = `<div class="row"><b>분대 코스트 ${used} / ${cap}</b><span class="dim">슬롯 ${slots}/4 · 최고 층↑ → 상한↑</span></div><div class="bar cost ${used > cap ? 'over' : ''}"><i style="width:${pct(used, cap)}%"></i></div>
+      <div class="dim" style="margin:6px 0 10px;font-size:12.5px">분대는 요구 직업을 모두 채워야 발동합니다. 분대원은 본대와 겸임할 수 없고, 출격 시 급료·식량·피로 규칙을 본대와 같이 적용받습니다. 해금: 5·15·30·45층 클리어.</div>`;
+    const unitOpts = (q, pos) => {
+      const need = SQ[q.type].req[pos];
+      const c = s.units.filter(u => u.hired && C.baseCls(u) === need && (q.members[pos] === u.id || !C.inSquad(s, u)));
+      return `<option value="">— ${C.CLASSES[need].name} 선택 —</option>` + c.map(u => `<option value="${u.id}" ${q.members[pos] === u.id ? 'selected' : ''} ${C.canSortie(u) ? '' : 'disabled'}>${esc(u.name)} Lv${u.lv} (피로 ${Math.round(C.fatOf(u))})${s.formation[u.id] && q.members[pos] !== u.id ? ' · 본대→이동' : ''}</option>`).join('');
+    };
+    for (let i = 0; i < slots; i++) {
+      const q = (s.squads && s.squads[i]) || { type: null, members: [] }, err = q.type ? C.squadErr(s, q) : '종류 미선택';
+      const act = q.type && !err && C.activeSquads(s).includes(s.squads[i]);
+      h += `<div class="card"><div class="row"><b>슬롯 ${i + 1}</b><span class="${act ? 'good' : 'dim'}">${act ? '● 발동 대기' : q.type && !err ? '○ 코스트 초과' : '○ 비활성'}</span></div>
+        <div class="pol"><label>분대</label><select data-sqtype="${i}"><option value="">— 없음 —</option>${Object.entries(SQ).map(([k, d]) => `<option value="${k}" ${q.type === k ? 'selected' : ''}>${d.icon} ${d.name} (코스트 ${d.cost})</option>`).join('')}</select>
+        ${q.type ? SQ[q.type].req.map((r, p) => `<label>${C.CLASSES[r].name}</label><select data-sqm="${i}" data-pos="${p}">${unitOpts(q, p)}</select>`).join('') : ''}</div>
+        ${q.type ? `<div class="d dim" style="font-size:12px;margin-top:4px">${SQ[q.type].icon} ${SQ[q.type].desc}${err ? ` · <span class="warn">${esc(err)}</span>` : ''}</div>` : ''}</div>`;
+    }
+    return h;
   }
   function forgeHTML(s) {
     const mats = Object.entries(s.mats).filter(([, n]) => n >= 1), GN = { N: '일반', H: '고급', L: '전설' }, GC = { N: '#9aa0a6', H: '#4a90e2', L: '#e0b030' };
@@ -125,7 +145,7 @@
     if (!pt.some(u => C.skillsOf(u).includes('heal') || C.baseCls(u) === 'priest')) return { t: '치유 수단이 없습니다. <b>회복약</b>을 넉넉히 준비하세요.', tab: 'shop', l: '상점 가기' };
     if ((s.cons.potion || 0) < 2) return { t: '회복약이 부족합니다.', tab: 'shop', l: '상점 가기' };
     const cheap = s.units.filter(u => !u.hired).map(u => C.hireCost(u)).sort((a, b) => a - b)[0];
-    if (cheap && s.gold >= cheap + C.wageOf(pt) + 100) return { t: '고용할 수 있는 용병이 있습니다.', tab: 'roster', l: '용병 보기' };
+    if (cheap && s.gold >= cheap + C.sortieWage(s) + 100) return { t: '고용할 수 있는 용병이 있습니다.', tab: 'roster', l: '용병 보기' };
     return { t: '준비 완료! 우측 상단 <b>출격 준비</b>를 눌러 던전으로 향하세요.' };
   }
   function renderCampBody() {
@@ -156,6 +176,8 @@
         }
         return ucard(u, { act: 'detail', more: det });
       }).join('');
+    } else if (S.tab === 'squad') {
+      h += squadHTML(s);
     } else if (S.tab === 'forge') {
       h += forgeHTML(s);
     } else if (S.tab === 'tactics') {
@@ -246,13 +268,14 @@
 
   /* ---------- 흐름: 출격 / 종료 ---------- */
   function sortieModal() {
-    const s = S.save, pt = party(), wage = C.wageOf(pt), used = C.usedCost(s), cap = C.costCap(s);
+    const s = S.save, pt = party(), wage = C.sortieWage(s), used = C.usedCost(s), cap = C.costCap(s);
     const has = f => pt.some(f), ok = (b, t, w) => `<div class="check"><span class="ic">${b ? '✅' : '⚠️'}</span><span>${b ? t : `<span class="warn">${w}</span>`}</span></div>`;
     const heal = has(u => C.skillsOf(u).includes('heal') || C.baseCls(u) === 'priest');
     openModal(`<h2>🚪 출격 준비</h2><div class="dim">출발 전에 편성과 소모품을 점검하세요.</div>
       <h3>파티 (${pt.length}명 · 코스트 ${used}/${cap})</h3>
       <div class="chips" style="gap:6px">${pt.map(u => `<span class="chip" style="padding:3px 10px">${C.CLASSES[u.cls].icon} ${esc(u.name)} Lv${u.lv}</span>`).join('') || '<span class="dim">편성된 용병이 없습니다</span>'}</div>
       ${comboHTML(pt)}
+      ${C.activeSquads(s).length ? `<div class="chips" style="margin:6px 0">${C.activeSquads(s).map(q => `<span class="chip m" title="${C.SQUADS[q.type].desc}">${C.SQUADS[q.type].icon} ${C.SQUADS[q.type].name}</span>`).join('')}</div>` : (C.squadSlots(s) ? '<div class="dim" style="font-size:12.5px;margin:4px 0">🪖 발동 가능한 분대가 없습니다 (분대 탭에서 편성)</div>' : '')}
       <h3>점검</h3>
       ${ok(pt.length >= 3, `편성 인원 ${pt.length}명`, `편성 인원이 ${pt.length}명입니다. 3명 이상을 권장합니다.`)}
       ${ok(has(u => C.baseCls(u) === 'thief'), '도적 동행 — 함정 해제·잠긴 문 개방 가능', '도적이 없습니다. 함정을 밟고 잠긴 문은 열 수 없습니다.')}
@@ -268,7 +291,7 @@
       <div class="foot"><button class="btn" data-m="close">취소</button><button class="cta" data-m="sortie-go" data-autofocus ${pt.length && s.gold >= wage ? '' : 'disabled'}>출격!</button></div>`);
   }
   function startSortie() {
-    const s = S.save, pt = party(), wage = C.wageOf(pt); if (!pt.length || s.gold < wage) return;
+    const s = S.save, pt = party(), wage = C.sortieWage(s); if (!pt.length || s.gold < wage) return;
     const lc = leadCands(pt); if (!lc.find(u => u.id === s.policy.leader)) s.policy.leader = lc[0].id;
     s.gold -= wage; closeModal();
     S.exp = C.createExpedition(s, Math.min(S.startFloor, s.maxFloor)); S.paused = false; S.itemSel = null; S.itemOpen = false; S.acc = 0; S.floaters = []; S.resultShown = false; S.lastFloor = 0; S.sideTab = 'log'; S.sel = null;
@@ -413,7 +436,9 @@
   });
   for (const el of [$('sideBody'), modalEl]) {
     el.addEventListener('input', ev => { if (ev.target.dataset.pol === 'retreat') polChange(ev.target); });
-    el.addEventListener('change', ev => { const t = ev.target; if (t.dataset.pol) polChange(t); if (t.dataset.pref) prefChange(t); if (t.dataset.opt) { S.save.opts[t.dataset.opt] = t.checked; save(); } });
+    el.addEventListener('change', ev => { const t = ev.target; if (t.dataset.pol) polChange(t); if (t.dataset.pref) prefChange(t); if (t.dataset.opt) { S.save.opts[t.dataset.opt] = t.checked; save(); }
+      if (t.dataset.sqtype !== undefined) { C.setSquad(S.save, +t.dataset.sqtype, t.value); save(); renderCampBody(); renderStats(); renderStageBar(); }
+      if (t.dataset.sqm !== undefined) { const r = C.assignSquad(S.save, +t.dataset.sqm, +t.dataset.pos, +t.value || 0); if (r) toast(r, 'bad'); save(); renderCampBody(); renderStats(); renderStageBar(); } });
   }
 
   /* ---------- 모달 동작 ---------- */
