@@ -423,6 +423,57 @@ const Core = (function () {
     }
     return h;
   }
+  /* ---------- 지형 테마 (DEVNOTE 2-E 재설계) ---------- */
+  // 층 테마 → 미로 위험 구역(tz) + 전투판 지형 칸(terr). col=칸 색(렌더용)
+  const THEMES = {
+    swamp:     { name: '늪', icon: '🌿', minF: 5, col: '#4f6b34', desc: '이동이 느려짐' },
+    desert:    { name: '사막', icon: '🏜️', minF: 10, col: '#c9a95a', desc: '식량 소모 ×2 · 전투 속도 −15%' },
+    river:     { name: '강변', icon: '🌊', minF: 15, col: '#3f78b8', desc: '피로 증감 · 전투 회피 −10%p·번개 +30%' },
+    volcano:   { name: '화산', icon: '🌋', minF: 25, col: '#b5452a', desc: '화상 · 전투 중 지속 피해' },
+    resonance: { name: '마력공진', icon: '🔮', minF: 35, col: '#8a5cc8', desc: '전투 중 구역 안에서 스킬 불가' },
+  };
+  function floorThemes(f) { // 층마다 고정(결정적): 5층부터 주 테마 1개, 30% 확률로 부 테마
+    if (f < 5) return [];
+    const pool = Object.keys(THEMES).filter(k => THEMES[k].minF <= f);
+    let h = (f * 2654435761) >>> 0; const nx = () => { h = (Math.imul(h, 1103515245) + 12345) >>> 0; return h / 4294967296; };
+    const main = pool[Math.floor(nx() * pool.length)], out = [main];
+    if (pool.length > 1 && nx() < 0.3) { const o = pool.filter(k => k !== main); out.push(o[Math.floor(nx() * o.length)]); }
+    return out;
+  }
+  // 미로 위험 구역: 걸을 수 있는 타일에 테마별 덩어리(반경 3~5)를 만든다. tz[y][x] = 테마 id | null
+  function genZones(m, themes) {
+    const tz = Array.from({ length: m.h }, () => Array(m.w).fill(null));
+    themes.forEach((th, i) => {
+      for (let k = themes.length === 1 ? 4 : 3; k > 0; k--) {
+        const cx = ri(2, m.w - 3), cy = ri(2, m.h - 3), R = ri(3, 5);
+        for (let y = cy - R; y <= cy + R; y++) for (let x = cx - R; x <= cx + R; x++) {
+          if (x < 0 || y < 0 || x >= m.w || y >= m.h || m.grid[y][x] === 0) continue;
+          if (Math.hypot(x - cx, y - cy) <= R && !tz[y][x]) tz[y][x] = th;
+        }
+      }
+    });
+    return tz;
+  }
+  // 전투판(9×9) 지형 칸: 주 테마 패치(위험 구역에서 시작하면 비율↑). 마력공진은 반경 2칸 원형 1~2개(국소)
+  function genTerrain(themes, onZone) {
+    const g = Array.from({ length: 9 }, () => Array(9).fill(null));
+    themes.forEach((th, i) => {
+      if (th === 'resonance') {
+        for (let k = ri(1, onZone ? 2 : 1 + (Math.random() < 0.5 ? 1 : 0)); k > 0; k--) {
+          const cx = ri(1, 7), cy = ri(0, 8);
+          for (let y = 0; y < 9; y++) for (let x = 0; x < 9; x++) if (Math.hypot(x - cx, y - cy) <= 2 && !g[y][x]) g[y][x] = th;
+        }
+        return;
+      }
+      const want = Math.round(81 * (i === 0 ? (onZone ? 0.5 : 0.22) : 0.12)); let have = 0, guard = 0;
+      while (have < want && guard++ < 400) {
+        let x = ri(0, 8), y = ri(0, 8);
+        for (let s = ri(5, 14); s > 0 && have < want; s--) { if (!g[y][x]) { g[y][x] = th; have++; } x = clamp(x + ri(-1, 1), 0, 8); y = clamp(y + ri(-1, 1), 0, 8); }
+      }
+    });
+    return g;
+  }
+  const cellTh = (b, c) => b.terr ? b.terr[clamp(c.y, 0, 8)][clamp(c.x, 0, 8)] : null;
   const ENEMY_BY_ID = {}; ENEMIES.concat(GOLDEN, SPECIALS).forEach(t => { ENEMY_BY_ID[t.id] = t; });
   function createBattle(exp, group) {
     const s = exp.save, f = exp.floor, units = [];
@@ -440,7 +491,9 @@ const Core = (function () {
     }
     const gT = group.golden ? ENEMY_BY_ID[group.tpls[0]] : null;
     const hgt = genHeights();
-    return { exp, save: s, floor: f, units: units.concat(enemies), t: 0, nextRetreatCheck: 1, events: [], result: null, guardian: !!group.boss, group, fallen: 0, policy: s.policy, hgt, golden: !!group.golden, fleeT: gT ? gT.fleeIn : 0, bless: (exp.bless || 0) > 0 };
+    const mp = exp.map, zt = mp && mp.tz && group.y !== undefined && mp.tz[group.y] ? mp.tz[group.y][group.x] : null;
+    const terr = mp && mp.themes && mp.themes.length ? genTerrain(mp.themes, !!zt) : null;
+    return { terr, exp, save: s, floor: f, units: units.concat(enemies), t: 0, nextRetreatCheck: 1, events: [], result: null, guardian: !!group.boss, group, fallen: 0, policy: s.policy, hgt, golden: !!group.golden, fleeT: gT ? gT.fleeIn : 0, bless: (exp.bless || 0) > 0 };
   }
   const alive = (b, side) => b.units.filter(c => c.alive && c.side === side);
   function leaderMul(b) {
@@ -456,7 +509,7 @@ const Core = (function () {
 
   function damage(b, att, tgt, mult, magic, skill) {
     if (!tgt.alive) return;
-    if (!magic && Math.random() < tgt.eva) { ev(b, { k: 'miss', x: tgt.x, y: tgt.y }); return; }
+    if (!magic && Math.random() < tgt.eva - (cellTh(b, tgt) === 'river' ? 0.1 : 0)) { ev(b, { k: 'miss', x: tgt.x, y: tgt.y }); return; }
     if (b.hgt) mult *= clamp(1 + 0.06 * (b.hgt[att.y][att.x] - b.hgt[tgt.y][tgt.x]), 0.8, 1.25);
     const a = att.atk * mulFor(b, att) * mult, d = tgt.def * (tgt.guard > b.t ? 2 : 1) * mulFor(b, tgt);
     let dmg = a * rnd(0.9, 1.1) - d * (magic ? 0.25 : 0.5);
@@ -515,24 +568,29 @@ const Core = (function () {
       if (c.u.mastery[sid] >= SKILLS[sid].master) { c.u.learned.push(sid); c.u.charges[sid] = (c.u.charges[sid] || 0) + 1; ev(c.b, { k: 'log', m: `📖 ${c.u.name}이(가) [${SKILLS[sid].name}]을(를) 완전히 습득했다!`, c: 'good' }); }
     }
   }
+  // 범위 스킬 시각화: 닿는 칸 목록 + 색 (불=주황 / 얼음=파랑 / 번개=노랑 / 신성=금 / 회복=초록). big=범위 마법 → 화면 흔들림
+  const SKILL_COL = { fire: '#ff7a2a', ice: '#4fa8ff', thunder: '#ffe14a', holy: '#ffd86b', heal: '#5be08a', bless: '#5be08a', antidote: '#5be08a', guard: '#9fb2ff' };
+  const box = (cx, cy, r) => { const o = []; for (let y = cy - r; y <= cy + r; y++) for (let x = cx - r; x <= cx + r; x++) if (x >= 0 && y >= 0 && x < GRID && y < GRID) o.push([x, y]); return o; };
+  function area(b, sid, cells, big) { const sk = SKILLS[sid]; ev(b, { k: 'area', cells, col: SKILL_COL[sid] || (sk.magic ? '#b48cff' : '#ff6a6a'), big: !!big }); }
   function useSkill(b, c, sid, foes, allies) {
     const sk = SKILLS[sid], rng = sk.range || c.range;
     const inR = foes.filter(o => dist(c, o) <= rng).sort((p, q) => dist(c, p) - dist(c, q));
     c.b = b;
     switch (sk.type) {
-      case 'single': { if (!inR.length) return false; ev(b, { k: 'fx', x: inR[0].x, y: inR[0].y, t: 'skill', n: sk.name, from: c }); damage(b, c, inR[0], sk.mult, !!sk.magic); break; }
+      case 'single': { if (!inR.length) return false; area(b, sid, [[inR[0].x, inR[0].y]]); ev(b, { k: 'fx', x: inR[0].x, y: inR[0].y, t: 'skill', n: sk.name, from: c }); damage(b, c, inR[0], sk.mult, !!sk.magic); break; }
       case 'holy': {
         const t = inR.find(o => o.undead) || inR[0]; if (!t) return false;
+        area(b, sid, [[t.x, t.y]]);
         ev(b, { k: 'fx', x: t.x, y: t.y, t: 'skill', n: sk.name, from: c }); damage(b, c, t, t.undead ? sk.mult * 1.8 : sk.mult * 0.6, true); break;
       }
-      case 'aoe': { if (!inR.length) return false; const t = inR[0]; ev(b, { k: 'fx', x: t.x, y: t.y, t: 'fire', n: sk.name, from: c }); foes.filter(o => dist(t, o) <= 1).forEach(o => damage(b, c, o, sk.mult, true)); break; }
-      case 'adjacent': { const adj = foes.filter(o => dist(c, o) <= 1); if (!adj.length) return false; ev(b, { k: 'fx', x: c.x, y: c.y, t: 'skill', n: sk.name, from: c }); adj.forEach(o => damage(b, c, o, sk.mult, false)); break; }
-      case 'line': { if (!inR.length) return false; ev(b, { k: 'fx', x: inR[0].x, y: inR[0].y, t: 'skill', n: sk.name, from: c }); inR.slice(0, 3).forEach(o => damage(b, c, o, sk.mult, !!sk.magic)); break; }
-      case 'heal': { const t = allies.filter(a => a.hp < a.maxhp).sort((p, q) => p.hp / p.maxhp - q.hp / q.maxhp)[0]; if (!t) return false; ev(b, { k: 'fx', x: t.x, y: t.y, t: 'heal', n: sk.name, from: c }); heal(b, c, t, c.atk * 1.8 + t.maxhp * 0.15); break; }
-      case 'healall': { ev(b, { k: 'fx', x: c.x, y: c.y, t: 'heal', n: sk.name, from: c }); allies.forEach(a => heal(b, c, a, c.atk * 1.0 + a.maxhp * 0.1)); break; }
+      case 'aoe': { if (!inR.length) return false; const t = inR[0]; area(b, sid, box(t.x, t.y, 1), !!sk.magic); ev(b, { k: 'fx', x: t.x, y: t.y, t: 'fire', n: sk.name, from: c }); foes.filter(o => dist(t, o) <= 1).forEach(o => damage(b, c, o, sk.mult, true)); break; }
+      case 'adjacent': { const adj = foes.filter(o => dist(c, o) <= 1); if (!adj.length) return false; area(b, sid, box(c.x, c.y, 1).filter(q => q[0] !== c.x || q[1] !== c.y)); ev(b, { k: 'fx', x: c.x, y: c.y, t: 'skill', n: sk.name, from: c }); adj.forEach(o => damage(b, c, o, sk.mult, false)); break; }
+      case 'line': { if (!inR.length) return false; const hit = inR.slice(0, 3); area(b, sid, hit.map(o => [o.x, o.y]), !!sk.magic); ev(b, { k: 'fx', x: inR[0].x, y: inR[0].y, t: 'skill', n: sk.name, from: c }); hit.forEach(o => damage(b, c, o, sk.mult * (sid === 'thunder' && cellTh(b, o) === 'river' ? 1.3 : 1), !!sk.magic)); break; }
+      case 'heal': { const t = allies.filter(a => a.hp < a.maxhp).sort((p, q) => p.hp / p.maxhp - q.hp / q.maxhp)[0]; if (!t) return false; area(b, sid, [[t.x, t.y]]); ev(b, { k: 'fx', x: t.x, y: t.y, t: 'heal', n: sk.name, from: c }); heal(b, c, t, c.atk * 1.8 + t.maxhp * 0.15); break; }
+      case 'healall': { area(b, sid, allies.map(a => [a.x, a.y])); ev(b, { k: 'fx', x: c.x, y: c.y, t: 'heal', n: sk.name, from: c }); allies.forEach(a => heal(b, c, a, c.atk * 1.0 + a.maxhp * 0.1)); break; }
       case 'cure': { const t = allies.find(a => a.poisoned); if (!t) return false; t.poisoned = false; t.u.poison = false; ev(b, { k: 'log', m: `💊 ${t.name}의 독이 해독됐다`, c: 'good' }); break; }
-      case 'guard': { c.guard = b.t + 6; ev(b, { k: 'fx', x: c.x, y: c.y, t: 'skill', n: sk.name, from: c }); break; }
-      case 'flurry': { if (!inR.length) return false; const t = inR[0]; ev(b, { k: 'fx', x: t.x, y: t.y, t: 'skill', n: sk.name, from: c }); damage(b, c, t, sk.mult, false); if (t.alive) damage(b, c, t, sk.mult, false); break; }
+      case 'guard': { c.guard = b.t + 6; area(b, sid, [[c.x, c.y]]); ev(b, { k: 'fx', x: c.x, y: c.y, t: 'skill', n: sk.name, from: c }); break; }
+      case 'flurry': { if (!inR.length) return false; const t = inR[0]; area(b, sid, [[t.x, t.y]]); ev(b, { k: 'fx', x: t.x, y: t.y, t: 'skill', n: sk.name, from: c }); damage(b, c, t, sk.mult, false); if (t.alive) damage(b, c, t, sk.mult, false); break; }
     }
     if (c.u) consume(c, sid);
     return true;
@@ -573,8 +631,9 @@ const Core = (function () {
   function act(b, c) {
     const foes = b.units.filter(o => o.alive && o.side !== c.side), allies = b.units.filter(o => o.alive && o.side === c.side);
     if (!foes.length) return;
-    if (c.side === 'p') { if (trySkillP(b, c, foes, allies)) return; }
-    else if (c.skills && Math.random() < 0.25) { if (useSkill(b, c, pick(c.skills), foes, allies)) return; }
+    const sealed = cellTh(b, c) === 'resonance'; // 마력공진 구역 안: 스킬 불가(기본공격·소모품은 허용)
+    if (c.side === 'p') { if (!sealed && trySkillP(b, c, foes, allies)) return; }
+    else if (!sealed && c.skills && Math.random() < 0.25) { if (useSkill(b, c, pick(c.skills), foes, allies)) return; }
     let t;
     const byDist = foes.slice().sort((p, q) => dist(c, p) - dist(c, q) || p.hp - q.hp);
     if (c.side === 'p' && b.policy.target === 'weakest') {
@@ -586,13 +645,13 @@ const Core = (function () {
       ev(b, { k: 'fx', x: t.x, y: t.y, t: 'atk', from: c });
       damage(b, c, t, 1, c.magic);
       if (c.u && c.u.cls === 'monk' && t.alive && Math.random() < 0.35) damage(b, c, t, 0.8, false);
-    } else if (c.side === 'e' || b.policy.stance === 'attack' || (b.pHurt !== undefined && b.t - b.pHurt < 6)) moveToward(b, c, t);
+    } else if (c.side === 'e' || b.policy.stance === 'attack' || (b.pHurt !== undefined && b.t - b.pHurt < 6)) { if (cellTh(b, c) === 'swamp' && (c.mv = !c.mv)) return; moveToward(b, c, t); } // 늪: 이동이 절반으로 느려짐
   }
   function stepBattle(b, dt) {
     if (b.result) return;
     b.t += dt;
     const ready = [];
-    for (const c of b.units) { if (!c.alive) continue; c.gauge += c.spd * dt; if (c.gauge >= 10) ready.push(c); }
+    for (const c of b.units) { if (!c.alive) continue; c.gauge += c.spd * dt * (cellTh(b, c) === 'desert' ? 0.85 : 1); if (c.gauge >= 10) ready.push(c); }
     ready.sort((p, q) => q.gauge - p.gauge);
     for (const c of ready) {
       if (!c.alive || b.result) continue; c.gauge = Math.max(0, c.gauge - 10); act(b, c);
@@ -604,6 +663,13 @@ const Core = (function () {
     if (b.t >= (b.nextPoison || 2)) {
       b.nextPoison = b.t + 2;
       for (const c of alive(b, 'p')) if (c.poisoned) { const d = Math.max(1, Math.round(c.maxhp * 0.04)); setHp(c, c.hp - d); ev(b, { k: 'dmg', x: c.x, y: c.y, v: d, side: 'p', poison: true }); if (c.hp <= 0) { die(b, c); } }
+      if (!alive(b, 'p').length) { b.result = 'lose'; return; }
+    }
+    // 화산 칸: 3초마다 최대 HP 2% 화상
+    if (b.terr && b.t >= (b.nextLava || 3)) {
+      b.nextLava = b.t + 3;
+      for (const c of b.units) if (c.alive && cellTh(b, c) === 'volcano') { const d = Math.max(1, Math.round(c.maxhp * 0.02)); setHp(c, c.hp - d); ev(b, { k: 'dmg', x: c.x, y: c.y, v: d, side: c.side, poison: true }); if (c.hp <= 0) die(b, c); }
+      if (!alive(b, 'e').length) { b.result = 'win'; return; }
       if (!alive(b, 'p').length) { b.result = 'lose'; return; }
     }
     // 황금 몹은 제한 시간이 지나면 도망친다
@@ -749,8 +815,10 @@ const Core = (function () {
   function setFloor(e, f) {
     const s = e.save; e.floor = f; e.map = genFloor(f); e.pos = { x: e.map.start.x, y: e.map.start.y }; e.trail = []; e.directive = null; e.path = []; e.hist = [];
     e.reached = Math.max(e.reached, f); s.maxFloor = Math.max(s.maxFloor, f);
+    e.map.themes = floorThemes(f); e.map.tz = genZones(e.map, e.map.themes); e.foodMul = 1; e.volcSteps = 0;
     reveal(e); questEvent(s, 'reach', f, (m, c) => elog(e, m, c));
     elog(e, `⬇ ${f}층에 도착했다`, 'floor');
+    if (e.map.themes.length) elog(e, `${e.map.themes.map(k => THEMES[k].icon + ' ' + THEMES[k].name).join(' + ')} 지형 — ${e.map.themes.map(k => THEMES[k].desc).join(' / ')}`, 'warn');
   }
   function createExpedition(save, startFloor) {
     const party = save.units.filter(u => u.hired && save.formation[u.id] && canSortie(u));
@@ -935,6 +1003,19 @@ const Core = (function () {
       if (u.fatigue <= 0) u.hp = Math.max(1, u.hp - Math.max(1, Math.round(stats(u).hp * 0.015)));
     }
   }
+  // 미로 위험 구역 효과(2-E): 늪=이동 지연 / 사막=식량 ×2 / 강변=피로 증감 / 화산=10칸마다 화상 / 마력공진=전투 전용
+  function terrainStep(e) {
+    const th = e.map.tz && e.map.tz[e.pos.y] ? e.map.tz[e.pos.y][e.pos.x] : null, live = e.party.filter(u => u.hp > 0);
+    e.foodMul = th === 'desert' ? 2 : 1;
+    if (th === 'swamp') e.moveT -= STEP; // 이동 속도 절반
+    else if (th === 'river' && Math.random() < 0.06) {
+      const up = Math.random() < 0.5, d = ri(2, 4); live.forEach(u => { u.fatigue = clamp(Math.round(fatOf(u) + (up ? d : -d)), 0, 100); });
+      elog(e, up ? '🌊 맑은 물에 몸을 씻었다 (피로 회복)' : '🌊 거센 물살에 지쳤다 (피로 증가)', up ? 'good' : 'bad');
+    } else if (th === 'volcano') {
+      e.volcSteps = (e.volcSteps || 0) + 1;
+      if (e.volcSteps % 10 === 0 && Math.random() < 0.4) { live.forEach(u => { u.hp = Math.max(1, u.hp - Math.max(1, Math.round(stats(u).hp * rnd(0.03, 0.06)))); }); elog(e, '🌋 뜨거운 열기에 화상을 입었다!', 'bad'); }
+    }
+  }
   function stepMove(e) {
     const m = e.map, pol = e.save.policy, thief = hasThief(e);
     consumeFood(e);
@@ -956,7 +1037,7 @@ const Core = (function () {
     e.hist = e.hist || []; e.hist.push(e.pos.x * 100 + e.pos.y); if (e.hist.length > 60) e.hist.shift();
     if (e.hist.length >= 60 && new Set(e.hist).size <= 3) { elog(e, '길이 막혀 더 나아가지 못한다. 귀환한다', 'warn'); finish(e, 'retreat'); return; }
     const nx = tg.path[0]; e.trail.unshift({ x: e.pos.x, y: e.pos.y }); if (e.trail.length > 8) e.trail.pop();
-    e.pos = { x: nx[0], y: nx[1] }; arrive(e);
+    e.pos = { x: nx[0], y: nx[1] }; terrainStep(e); arrive(e);
     if (e.party.every(u => u.hp <= 0)) finish(e, 'wipe');
   }
   function setDirective(e, x, y) {
@@ -1063,6 +1144,6 @@ const Core = (function () {
     return p.join(' ');
   }
 
-  return { fatOf, fatMul, canSortie, buyFood, RARITY, RAR_ORDER, CRAFT_ENABLED, canUse, canLead, costOf, hireCost, hireUnit, migrateSave, partyLuck, rarOf, GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, MW, MH, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
+  return { THEMES, floorThemes, fatOf, fatMul, canSortie, buyFood, RARITY, RAR_ORDER, CRAFT_ENABLED, canUse, canLead, costOf, hireCost, hireUnit, migrateSave, partyLuck, rarOf, GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, MW, MH, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
 })();
 if (typeof module !== 'undefined') module.exports = Core; else window.Core = Core;

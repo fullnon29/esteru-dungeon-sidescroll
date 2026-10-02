@@ -27,8 +27,12 @@ const Render = (function () {
   }
 
   /* ---------- 이벤트 → 플로터 ---------- */
+  const reduced = () => document.body.classList.contains('reduce');
   function procEvents(e) {
+    S.areas = S.areas || []; S.tileShake = S.tileShake || {};
     for (const v of e.events) {
+      if (v.k === 'area') { S.areas.push({ cells: v.cells, col: v.col, age: 0 }); if (v.big && !reduced()) S.frameShake = { t: 0.28, d: 0.28, amp: 5 }; }
+      if (v.k === 'dmg' && v.crit && !reduced()) S.tileShake[v.x + ',' + v.y] = 0.25; // 치명타: 맞은 타일이 흔들림
       if (v.k === 'dmg') S.floaters.push({ x: v.x, y: v.y, t: (v.crit ? '💥' : '') + (v.poison ? '☠' : '') + v.v, col: v.side === 'p' ? '#ff8a8a' : '#ffffff', age: 0, big: v.crit });
       else if (v.k === 'miss') S.floaters.push({ x: v.x, y: v.y, t: 'MISS', col: '#9fb2ff', age: 0 });
       else if (v.k === 'heal') S.floaters.push({ x: v.x, y: v.y, t: '+' + v.v, col: '#7cf0a0', age: 0 });
@@ -53,16 +57,26 @@ const Render = (function () {
     });
     return out;
   }
+  function mix(h1, h2, k) {
+    const a = parseInt(h1.slice(1), 16), b = parseInt(h2.slice(1), 16), f = (s) => Math.round(((a >> s) & 255) * (1 - k) + ((b >> s) & 255) * k);
+    return '#' + [f(16), f(8), f(0)].map(v => v.toString(16).padStart(2, '0')).join('');
+  }
   function drawBoard(dt) {
-    const camp = !S.exp, hg = S.exp && S.exp.battle ? S.exp.battle.hgt : null, HST = 7;
+    const camp = !S.exp, bt = S.exp && S.exp.battle ? S.exp.battle : null, hg = bt ? bt.hgt : null, terr = bt ? bt.terr : null, HST = 7;
     const elAt = (x, y) => hg ? hg[clamp(Math.round(y), 0, 8)][clamp(Math.round(x), 0, 8)] * HST : 0;
+    // 흔들림: 화면(범위 마법) · 타일(치명타)
+    ctx.save(); S.areas = S.areas || []; S.tileShake = S.tileShake || {};
+    const fs = S.frameShake; if (fs && fs.t > 0) { const am = fs.amp * (fs.t / fs.d); ctx.translate((Math.random() - 0.5) * 2 * am, (Math.random() - 0.5) * 2 * am); fs.t -= dt; }
+    const jit = {}; for (const k in S.tileShake) { S.tileShake[k] -= dt; if (S.tileShake[k] <= 0) delete S.tileShake[k]; else { const am = 2.5 * (S.tileShake[k] / 0.25); jit[k] = [(Math.random() - 0.5) * 2 * am, (Math.random() - 0.5) * 2 * am]; } }
+    const jOf = (x, y) => jit[x + ',' + y] || [0, 0];
     bgFill(camp ? 'camp' : 'arena', '#1a1d29', '#0b0d13');
     const floorNo = S.exp ? S.exp.floor : S.save.maxFloor;
     ctx.fillStyle = '#ffffff0d'; ctx.font = '700 72px sans-serif'; ctx.textAlign = 'left'; ctx.fillText(`B${floorNo}F`, 24, 80);
     const selId = S.dragId || S.sel, sel = camp && selId ? S.save.units.find(u => u.id === selId) : null;
     for (let s = 0; s <= 16; s++) for (let gx = 0; gx < 9; gx++) {
       const gy = s - gx; if (gy < 0 || gy > 8) continue;
-      const [sx, sy] = iso(gx, gy), mine = gy >= 5, foe = gy <= 3, alt = (gx + gy) % 2;
+      let [sx, sy] = iso(gx, gy); const mine = gy >= 5, foe = gy <= 3, alt = (gx + gy) % 2, th = terr ? terr[gy][gx] : null, jt = jOf(gx, gy);
+      sx += jt[0]; sy += jt[1];
       let top = alt ? '#2a2f3d' : '#252a37';
       if (mine) top = gy <= 6 ? (alt ? '#2a3d5c' : '#263753') : (alt ? '#223049' : '#1e2a41'); else if (foe) top = alt ? '#3b2a31' : '#35262d';
       let outline = '#00000055', lw = 1;
@@ -72,12 +86,23 @@ const Render = (function () {
         else top = '#4d78b8';
       }
       const el = hg ? hg[gy][gx] * HST : 0, sy2 = sy - el;
+      if (th) { const pulse = th === 'volcano' ? 0.45 + 0.1 * Math.sin(S.time * 3 + gx + gy) : 0.5; top = mix(top, C.THEMES[th].col, pulse); outline = th === 'resonance' ? '#c9a6ff' : '#00000055'; lw = th === 'resonance' ? 1.5 : 1; }
       if (hg && hg[gy][gx] > 0) top = shade(top, 1 + hg[gy][gx] * 0.07);
       poly([[sx - TW / 2, sy2], [sx, sy2 + TH / 2], [sx, sy + TH / 2 + 9], [sx - TW / 2, sy + 9]], '#161922');
       poly([[sx + TW / 2, sy2], [sx, sy2 + TH / 2], [sx, sy + TH / 2 + 9], [sx + TW / 2, sy + 9]], '#10121a');
       poly([[sx, sy2 - TH / 2], [sx + TW / 2, sy2], [sx, sy2 + TH / 2], [sx - TW / 2, sy2]], top, outline, lw);
+      if (th) { ctx.globalAlpha = 0.5; ctx.font = `11px ${EMOJI}`; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText(C.THEMES[th].icon, sx, sy2 + 4); ctx.globalAlpha = 1; }
       if (hg && hg[gy][gx] > 0) { ctx.fillStyle = '#ffffff55'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('▲'.repeat(hg[gy][gx]), sx, sy2 + 3); }
     }
+    // 범위 스킬이 닿는 칸의 색 (0.7초 동안 서서히 사라짐)
+    for (const ar of S.areas) {
+      ar.age += dt; const a = 1 - ar.age / 0.7; if (a <= 0) continue;
+      for (const [gx, gy] of ar.cells) {
+        const [jx, jy] = jOf(gx, gy), [sx0, sy0] = iso(gx, gy), el = hg ? hg[gy][gx] * HST : 0, sx = sx0 + jx, sy2 = sy0 + jy - el;
+        ctx.globalAlpha = Math.max(0, a) * 0.6; poly([[sx, sy2 - TH / 2], [sx + TW / 2, sy2], [sx, sy2 + TH / 2], [sx - TW / 2, sy2]], ar.col, '#ffffffcc', 2); ctx.globalAlpha = 1;
+      }
+    }
+    S.areas = S.areas.filter(a => a.age < 0.7);
     if (camp) {
       ctx.font = '600 12px "Malgun Gothic",sans-serif'; ctx.textAlign = 'right'; ctx.fillStyle = '#8fb4f0';
       let [lx, ly] = iso(0, 5.5); ctx.fillText('전열', lx - 44, ly + 4); [lx, ly] = iso(0, 7.5); ctx.fillText('후열', lx - 44, ly + 4);
@@ -88,6 +113,7 @@ const Render = (function () {
     ents.sort((a, b) => (a.dx + a.dy) - (b.dx + b.dy));
     for (const c of ents) {
       let [sx, sy] = iso(c.dx, c.dy); sy -= elAt(c.dx, c.dy); const r = 17 * (c.size || 1);
+      { const j = jOf(Math.round(c.dx), Math.round(c.dy)); sx += j[0]; sy += j[1]; }
       if (c.lt > 0) { sx += c.lx * (c.lt / 0.18); sy += c.ly * (c.lt / 0.18); }
       const lifted = camp && S.dragId === c.id; if (lifted) ctx.globalAlpha = 0.35;
       ctx.fillStyle = '#0007'; ctx.beginPath(); ctx.ellipse(sx, sy + 4, r * 0.9, r * 0.4, 0, 0, 7); ctx.fill();
@@ -114,6 +140,7 @@ const Render = (function () {
     }
     S.floaters = S.floaters.filter(f => f.age < 1.0);
     vignette(0.45);
+    ctx.restore();
   }
 
   /* ---------- 쿼터뷰 벽돌 미로 (지3 탐사 화면) ---------- */
@@ -191,6 +218,7 @@ const Render = (function () {
         if (u.poison) emoji('☠️', sx + 8, sy - 18, 8);
       });
     });
+    const mtc = m.themes && m.themes.length ? C.THEMES[m.themes[0]].col : null, fl = c => mtc ? mix(c, mtc, 0.22) : c; // 층 주 테마 색조
     const dirK = e.directive, pathSet = new Set((e.path || []).slice(0, 14).map(p => p[1] * 100 + p[0]));
     const nearD = (x, y) => Math.max(Math.abs(x - e.pos.x), Math.abs(y - e.pos.y));
     for (let s = 0; s <= m.w + m.h - 2; s++) {
@@ -200,7 +228,8 @@ const Render = (function () {
         if (t === 0) { if (!tileImg('wall', sx, sy0)) { let wb = 0; if (m.hgt) for (const [ddx, ddy] of D8_) { const nx = gx + ddx, ny = gy + ddy; if (nx >= 0 && ny >= 0 && nx < m.w && ny < m.h && m.grid[ny][nx] !== 0) wb = Math.max(wb, m.hgt[ny][nx]); } mcube(sx, sy0, WALL_H + wb * HSTEP, '#e29a6b', '#bd6f47', '#8d4e33', true); } }
         else {
           const room = m.rid[gy][gx] >= 0, chk = (gx + gy) % 2;
-          if (!tileImg(room ? 'floor_room' : 'floor_corridor', sx, sy)) mcube(sx, sy0, FLOOR_H + el, room ? (chk ? '#d6cbb4' : '#cdc1a8') : '#c2b69b', '#8f8571', '#6e6556', false);
+          if (!tileImg(room ? 'floor_room' : 'floor_corridor', sx, sy)) mcube(sx, sy0, FLOOR_H + el, fl(room ? (chk ? '#d6cbb4' : '#cdc1a8') : '#c2b69b'), fl('#8f8571'), fl('#6e6556'), false);
+          { const zt = m.tz ? m.tz[gy][gx] : null; if (zt) { mdiamond(sx, sy, C.THEMES[zt].col + (zt === 'volcano' ? 'aa' : '99')); if ((gx + gy) % 3 === 0) emoji(C.THEMES[zt].icon, sx, sy - 4, 7); } }
           if (nearD(gx, gy) > 7) mdiamond(sx, sy, '#10203a55');
           if (t === 5) { if (!tileImg('stairs_down', sx, sy)) { mdiamond(sx, sy, '#4a3b8a'); emoji('⬇', sx, sy - 6, 12); } }
           else if (t === 6) { if (!tileImg('stairs_up', sx, sy)) emoji('⬆', sx, sy - 6, 11); }
