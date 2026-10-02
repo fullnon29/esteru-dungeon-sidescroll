@@ -1,0 +1,8 @@
+# 원작 분석 산출물(권리 문제) — 저장소에 올리지 않음
+ref/
+원작데이터_*.xlsx
+# 다른 프로젝트 / 백업 / 로컬 설정
+OSAM/
+*.bak
+.claude/settings.local.json
+node_modules/

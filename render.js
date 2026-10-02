@@ -1,0 +1,237 @@
+'use strict';
+/* 캔버스 렌더러 — 캠프 편성판 / 전투 무대 / 쿼터뷰 벽돌 미로. 상태 S 는 game.js 가 init 으로 넘겨준다. */
+const Render = (function () {
+  const C = Core;
+  let S, cv, ctx;
+  const W = 900, H = 520;
+  const TW = 76, TH = 38, OX = 450, OY = 110;
+  const iso = (gx, gy) => [OX + (gx - gy) * TW / 2, OY + (gx + gy) * TH / 2];
+  const EMOJI = '"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif';
+
+  function poly(pts, fill, stroke, lw) { ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw || 1; ctx.stroke(); } }
+  function shade(hex, k) {
+    const m = /^#([0-9a-f]{6})$/i.exec(hex); if (!m) return hex;
+    const n = parseInt(m[1], 16), f = v => Math.max(0, Math.min(255, Math.round(v * k)));
+    return '#' + [f(n >> 16 & 255), f(n >> 8 & 255), f(n & 255)].map(v => v.toString(16).padStart(2, '0')).join('');
+  }
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  function emoji(ch, x, y, sz) { ctx.font = `${sz}px ${EMOJI}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.fillText(ch, x, y); ctx.textBaseline = 'alphabetic'; }
+  function vignette(a) {
+    const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.95); g.addColorStop(0, '#00000000'); g.addColorStop(1, `rgba(0,0,0,${a})`);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+  function bgFill(kind, c0, c1) {
+    const im = Assets.get('backgrounds', kind);
+    if (im) { ctx.drawImage(im, 0, 0, W, H); return; }
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, c0); g.addColorStop(1, c1); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+
+  /* ---------- 이벤트 → 플로터 ---------- */
+  function procEvents(e) {
+    for (const v of e.events) {
+      if (v.k === 'dmg') S.floaters.push({ x: v.x, y: v.y, t: (v.crit ? '💥' : '') + (v.poison ? '☠' : '') + v.v, col: v.side === 'p' ? '#ff8a8a' : '#ffffff', age: 0, big: v.crit });
+      else if (v.k === 'miss') S.floaters.push({ x: v.x, y: v.y, t: 'MISS', col: '#9fb2ff', age: 0 });
+      else if (v.k === 'heal') S.floaters.push({ x: v.x, y: v.y, t: '+' + v.v, col: '#7cf0a0', age: 0 });
+      else if (v.k === 'fx') {
+        if (v.n) S.floaters.push({ x: v.from.x, y: v.from.y, t: v.n, col: '#ffd86b', age: 0, up: 28, big: true });
+        if (v.from && v.t === 'atk') { const [ax, ay] = iso(v.from.x, v.from.y), [bx, by] = iso(v.x, v.y), d = Math.hypot(bx - ax, by - ay) || 1; v.from.lx = (bx - ax) / d * 12; v.from.ly = (by - ay) / d * 12; v.from.lt = 0.18; }
+        if (v.t === 'fire' || v.t === 'skill' || v.t === 'heal') S.floaters.push({ x: v.x, y: v.y, t: v.t === 'fire' ? '🔥' : v.t === 'heal' ? '✨' : '⚡', col: '#fff', age: 0, fx: true });
+      }
+    }
+  }
+
+  /* ---------- 캠프 편성판 / 전투 무대 ---------- */
+  function boardEntities() {
+    const out = [];
+    if (S.exp && S.exp.battle) { S.exp.battle.units.forEach(c => { if (c.alive) out.push(c); }); return out; }
+    S.save.units.forEach(u => {
+      const p = S.save.formation[u.id]; if (!u.hired || !p) return;
+      const c = C.CLASSES[u.cls]; S._ents = S._ents || {};
+      let en = S._ents[u.id]; if (!en) en = S._ents[u.id] = { dx: p[0], dy: p[1] };
+      en.side = 'p'; en.name = u.name; en.icon = c.icon; en.color = c.color; en.x = p[0]; en.y = p[1]; en.size = 1; en.noBar = true; en.u = u; en.cost = c.cost; en.id = u.id; en.isLeader = u.id === S.save.policy.leader;
+      out.push(en);
+    });
+    return out;
+  }
+  function drawBoard(dt) {
+    const camp = !S.exp, hg = S.exp && S.exp.battle ? S.exp.battle.hgt : null, HST = 7;
+    const elAt = (x, y) => hg ? hg[clamp(Math.round(y), 0, 8)][clamp(Math.round(x), 0, 8)] * HST : 0;
+    bgFill(camp ? 'camp' : 'arena', '#1a1d29', '#0b0d13');
+    const floorNo = S.exp ? S.exp.floor : S.save.maxFloor;
+    ctx.fillStyle = '#ffffff0d'; ctx.font = '700 72px sans-serif'; ctx.textAlign = 'left'; ctx.fillText(`B${floorNo}F`, 24, 80);
+    const selId = S.dragId || S.sel, sel = camp && selId ? S.save.units.find(u => u.id === selId) : null;
+    for (let s = 0; s <= 16; s++) for (let gx = 0; gx < 9; gx++) {
+      const gy = s - gx; if (gy < 0 || gy > 8) continue;
+      const [sx, sy] = iso(gx, gy), mine = gy >= 5, foe = gy <= 3, alt = (gx + gy) % 2;
+      let top = alt ? '#2a2f3d' : '#252a37';
+      if (mine) top = gy <= 6 ? (alt ? '#2a3d5c' : '#263753') : (alt ? '#223049' : '#1e2a41'); else if (foe) top = alt ? '#3b2a31' : '#35262d';
+      let outline = '#00000055', lw = 1;
+      if (sel && C.zoneOk(sel.cls, gy)) { top = alt ? '#3d6396' : '#385c8d'; }
+      if (camp && S.hover && S.hover[0] === gx && S.hover[1] === gy) {
+        if (sel) { const ok = C.zoneOk(sel.cls, gy); top = ok ? '#6b9cf0' : '#a04a4a'; outline = ok ? '#cfe0ff' : '#ffb0b0'; lw = 2; }
+        else top = '#4d78b8';
+      }
+      const el = hg ? hg[gy][gx] * HST : 0, sy2 = sy - el;
+      if (hg && hg[gy][gx] > 0) top = shade(top, 1 + hg[gy][gx] * 0.07);
+      poly([[sx - TW / 2, sy2], [sx, sy2 + TH / 2], [sx, sy + TH / 2 + 9], [sx - TW / 2, sy + 9]], '#161922');
+      poly([[sx + TW / 2, sy2], [sx, sy2 + TH / 2], [sx, sy + TH / 2 + 9], [sx + TW / 2, sy + 9]], '#10121a');
+      poly([[sx, sy2 - TH / 2], [sx + TW / 2, sy2], [sx, sy2 + TH / 2], [sx - TW / 2, sy2]], top, outline, lw);
+      if (hg && hg[gy][gx] > 0) { ctx.fillStyle = '#ffffff55'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('▲'.repeat(hg[gy][gx]), sx, sy2 + 3); }
+    }
+    if (camp) {
+      ctx.font = '600 12px "Malgun Gothic",sans-serif'; ctx.textAlign = 'right'; ctx.fillStyle = '#8fb4f0';
+      let [lx, ly] = iso(0, 5.5); ctx.fillText('전열', lx - 44, ly + 4); [lx, ly] = iso(0, 7.5); ctx.fillText('후열', lx - 44, ly + 4);
+      ctx.fillStyle = '#c98b8b'; [lx, ly] = iso(8.4, 1.5); ctx.textAlign = 'left'; ctx.fillText('적 진영', lx + 44, ly + 4);
+    }
+    const ents = boardEntities();
+    ents.forEach(c => { if (c.dx === undefined) { c.dx = c.x; c.dy = c.y; } c.dx += (c.x - c.dx) * Math.min(1, dt * 9); c.dy += (c.y - c.dy) * Math.min(1, dt * 9); if (c.lt > 0) c.lt -= dt; });
+    ents.sort((a, b) => (a.dx + a.dy) - (b.dx + b.dy));
+    for (const c of ents) {
+      let [sx, sy] = iso(c.dx, c.dy); sy -= elAt(c.dx, c.dy); const r = 17 * (c.size || 1);
+      if (c.lt > 0) { sx += c.lx * (c.lt / 0.18); sy += c.ly * (c.lt / 0.18); }
+      const lifted = camp && S.dragId === c.id; if (lifted) ctx.globalAlpha = 0.35;
+      ctx.fillStyle = '#0007'; ctx.beginPath(); ctx.ellipse(sx, sy + 4, r * 0.9, r * 0.4, 0, 0, 7); ctx.fill();
+      const cy = sy - 12 - (c.size > 1 ? 8 : 0);
+      const img = c.u ? Assets.unit('sprites', c.u) : Assets.enemy(c);
+      if (img) { const h = 58 * (c.size || 1), w = img.width * h / img.height; ctx.drawImage(img, sx - w / 2, sy + 6 - h, w, h); }
+      else {
+        ctx.fillStyle = c.color; ctx.beginPath(); ctx.arc(sx, cy, r, 0, 7); ctx.fill();
+        ctx.lineWidth = 2.5; ctx.strokeStyle = c.side === 'p' ? '#8fc0ff' : '#ff8f8f'; ctx.stroke();
+        emoji(c.icon, sx, cy + 1, Math.round(20 * (c.size || 1)));
+      }
+      if (!c.noBar) { const w = 40 * (c.size || 1), p = Math.max(0, c.hp / c.maxhp); ctx.fillStyle = '#000a'; ctx.fillRect(sx - w / 2, cy - r - 10, w, 5); ctx.fillStyle = p < 0.25 ? '#ef6b6b' : p < 0.55 ? '#f0a34a' : '#6fd08c'; ctx.fillRect(sx - w / 2, cy - r - 10, w * p, 5); }
+      if (c.isLeader) { ctx.font = '13px sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffd86b'; ctx.fillText('★', sx - r + 2, cy - r + 2); }
+      if (c.poisoned) emoji('☠️', sx + r - 2, cy - r + 2, 12);
+      if (c.cost) { ctx.fillStyle = '#e2b659'; ctx.beginPath(); ctx.arc(sx + r - 2, cy + r - 4, 8, 0, 7); ctx.fill(); ctx.fillStyle = '#1b1608'; ctx.font = '700 11px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(c.cost, sx + r - 2, cy + r - 0.5); }
+      if (c.noBar || c.side === 'e') { ctx.font = '11px "Malgun Gothic",sans-serif'; ctx.fillStyle = '#d6dcee'; ctx.textAlign = 'center'; ctx.fillText(c.name, sx, sy + 22); }
+      ctx.globalAlpha = 1;
+    }
+    for (const f of S.floaters) {
+      f.age += dt; const [sx, sy] = iso(f.x, f.y), a = 1 - f.age / (f.fx ? 0.5 : 1.0); if (a <= 0) continue;
+      ctx.globalAlpha = Math.max(0, a); ctx.textAlign = 'center';
+      ctx.font = `${f.fx ? 26 : f.big ? 19 : 15}px ${EMOJI}`; ctx.lineWidth = 3; ctx.strokeStyle = '#000'; ctx.strokeText(f.t, sx, sy - 34 - f.age * 30 - (f.up || 0)); ctx.fillStyle = f.col; ctx.fillText(f.t, sx, sy - 34 - f.age * 30 - (f.up || 0));
+      ctx.globalAlpha = 1;
+    }
+    S.floaters = S.floaters.filter(f => f.age < 1.0);
+    vignette(0.45);
+  }
+
+  /* ---------- 쿼터뷰 벽돌 미로 (지3 탐사 화면) ---------- */
+  const MTW = 28, MTH = 14, MX = 338, MY = 46, WALL_H = 11, FLOOR_H = 3, ZOOM = 1.75;
+  const misoXY = (gx, gy) => [MX + (gx - gy) * MTW / 2, MY + (gx + gy) * MTH / 2];
+  const HSTEP = 4; let curM = null;
+  const elevAt = (x, y) => curM && curM.hgt ? curM.hgt[clamp(Math.round(y), 0, curM.h - 1)][clamp(Math.round(x), 0, curM.w - 1)] * HSTEP : 0;
+  const misoXYe = (gx, gy) => { const p = misoXY(gx, gy); return [p[0], p[1] - elevAt(gx, gy)]; };
+  let bgCanvas = null, camXY = [338, 150];
+  function makeBG() {
+    const c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
+    const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#5e93e0'); g.addColorStop(0.55, '#b9d6f7'); g.addColorStop(1, '#e8f1fb'); x.fillStyle = g; x.fillRect(0, 0, W, H);
+    x.fillStyle = '#ffffffaa'; for (let i = 0; i < 14; i++) { const cx = (i * 163 + 40) % W, cy = 30 + (i * 71) % 190; for (let k = 0; k < 4; k++) { x.beginPath(); x.ellipse(cx + k * 22, cy + (k % 2) * 6, 38, 12, 0, 0, 7); x.fill(); } }
+    const mount = (base, col, seed) => { x.fillStyle = col; x.beginPath(); x.moveTo(0, H); let px = 0; for (let i = 0; i <= 12; i++) { const h = 90 + ((i * seed * 37) % 110); x.lineTo(px, base - h); px += W / 12; } x.lineTo(W, H); x.fill(); };
+    mount(360, '#5c6f93', 7); mount(400, '#4a5a7a', 11);
+    x.fillStyle = '#ffffffcc'; for (let i = 0; i < 9; i++) { const px = 40 + i * 105, py = 205 + (i * 37) % 90; x.beginPath(); x.moveTo(px, py); x.lineTo(px + 20, py + 38); x.lineTo(px - 20, py + 38); x.fill(); }
+    const m2 = x.createLinearGradient(0, 380, 0, H); m2.addColorStop(0, '#6fae48'); m2.addColorStop(1, '#3f7a2c'); x.fillStyle = m2; x.beginPath(); x.moveTo(0, 470); x.quadraticCurveTo(300, 360, 900, 520); x.lineTo(900, 520); x.lineTo(0, 520); x.fill();
+    x.fillStyle = '#00000014'; x.fillRect(0, 0, W, H);
+    return c;
+  }
+  function mcube(sx, sy, h, top, left, right, brick) {
+    const hw = MTW / 2, hh = MTH / 2;
+    poly([[sx - hw, sy - h], [sx, sy - h + hh], [sx, sy + hh], [sx - hw, sy]], left, '#00000033');
+    poly([[sx + hw, sy - h], [sx, sy - h + hh], [sx, sy + hh], [sx + hw, sy]], right, '#00000033');
+    poly([[sx, sy - h - hh], [sx + hw, sy - h], [sx, sy - h + hh], [sx - hw, sy - h]], top, '#00000033');
+    if (brick) { ctx.strokeStyle = '#00000040'; ctx.lineWidth = 1; for (const k of [0.35, 0.68]) { const o = h * k; ctx.beginPath(); ctx.moveTo(sx - hw, sy - o); ctx.lineTo(sx, sy - o + hh); ctx.lineTo(sx + hw, sy - o); ctx.stroke(); } }
+  }
+  function mdiamond(sx, sy, fill, stroke, pad) { const p = pad || 0; poly([[sx, sy - FLOOR_H - MTH / 2 - p], [sx + MTW / 2 + p, sy - FLOOR_H], [sx, sy - FLOOR_H + MTH / 2 + p], [sx - MTW / 2 - p, sy - FLOOR_H]], fill, stroke, 1.5); }
+  function tileImg(name, sx, sy) { const im = Assets.get('tiles', name); if (!im) return false; const w = MTW * 1.0, h = im.height * w / im.width; ctx.drawImage(im, sx - w / 2, sy + MTH / 2 - h, w, h); return true; }
+  function objImg(name, sx, sy, sz) { const im = Assets.get('objects', name); if (!im) return false; const w = sz, h = im.height * w / im.width; ctx.drawImage(im, sx - w / 2, sy - h + 2, w, h); return true; }
+  const D8_ = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+  function drawMaze(dt) {
+    const e = S.exp, m = e.map; curM = m;
+    const bgi = Assets.get('backgrounds', 'maze');
+    if (bgi) ctx.drawImage(bgi, 0, 0, W, H); else { if (!bgCanvas) bgCanvas = makeBG(); ctx.drawImage(bgCanvas, 0, 0); }
+    e.ents = e.ents || {}; e.cam = e.cam || { x: e.pos.x, y: e.pos.y };
+    if (Math.abs(e.cam.x - e.pos.x) > 8 || Math.abs(e.cam.y - e.pos.y) > 8) { e.cam.x = e.pos.x; e.cam.y = e.pos.y; }
+    e.cam.x += (e.pos.x - e.cam.x) * Math.min(1, dt * 4); e.cam.y += (e.pos.y - e.cam.y) * Math.min(1, dt * 4);
+    camXY = misoXY(e.cam.x, e.cam.y);
+    ctx.save(); ctx.translate(450, 280); ctx.scale(ZOOM, ZOOM); ctx.translate(-camXY[0], -camXY[1]);
+    const alive = e.party.filter(u => u.hp > 0);
+    alive.forEach((u, i) => {
+      const tgt = i === 0 ? e.pos : (e.trail[i - 1] || e.pos); let en = e.ents[u.id];
+      if (!en) en = e.ents[u.id] = { dx: tgt.x, dy: tgt.y };
+      if (Math.abs(en.dx - e.pos.x) > 6 || Math.abs(en.dy - e.pos.y) > 6) { en.dx = tgt.x; en.dy = tgt.y; }
+      en.dx += (tgt.x - en.dx) * Math.min(1, dt * 11); en.dy += (tgt.y - en.dy) * Math.min(1, dt * 11);
+    });
+    const buckets = {}, put = (gx, gy, fn) => { const k = Math.round(gx + gy); (buckets[k] = buckets[k] || []).push(fn); };
+    m.chests.forEach(c => { if (m.seen[c.y][c.x]) put(c.x, c.y, () => { const [sx, sy] = misoXYe(c.x, c.y); ctx.globalAlpha = c.open ? 0.4 : 1; if (!objImg(c.open ? 'chest_open' : (c.big ? 'chest_big' : 'chest'), sx, sy, 22)) emoji(c.big ? '🎁' : '📦', sx, sy - 8, 15); ctx.globalAlpha = 1; }); });
+    m.traps.forEach(t => { if (t.found && !t.gone) put(t.x, t.y, () => { const [sx, sy] = misoXYe(t.x, t.y); if (!objImg('trap', sx, sy, 18)) emoji('⚠️', sx, sy - 6, 13); }); });
+    m.springs.forEach(sp => { if (m.seen[sp.y][sp.x]) put(sp.x, sp.y, () => { const [sx, sy] = misoXYe(sp.x, sp.y); ctx.globalAlpha = sp.used ? 0.4 : 1; if (!objImg('spring', sx, sy, 22)) emoji('⛲', sx, sy - 8, 15); ctx.globalAlpha = 1; }); });
+    m.groups.forEach(g => { if (g.alive && m.seen[g.y][g.x]) put(g.x, g.y, () => {
+      const [sx, sy] = misoXYe(g.x, g.y), r = g.boss ? 11 : 8;
+      mdiamond(sx, sy, g.boss ? '#5a0f1f' : (g.golden ? '#4a3600' : (g.elite ? '#3a1250' : (g.special ? '#102a40' : '#111'))), g.boss ? '#ff5a6a' : (g.golden ? '#ffd24a' : (g.elite ? '#c77dff' : (g.special ? '#6ab0ff' : '#000'))), g.golden ? 1 + Math.sin(S.time * 5) : 0);
+      const eimg = g.boss ? Assets.get('sprites', 'boss' + e.floor) : Assets.get('sprites', g.tpls[0]);
+      if (eimg) { const h = g.boss ? 30 : 22, w = eimg.width * h / eimg.height; ctx.drawImage(eimg, sx - w / 2, sy - h + 4, w, h); }
+      else { ctx.fillStyle = '#000a'; ctx.beginPath(); ctx.arc(sx, sy - 11, r, 0, 7); ctx.fill(); emoji(g.icon, sx, sy - 11, g.boss ? 17 : 12); }
+      if (g.elite) emoji('☠️', sx + 8, sy - 19, 10);
+      if (g.special) emoji('❗', sx + 8, sy - 19, 10);
+      if (g.golden) emoji('✨', sx + 8, sy - 19 + Math.sin(S.time * 6) * 1.5, 11);
+      if (g.tpls.length > 1) { ctx.fillStyle = '#d33'; ctx.beginPath(); ctx.arc(sx + 8, sy - 19, 5, 0, 7); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(g.tpls.length, sx + 8, sy - 16); }
+    }); });
+    alive.slice().reverse().forEach((u, k) => {
+      const en = e.ents[u.id], lead = u === alive[0], cl = C.CLASSES[u.cls];
+      put(en.dx, en.dy, () => {
+        const [sx, sy] = misoXYe(en.dx, en.dy), bob = S.paused ? 0 : Math.abs(Math.sin(S.time * 9 + k)) * 2;
+        ctx.fillStyle = '#0005'; ctx.beginPath(); ctx.ellipse(sx, sy - 1, 8, 3.5, 0, 0, 7); ctx.fill();
+        const img = Assets.unit('sprites', u);
+        if (img) { const h = 26, w = img.width * h / img.height; ctx.drawImage(img, sx - w / 2, sy + 1 - h - bob, w, h); if (lead) { ctx.strokeStyle = '#ff3b3b'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(sx, sy, 9, 4, 0, 0, 7); ctx.stroke(); } }
+        else {
+          ctx.fillStyle = cl.color; ctx.beginPath(); ctx.arc(sx, sy - 10 - bob, 8, 0, 7); ctx.fill();
+          ctx.lineWidth = lead ? 2.5 : 1.5; ctx.strokeStyle = lead ? '#ff3b3b' : '#e6ecff'; ctx.stroke();
+          emoji(cl.icon, sx, sy - 10 - bob, 11);
+        }
+        if (u.poison) emoji('☠️', sx + 8, sy - 18, 8);
+      });
+    });
+    const dirK = e.directive, pathSet = new Set((e.path || []).slice(0, 14).map(p => p[1] * 100 + p[0]));
+    const nearD = (x, y) => Math.max(Math.abs(x - e.pos.x), Math.abs(y - e.pos.y));
+    for (let s = 0; s <= m.w + m.h - 2; s++) {
+      for (let gx = Math.max(0, s - m.h + 1); gx <= Math.min(m.w - 1, s); gx++) {
+        const gy = s - gx; if (!m.seen[gy][gx]) continue;
+        const t = m.grid[gy][gx], [sx, sy0] = misoXY(gx, gy), el = m.hgt ? m.hgt[gy][gx] * HSTEP : 0, sy = sy0 - el;
+        if (t === 0) { if (!tileImg('wall', sx, sy0)) { let wb = 0; if (m.hgt) for (const [ddx, ddy] of D8_) { const nx = gx + ddx, ny = gy + ddy; if (nx >= 0 && ny >= 0 && nx < m.w && ny < m.h && m.grid[ny][nx] !== 0) wb = Math.max(wb, m.hgt[ny][nx]); } mcube(sx, sy0, WALL_H + wb * HSTEP, '#e29a6b', '#bd6f47', '#8d4e33', true); } }
+        else {
+          const room = m.rid[gy][gx] >= 0, chk = (gx + gy) % 2;
+          if (!tileImg(room ? 'floor_room' : 'floor_corridor', sx, sy)) mcube(sx, sy0, FLOOR_H + el, room ? (chk ? '#d6cbb4' : '#cdc1a8') : '#c2b69b', '#8f8571', '#6e6556', false);
+          if (nearD(gx, gy) > 7) mdiamond(sx, sy, '#10203a55');
+          if (t === 5) { if (!tileImg('stairs_down', sx, sy)) { mdiamond(sx, sy, '#4a3b8a'); emoji('⬇', sx, sy - 6, 12); } }
+          else if (t === 6) { if (!tileImg('stairs_up', sx, sy)) emoji('⬆', sx, sy - 6, 11); }
+          else if (t === 3) { if (!tileImg('door', sx, sy)) emoji('🚪', sx, sy - 8, 14); }
+          else if (t === 4) { if (!tileImg('lock', sx, sy)) emoji('🔒', sx, sy - 8, 13); }
+          if (pathSet.has(gy * 100 + gx)) { ctx.fillStyle = '#ffe27a'; ctx.beginPath(); ctx.arc(sx, sy - FLOOR_H, 2, 0, 7); ctx.fill(); }
+          if (dirK && dirK.x === gx && dirK.y === gy) mdiamond(sx, sy, null, '#ffd24a', 2 + Math.sin(S.time * 6) * 1.5);
+          if (S.hover && S.hover[0] === gx && S.hover[1] === gy) mdiamond(sx, sy, '#ffffff44', '#fff');
+        }
+      }
+      (buckets[s] || []).forEach(fn => fn());
+    }
+    ctx.restore();
+  }
+
+  /* ---------- 공개 ---------- */
+  function mouse(ev) { const r = cv.getBoundingClientRect(); return [(ev.clientX - r.left) * W / r.width, (ev.clientY - r.top) * H / r.height]; }
+  function cellAt(ev) {
+    const [mx, my] = mouse(ev), dx = (mx - OX) / (TW / 2), dy = (my - OY) / (TH / 2), gx = Math.round((dx + dy) / 2), gy = Math.round((dy - dx) / 2);
+    return gx >= 0 && gy >= 0 && gx < 9 && gy < 9 ? [gx, gy] : null;
+  }
+  function mazeTile(ev) {
+    const [px, py] = mouse(ev), mx = (px - 450) / ZOOM + camXY[0], my = (py - 280) / ZOOM + camXY[1];
+    const dx = (mx - MX) / (MTW / 2), dy = (my + 3 - MY) / (MTH / 2), gx = Math.round((dx + dy) / 2), gy = Math.round((dy - dx) / 2);
+    return gx >= 0 && gy >= 0 && gx < C.MW && gy < C.MH ? [gx, gy] : null;
+  }
+  function draw(dt) {
+    S.time += dt;
+    ctx.clearRect(0, 0, W, H);
+    if (S.exp && !S.exp.battle) { drawMaze(dt); vignette(0.25); } else drawBoard(dt);
+  }
+  function init(state, canvas) { S = state; cv = canvas; ctx = cv.getContext('2d'); }
+  return { init, draw, cellAt, mazeTile, procEvents, W, H };
+})();

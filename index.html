@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>에스테르의 미궁 - 50층 자동 탐사</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand"><span class="logo" id="logo">⚔️</span><div><h1>에스테르의 미궁</h1><small>50층 자동 탐사 시뮬레이션</small></div></div>
+    <div id="stats" class="stats" aria-label="자원 현황"></div>
+    <div class="top-actions">
+      <button class="icon-btn" data-act="help" title="도움말 / 튜토리얼" aria-label="도움말">?</button>
+      <button class="icon-btn" data-act="settings" title="설정" aria-label="설정">⚙</button>
+      <button class="cta" id="sortieBtn" data-act="sortie-open">🚪 출격 준비</button>
+    </div>
+  </header>
+  <main>
+    <section id="stage" aria-label="전장">
+      <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="cv" width="900" height="520"></canvas>
+        <div id="floorBanner" class="floor-banner" aria-hidden="true"></div>
+        <div id="hudTop" class="hud-top hidden"></div>
+        <div id="toolbar" class="toolbar hidden"></div>
+        <div id="itemPop" class="item-pop hidden"></div>
+        <div id="toasts" class="toasts" aria-live="polite"></div>
+        <div id="partyStrip" class="party-strip hidden"></div>
+        <div id="campHint" class="camp-hint"></div>
+      </div>
+      <div id="stageBar" class="stage-bar"></div>
+    </section>
+    <aside id="side" aria-label="관리 패널">
+      <nav id="sideTabs" class="side-tabs" role="tablist"></nav>
+      <div id="sideBody" class="side-body"></div>
+    </aside>
+  </main>
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true"></div>
+  <div id="dragGhost" class="drag-ghost hidden"></div>
+</div>
+<script src="assets/manifest.js"></script>
+<script src="assets.js"></script>
+<script src="core.js"></script>
+<script src="render.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
