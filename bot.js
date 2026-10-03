@@ -83,7 +83,7 @@ function runBot(opts) {
   while (!s.cleared && runs < opts.maxRuns) {
     runs++;
     hirePass(); shop(); if (opts.craft) craftPass(); if (opts.promo) promoPass();
-    C.autoEquip(s, { idle: true }); formParty(); squadPass();
+    C.autoEquip(s, { idle: true }); C.sellAllGear(s, C.SELL_RATE.shop); formParty(); squadPass(); // 남은 장비는 판매
     // 급료는 편성 확정 후 지불, 요리사가 있으면 자동 보급 / 없으면 40개까지 보충
     const wage = C.sortieWage(s); if (s.gold < wage) { s.gold += wage; } // 파산 방지(봇 전용)
     s.gold -= wage;

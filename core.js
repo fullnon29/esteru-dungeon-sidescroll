@@ -257,7 +257,8 @@ const Core = (function () {
   // food: perStep=이동 1칸·1명당 소모, price=개당 가격, yield=[기본, 층당] 식용 몹 처치 시 식량(요리사 동행), start=새 게임 식량
   // fatigue: rest=휴식 용병 귀환 회복, work=출전 용병 귀환 회복, death=전투불능 시 감소, starve=식량 0 이동당 피로 감소
   // pace: 게임 진행 속도의 기본 배율 역수(1=기본). 클수록 모든 배속에서 느려진다(플레이 시간 조정용)
-  const TUNE = { pace: 13, food: { perStep: 0.012, price: 6, yield: [0.4, 0.03], start: 20 }, fatigue: { rest: 25, work: 5, death: 25, starve: 0.25, cook: 2 }, expScale: 4, growHp: 0.035, growAtk: 0.12, growDef: 0.30, eHp: 0.30, eAtk: 0.12, eDef: 0.15, eHp10: 0.18, eAtk10: 0.13 };
+  // goldMul: 탐사(몬스터·상자·몬스터 하우스)로 얻는 골드 배율. 전리품 판매(상점·행상인)로 보충한다
+  const TUNE = { goldMul: 0.4, pace: 13, food: { perStep: 0.012, price: 6, yield: [0.4, 0.03], start: 20 }, fatigue: { rest: 25, work: 5, death: 25, starve: 0.25, cook: 2 }, expScale: 4, growHp: 0.035, growAtk: 0.12, growDef: 0.30, eHp: 0.30, eAtk: 0.12, eDef: 0.15, eHp10: 0.18, eAtk10: 0.13 };
   const needExp = lv => Math.max(1, Math.round((EXP_CUM[Math.min(lv + 1, 50)] - EXP_CUM[lv]) * TUNE.expScale));
   // 적 1마리 경험치: 원작 일반 적 EXP 2(1층) → 약 1700(후반) 의 지수 곡선
   const enemyExp = (f, boss) => Math.round(2 * Math.pow(850, (f - 1) / 49) * (boss ? 8 + 20 * f / 50 : 1));
@@ -289,6 +290,12 @@ const Core = (function () {
     const buy = Math.min(need, Math.floor(avail / TUNE.food.price));
     return { target, need, buy, cost: buy * TUNE.food.price, short: buy < need };
   }
+  // 전리품 판매(상점 50% · 행상인 70%): 탐사 골드가 줄어든 만큼 장비·재료를 팔아 보충한다
+  const SELL_RATE = { shop: 0.5, merchant: 0.7 }, MAT_PRICE = { common: 5, elite: 22, boss: 100, terrain: 15 };
+  const matPrice = id => MAT_PRICE[matKind(id)] || 5, gearSellPrice = (id, rate) => Math.max(1, Math.floor((ITEMS[id] ? ITEMS[id].price : 0) * rate));
+  function sellGear(s, idx, rate) { const id = s.gear[idx]; if (!id) return 0; const g = gearSellPrice(id, rate); s.gold += g; s.gear.splice(idx, 1); return g; }
+  function sellAllGear(s, rate) { let g = 0; while (s.gear.length) g += sellGear(s, s.gear.length - 1, rate); return g; }
+  function sellMat(s, id, n, rate) { const have = Math.floor(s.mats[id] || 0), k = Math.min(have, n === 'all' ? have : n); if (k <= 0) return 0; const g = Math.floor(matPrice(id) * k * rate); addMats(s.mats, id, -k); s.gold += g; return g; }
   const PROMO_PRICE = 2500;
   function buyPromo(s) { if (s.gold < PROMO_PRICE) return false; s.gold -= PROMO_PRICE; s.promo = (s.promo || 0) + 1; return true; }
   function buyFood(s, n) { const c = n * TUNE.food.price; if (s.gold < c) return false; s.gold -= c; s.food = Math.round((s.food + n) * 100) / 100; return true; }
@@ -648,7 +655,7 @@ const Core = (function () {
       abil: t.abil || [], abilTxt: (t.abil || []).map(k => ABIL_ICON[k]).join(''), threat: {}, curTgt: null, canRevive: (t.abil || []).includes('revive') && (boss || t.id === 'lich' || Math.random() < 0.4),
       x, y, dx: x, dy: y, hp, maxhp: hp, atk: Math.round((boss ? 20 : t.atk) * scaleAtk(f) * am * (mod.atk || 1)), def: Math.round((boss ? 8 : t.def) * scaleDef(f) * dm * (mod.def || 1)),
       spd: t.spd, eva: 0, range: t.range, magic: !!t.magic, poison: t.poison || 0, skills: t.skills || null, gauge: rnd(0, 6), alive: true, guard: 0,
-      exp: Math.round(enemyExp(f, boss) * (t.expMul || 1) * (mod.exp || 1)), gold: Math.round((5 + f * 2) * (boss ? 8 : 1) * (t.goldMul || 1) * (mod.gold || 1)), size: boss ? 1.5 : 1,
+      exp: Math.round(enemyExp(f, boss) * (t.expMul || 1) * (mod.exp || 1)), gold: Math.round((5 + f * 2) * (boss ? 8 : 1) * (t.goldMul || 1) * (mod.gold || 1) * TUNE.goldMul), size: boss ? 1.5 : 1,
     };
   }
   // 고저차: 전투 무대 9×9 에 0~3 단의 언덕을 무작위로 만든다 (높은 쪽이 낮은 쪽을 공격하면 +6%/단, 최대 ±3단)
@@ -827,11 +834,11 @@ const Core = (function () {
         const n = Math.round((Y[0] + Y[1] * b.floor) * (c.boss ? 4 : c.elite ? 1.5 : 1) * (c.premium ? 2 : 1) * (c.edible === 'poison' ? 0.8 : 1) * 100) / 100;
         s.food = Math.round((s.food + n) * 100) / 100; b.foodGain = (b.foodGain || 0) + n;
       }
-      if (Math.random() < (c.boss ? 1 : 0.1)) { const id = dropItem(b.floor, { party: e.party, luck: partyLuck(e.party), kind: c.boss ? 'boss' : c.elite ? 'elite' : null }); if (ITEMS[id].legend || ITEMS[id].gen) registerLegend(s, id); e.loot.items.push(id); ev(b, { k: 'log', m: `🎁 ${ITEMS[id].name} 획득`, c: 'good' }); }
+      if (Math.random() < (c.boss ? 1 : 0.1)) { const id = dropItem(b.floor, { party: e.party, luck: partyLuck(e.party), kind: c.boss ? 'boss' : c.elite ? 'elite' : null }); if (ITEMS[id].legend || ITEMS[id].gen) registerLegend(s, id); e.loot.items.push(id); legendBan(e, id); ev(b, { k: 'log', m: `🎁 ${ITEMS[id].name} 획득`, c: 'good' }); }
       questEvent(s, 'hunt', c.fam, (m, cl) => ev(b, { k: 'log', m, c: cl }));
-      if (c.elite && Math.random() < 0.6) { const id = dropItem(b.floor, { party: e.party, luck: partyLuck(e.party), kind: 'elite' }); if (ITEMS[id].legend || ITEMS[id].gen) registerLegend(s, id); e.loot.items.push(id); ev(b, { k: 'log', m: `☠️ 정예 몹 전리품: ${ITEMS[id].name}`, c: 'good' }); }
+      if (c.elite && Math.random() < 0.6) { const id = dropItem(b.floor, { party: e.party, luck: partyLuck(e.party), kind: 'elite' }); if (ITEMS[id].legend || ITEMS[id].gen) registerLegend(s, id); e.loot.items.push(id); legendBan(e, id); ev(b, { k: 'log', m: `☠️ 정예 몹 전리품: ${ITEMS[id].name}`, c: 'good' }); }
       if (c.golden) {
-        const id = dropItem(b.floor, { party: e.party, luck: partyLuck(e.party) }); if (ITEMS[id].legend || ITEMS[id].gen) registerLegend(s, id); e.loot.items.push(id);
+        const id = dropItem(b.floor, { party: e.party, luck: partyLuck(e.party) }); if (ITEMS[id].legend || ITEMS[id].gen) registerLegend(s, id); e.loot.items.push(id); legendBan(e, id);
         e.bless = 4; e.goldenKills = (e.goldenKills || 0) + 1;
         ev(b, { k: 'log', m: `✨ ${c.name} 처치! 경험치 ${c.exp} · ${ITEMS[id].name} 획득 · 황금의 축복(3회 전투 공·방 +15%)`, c: 'good' });
       }
@@ -862,7 +869,7 @@ const Core = (function () {
     c.u.charges[sid] = (c.u.charges[sid] || 0) - 1;
     if (!(c.u.learned || []).includes(sid)) {
       c.u.mastery[sid] = (c.u.mastery[sid] || 0) + 1;
-      if (c.u.mastery[sid] >= SKILLS[sid].master) { c.u.learned.push(sid); c.u.charges[sid] = (c.u.charges[sid] || 0) + 1; ev(c.b, { k: 'log', m: `📖 ${c.u.name}이(가) [${SKILLS[sid].name}]을(를) 완전히 습득했다! — ${describeSkill(sid)} · 장비를 벗어도 쓸 수 있고 전투당 횟수 +1`, c: 'good' }); ev(c.b, { k: 'learn', x: c.x, y: c.y, who: c.u.name, n: SKILLS[sid].name, d: describeSkill(sid) }); }
+      if (c.u.mastery[sid] >= SKILLS[sid].master) { c.u.learned.push(sid); c.u.charges[sid] = (c.u.charges[sid] || 0) + 1; ev(c.b, { k: 'log', m: `📖 ${c.u.name}이(가) [${SKILLS[sid].name}]을(를) 완전히 습득했다! — ${describeSkill(sid)} · 장비를 벗어도 쓸 수 있고 전투당 횟수 +1`, c: 'good' }); ev(c.b, { k: 'learn', x: c.x, y: c.y, who: c.u.name, n: SKILLS[sid].name, d: describeSkill(sid) }); ev(c.b, { k: 'banner', icon: '📖', name: '스킬 습득!', sub: `${c.u.name} — [${SKILLS[sid].name}] ${describeSkill(sid)}`, c: 'good', force: true, dur: 2200 }); }
     }
   }
   // 범위 스킬 시각화: 닿는 칸 목록 + 색 (불=주황 / 얼음=파랑 / 번개=노랑 / 신성=금 / 회복=초록). big=범위 마법 → 화면 흔들림
@@ -1164,12 +1171,13 @@ const Core = (function () {
     const names = e.battle.units.filter(c => c.side === 'e').map(c => c.name + (c.abilTxt || ''));
     elog(e, g.boss ? `⚔️ 수호자 출현! ${names[0]} 외 ${names.length - 1}` : `⚔️ 적과 조우: ${names.join(', ')}`, g.boss ? 'warn' : '');
     if (g.boss) ban(e, '⚔️', '수호자 출현!', names[0], 'bad');
+    ban(e, '⚔️', '전투 시작!', `적 ${names.length}기`, '', { force: true, dur: 900 });
   }
   function openChest(e, big) {
-    const f = e.floor, g = Math.round(rnd(0.8, 1.4) * (30 + f * 15) * (big ? 2 : 1));
+    const f = e.floor, g = Math.round(rnd(0.8, 1.4) * (30 + f * 15) * (big ? 2 : 1) * TUNE.goldMul);
     e.loot.gold += g; e.chests++;
     let m = `📦 ${big ? '큰 ' : ''}보물상자! ${g}G`;
-    if (Math.random() < (big ? 0.8 : 0.35)) { const id = dropItem(f, { party: e.party, luck: partyLuck(e.party) }); if (ITEMS[id].legend || ITEMS[id].gen) registerLegend(e.save, id); e.loot.items.push(id); m += ` + ${ITEMS[id].name}`; }
+    if (Math.random() < (big ? 0.8 : 0.35)) { const id = dropItem(f, { party: e.party, luck: partyLuck(e.party) }); if (ITEMS[id].legend || ITEMS[id].gen) registerLegend(e.save, id); e.loot.items.push(id); legendBan(e, id); m += ` + ${ITEMS[id].name}`; }
     if (Math.random() < 0.3) { const k = pick(['potion', 'potion', 'antidote', 'elixir']); e.save.cons[k] = (e.save.cons[k] || 0) + 1; m += ` + ${CONS[k].name}`; }
     if (Math.random() < (big ? 0.12 : 0.05)) { e.loot.tickets = (e.loot.tickets || 0) + 1; m += ' + 🎫출현변경권'; }
     elog(e, m, 'good'); ban(e, big ? '🎁' : '📦', big ? '큰 보물상자!' : '보물상자', m.replace(/^📦 (큰 )?보물상자! /, ''), 'good'); questEvent(e.save, 'chest', null, (mm, c) => elog(e, mm, c)); cqCheck(e);
@@ -1286,9 +1294,16 @@ const Core = (function () {
       }
     }
   }
-  function descend(e) { e.floor++; for (const u of e.party) if (u.hp > 0) u.hp = Math.min(stats(u).hp, u.hp + Math.round(stats(u).hp * 0.05)); setFloor(e, e.floor); }
+  // 기술 사용 횟수 회복: 층을 넘어갈 때와 던전 중앙의 휴식소에서. 후열 합주(조합 보너스)의 +횟수는 유지한다.
+  function refillCharges(e) { e.party.forEach(u => { resetCharges(u); if (e.combo && e.combo.skillUses) for (const k in u.charges) u.charges[k] += e.combo.skillUses; }); }
+  function descend(e) {
+    e.floor++; for (const u of e.party) if (u.hp > 0) u.hp = Math.min(stats(u).hp, u.hp + Math.round(stats(u).hp * 0.05)); setFloor(e, e.floor);
+    refillCharges(e); elog(e, '🔋 층을 넘어 기술 사용 횟수가 회복되었다', 'good');
+  }
   /* ---------- 이벤트: 행상인 · 뽑기방 · 특수 동료 의뢰 · 기습 (+ 모든 이벤트는 중앙 배너로 알림) ---------- */
-  const ban = (e, icon, name, sub, kind) => { e.events.push({ k: 'banner', icon, name, sub: sub || '', c: kind || '' }); };
+  // 중앙 배너: 기본은 부정 효과(kind 'bad')만 화면에 뜬다. o.force=항상 표시, o.prio=진행 중인 배너를 끊고 즉시 표시, o.dur=표시 시간(ms)
+  const ban = (e, icon, name, sub, kind, o) => { o = o || {}; e.events.push({ k: 'banner', icon, name, sub: sub || '', c: kind || '', force: !!o.force, prio: !!o.prio, dur: o.dur }); };
+  const legendBan = (e, id) => { const i = ITEMS[id]; if (i && (i.rarity === 'L' || i.legend)) ban(e, '🌟', '전설 장비 획득!', i.name, 'good', { force: true, dur: 2000 }); }; // 전설 등급 이상만 중앙 표기
   const COMPANIONS = [
     { name: '리벨', cls: 'warrior', rar: 'H', q: 'kills', need: 20, intro: '떠돌이 검사 리벨이 길동무를 찾고 있다.' },
     { name: '아이린', cls: 'priest', rar: 'H', q: 'chests', need: 3, intro: '순례 중인 사제 아이린이 호위를 부탁한다.' },
@@ -1300,15 +1315,19 @@ const Core = (function () {
     { name: '로제', cls: 'elf', rar: 'L', q: 'chests', need: 6, intro: '숲의 궁수 로제가 보물을 찾아 달라고 한다.' },
   ];
   const QDESC = { kills: n => `이 원정 중 몬스터 ${n}마리 처치`, chests: n => `이 원정 중 보물상자 ${n}개 열기`, flawless: n => `전투불능 없이 ${n}회 승리` };
+  const tileBusy = (m, x, y) => m.chests.some(c => c.x === x && c.y === y) || m.traps.some(c => c.x === x && c.y === y) || m.springs.some(c => c.x === x && c.y === y) || m.groups.some(c => c.x === x && c.y === y) || (m.events || []).some(c => c.x === x && c.y === y) || (m.stairs.x === x && m.stairs.y === y);
   function randRoomTile(e) {
-    const m = e.map, cand = m.rooms.filter(r => r.id !== 0 && !m.vaults.includes(r.id));
-    const busy = (x, y) => m.chests.some(c => c.x === x && c.y === y) || m.traps.some(c => c.x === x && c.y === y) || m.springs.some(c => c.x === x && c.y === y) || m.groups.some(c => c.x === x && c.y === y) || (m.events || []).some(c => c.x === x && c.y === y) || (m.stairs.x === x && m.stairs.y === y);
+    const m = e.map, cand = m.rooms.filter(r => r.id !== 0 && !m.vaults.includes(r.id)), busy = (x, y) => tileBusy(m, x, y);
     for (let k = 0; k < 80 && cand.length; k++) { const r = pick(cand), x = ri(r.x, r.x + r.w - 1), y = ri(r.y, r.y + r.h - 1); if (!busy(x, y)) return { x, y }; }
     return null;
   }
   function placeEvents(e) { // 층마다 확률적으로 이벤트 장소 배치 (행상인 / 뽑기방 / 특수 동료 의뢰인)
     const f = e.floor, s = e.save, list = (e.map.events = []);
     const add = type => { const p = randRoomTile(e); if (p) list.push({ type, x: p.x, y: p.y, used: false }); };
+    { // 던전 중앙의 휴식소: 가장 중앙에 가까운 방에 항상 하나 — 들어가면 기술 사용 횟수가 회복된다
+      const mm = e.map, sr0 = mm.rid[mm.stairs.y][mm.stairs.x], cr = mm.rooms.filter(r => r.id !== 0 && r.id !== sr0 && !mm.vaults.includes(r.id)).sort((a, b) => Math.hypot(a.cx - MW / 2, a.cy - MH / 2) - Math.hypot(b.cx - MW / 2, b.cy - MH / 2))[0];
+      if (cr && !tileBusy(mm, cr.cx, cr.cy)) list.push({ type: 'rest', x: cr.cx, y: cr.cy, used: false });
+    }
     if (f >= 2 && Math.random() < 0.5) add('merchant');
     if (f >= 3 && Math.random() < 0.4) add('gacha');
     if (f >= 3 && Object.keys(s.comp || {}).length < COMPANIONS.length && !e.cq && Math.random() < 0.25) add('companion');
@@ -1322,13 +1341,13 @@ const Core = (function () {
     e.map.groups.push(g); ban(e, '🏚️', '몬스터 하우스!', `방 안에 몬스터 ${n}기가 가득 차 있었다`, 'bad'); elog(e, `🏚️ 몬스터 하우스! 방 안에서 몬스터 ${n}기가 쏟아져 나온다`, 'bad'); startBattle(e, g);
   }
   function houseReward(e) { // 제압 보상: 골드 대량 + 장비 2개(정예급) + 정예 재료
-    const f = e.floor, L = e.loot; L.mats = L.mats || {}; const g = f * 60 + 120; L.gold += g;
+    const f = e.floor, L = e.loot; L.mats = L.mats || {}; const g = Math.round((f * 60 + 120) * TUNE.goldMul); L.gold += g;
     const got = [`${g}G`];
-    for (let i = 0; i < 2; i++) { const id = dropItem(f, { party: e.party, luck: partyLuck(e.party), kind: 'elite' }); if (ITEMS[id].legend || ITEMS[id].gen) registerLegend(e.save, id); L.items.push(id); got.push(ITEMS[id].name); }
+    for (let i = 0; i < 2; i++) { const id = dropItem(f, { party: e.party, luck: partyLuck(e.party), kind: 'elite' }); if (ITEMS[id].legend || ITEMS[id].gen) registerLegend(e.save, id); L.items.push(id); legendBan(e, id); got.push(ITEMS[id].name); }
     const fams = [...new Set(poolOf(f).map(x => x.fam))].filter(x => FAM_MAT[x]), m = FAM_MAT[pick(fams)][1]; addMats(L.mats, m, 2); got.push(`${MATS[m]} ×2`);
     ban(e, '🏚️', '몬스터 하우스 제압!', got.join(' · '), 'good'); elog(e, `🏚️ 몬스터 하우스 제압! 보상: ${got.join(', ')}`, 'good');
   }
-  const EVT = { merchant: { icon: '🧳', name: '행상인' }, gacha: { icon: '🎰', name: '뽑기방' }, companion: { icon: '📜', name: '의뢰인' } };
+  const EVT = { rest: { icon: '⛺', name: '휴식소' }, merchant: { icon: '🧳', name: '행상인' }, gacha: { icon: '🎰', name: '뽑기방' }, companion: { icon: '📜', name: '의뢰인' } };
   function genStock(e) {
     const f = e.floor, luck = partyLuck(e.party), st = [];
     st.push({ k: 'cons', id: 'potion', n: 3, price: Math.round(CONS.potion.price * 3 * 0.9) });
@@ -1345,6 +1364,7 @@ const Core = (function () {
   }
   function startEvent(e, v) {
     const E = EVT[v.type];
+    if (v.type === 'rest') { refillCharges(e); elog(e, '⛺ 휴식소에서 쉬었다 — 기술 사용 횟수가 모두 회복되었다', 'good'); return; }
     if (v.type === 'merchant') { e.pending = { type: 'merchant', stock: genStock(e) }; ban(e, E.icon, '행상인 발견', '떠돌이 행상인이 물건을 펼쳤다', 'good'); elog(e, '🧳 행상인을 만났다 — 물건을 구경한다', 'good'); }
     else if (v.type === 'gacha') { e.pending = { type: 'gacha', price: 120 + e.floor * 20, log: [] }; ban(e, E.icon, '뽑기방 발견', '수상한 뽑기 기계가 놓여 있다', 'good'); elog(e, '🎰 뽑기방을 발견했다', 'good'); }
     else if (v.type === 'companion') {
@@ -1368,7 +1388,7 @@ const Core = (function () {
   // 뽑기: 결과는 즉시 저장에 반영(전멸해도 유지). 10연차는 9회 가격 + 정예급 장비 1개 보장.
   function gachaOnce(e, forceGear) {
     const s = e.save, f = e.floor, luck = partyLuck(e.party), b = Math.min(0.15, luck * 0.004), r = Math.random() - b * 0.3, fams = [...new Set(poolOf(f).map(x => x.fam))].filter(x => FAM_MAT[x]);
-    if (forceGear || (r >= 0.62 && r < 0.80)) { const id = dropItem(f, { luck, party: e.party, kind: forceGear ? 'elite' : null }); if (ITEMS[id].legend || ITEMS[id].gen) registerLegend(s, id); s.gear.push(id); return { t: ITEMS[id].name, rar: ITEMS[id].rarity || 'N' }; }
+    if (forceGear || (r >= 0.62 && r < 0.80)) { const id = dropItem(f, { luck, party: e.party, kind: forceGear ? 'elite' : null }); if (ITEMS[id].legend || ITEMS[id].gen) registerLegend(s, id); s.gear.push(id); legendBan(e, id); return { t: ITEMS[id].name, rar: ITEMS[id].rarity || 'N' }; }
     if (r < 0.40) { const m = FAM_MAT[pick(fams)][0], n = ri(1, 3); addMats(s.mats, m, n); return { t: `${MATS[m]} ×${n}` }; }
     if (r < 0.62) { const k = pick(['potion', 'potion', 'antidote', 'elixir', 'ether']); s.cons[k] = (s.cons[k] || 0) + 1; return { t: `${CONS[k].name} ×1` }; }
     if (r < 0.88) { const n = ri(3, 8); s.food = Math.round((s.food + n) * 100) / 100; return { t: `식량 ×${n}` }; }
@@ -1554,12 +1574,13 @@ const Core = (function () {
       if (!b.result) return;
       if (e.bless > 0 && b.result !== 'retreat') e.bless--;
       if (b.result === 'escape') {
+        ban(e, '💨', '도주', '황금 몹이 도망쳤다', 'warn', { force: true, prio: true, dur: 1000 });
         b.group.alive = false; e.phase = 'explore'; e.moveT = -0.4; e.battle = null;
         if (e.party.every(u => u.hp <= 0)) finish(e, 'wipe');
         return;
       }
       if (b.result === 'win') {
-        b.group.alive = false; elog(e, '🏆 승리!', 'good');
+        b.group.alive = false; elog(e, '🏆 승리!', 'good'); ban(e, '🏆', '승리!', b.fallen ? `전투불능 ${b.fallen}명` : '', 'good', { force: true, prio: true, dur: 1100 });
         if (b.foodGain) elog(e, `🍳 요리사가 몹을 손질했다 (식량 +${Math.round(b.foodGain * 10) / 10})`, 'good');
         if (b.group.chest) { b.group.chest.open = true; openChest(e, true); }
         if (b.group.house) houseReward(e);
@@ -1568,8 +1589,8 @@ const Core = (function () {
         e.phase = 'explore'; e.moveT = -0.4; e.battle = null;
         if (b.group.boss && e.floor >= MAXF) { elog(e, '👑 흑왕을 쓰러뜨렸다! 50층 미궁 완전 정복!', 'good'); finish(e, 'clear'); return; }
         if (e.party.every(u => u.hp <= 0)) finish(e, 'wipe');
-      } else if (b.result === 'retreat') { e.battle = null; finish(e, 'retreat'); }
-      else { e.battle = null; elog(e, '💀 파티가 전멸했다…', 'bad'); finish(e, 'wipe'); }
+      } else if (b.result === 'retreat') { ban(e, '🏃', '후퇴', '파티가 전장을 이탈했다', 'warn', { force: true, prio: true, dur: 1100 }); e.battle = null; finish(e, 'retreat'); }
+      else { ban(e, '💀', '패배', '파티가 전멸했다', 'bad', { force: true, prio: true, dur: 1300 }); e.battle = null; elog(e, '💀 파티가 전멸했다…', 'bad'); finish(e, 'wipe'); }
     }
   }
   function manualRetreat(e) { if (e.done) return; if (e.battle) e.battle = null; finish(e, 'retreat'); }
@@ -1667,6 +1688,6 @@ const Core = (function () {
     return p.join(' ');
   }
 
-  return { TAV, tavCands, tavPool, refreshTavern, useTicket, legendChance, tavernHire, describeSkill, describeFull, gearTotals, ABIL_ICON, ABIL_DESC, COMPANIONS, QDESC, EVT, cqProgress, buyMerchant, itemLabel, gachaPull, acceptCompanion, closeEvent, supplyPlan, SQUADS, squadSlots, squadCap, squadUsed, squadErr, activeSquads, squadUnits, inSquad, setSquad, assignSquad, sortieWage, PROMO_PRICE, buyPromo, MATS, matKind, FAM_MAT, craftBases, recipeOf, canCraft, craft, terrainHave, PROMO, PROMO_LV, canPromote, promote, comboOf, baseCls, THEMES, floorThemes, fatOf, fatMul, canSortie, buyFood, RARITY, RAR_ORDER, CRAFT_ENABLED, canUse, canLead, costOf, hireCost, hireUnit, migrateSave, partyLuck, rarOf, GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, MW, MH, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
+  return { SELL_RATE, matPrice, gearSellPrice, sellGear, sellAllGear, sellMat, refillCharges, TAV, tavCands, tavPool, refreshTavern, useTicket, legendChance, tavernHire, describeSkill, describeFull, gearTotals, ABIL_ICON, ABIL_DESC, COMPANIONS, QDESC, EVT, cqProgress, buyMerchant, itemLabel, gachaPull, acceptCompanion, closeEvent, supplyPlan, SQUADS, squadSlots, squadCap, squadUsed, squadErr, activeSquads, squadUnits, inSquad, setSquad, assignSquad, sortieWage, PROMO_PRICE, buyPromo, MATS, matKind, FAM_MAT, craftBases, recipeOf, canCraft, craft, terrainHave, PROMO, PROMO_LV, canPromote, promote, comboOf, baseCls, THEMES, floorThemes, fatOf, fatMul, canSortie, buyFood, RARITY, RAR_ORDER, CRAFT_ENABLED, canUse, canLead, costOf, hireCost, hireUnit, migrateSave, partyLuck, rarOf, GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, MW, MH, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
 })();
 if (typeof module !== 'undefined') module.exports = Core; else window.Core = Core;

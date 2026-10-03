@@ -235,7 +235,10 @@
       h += `<div class="itm"><span><b>📜 전직서</b><div class="d">Lv${C.PROMO_LV} 이상 기본 직업 1명을 전직시킵니다 · 보유 ${s.promo || 0}장 · 보스도 드롭</div></span><button class="btn sm" data-act="buypromo" ${s.gold < C.PROMO_PRICE ? 'disabled title="골드가 부족합니다"' : ''}>${C.PROMO_PRICE}G</button></div>`;
       h += `<div class="sec-t">소모품</div>` + Object.entries(C.CONS).map(([k, v]) => `<div class="itm"><span><b>${v.name}</b><div class="d">${v.desc} · 보유 ${s.cons[k] || 0}</div></span><button class="btn sm" data-act="buycons" data-id="${k}" ${s.gold < v.price ? 'disabled title="골드가 부족합니다"' : ''}>${v.price}G</button></div>`).join('');
       h += `<div class="sec-t">장비 (최고 층에 따라 등급 확대 · 현재 T${tmax}까지)</div>` + Object.values(C.ITEMS).filter(i => !i.legend && !i.gen && i.tier <= tmax && (!i.craft || !C.CRAFT_ENABLED)).map(i => `<div class="itm"><span><b>${itemName(i.id)}</b> <span class="chip">T${i.tier}</span><div class="d">${C.SLOTS[i.slot]} · ${C.describe(i)}${i.classes ? ' · ' + i.classes.map(k => C.CLASSES[k].name).join('/') : ''}</div></span><button class="btn sm" data-act="buygear" data-id="${i.id}" ${s.gold < i.price ? 'disabled title="골드가 부족합니다"' : ''}>${i.price}G</button></div>`).join('');
-      h += `<div class="sec-t">보관함 (판매가 = 절반)</div>` + (s.gear.length ? s.gear.map((id, idx) => { const i = C.ITEMS[id]; return `<div class="itm"><span>${itemName(id)}<div class="d">${C.SLOTS[i.slot]} · ${C.describe(i)}</div></span><button class="btn sm" data-act="sell" data-id="${idx}">${Math.floor(i.price / 2)}G 판매</button></div>`; }).join('') : '<div class="empty">비어있음</div>');
+      const SR = C.SELL_RATE.shop, gearSum = s.gear.reduce((a, id) => a + C.gearSellPrice(id, SR), 0);
+      h += `<div class="sec-t">전리품 판매 — 보관함 장비 (상점 시세 ${Math.round(SR * 100)}% · 행상인은 ${Math.round(C.SELL_RATE.merchant * 100)}%)</div>` + (s.gear.length ? `<div class="row" style="margin-bottom:6px"><button class="btn sm" data-act="sellallgear">장비 전부 판매 (${s.gear.length}개 · +${gearSum}G)</button><span class="dim" style="font-size:12px">장착 중인 장비는 팔리지 않음</span></div>` + s.gear.map((id, idx) => { const i = C.ITEMS[id]; return `<div class="itm"><span>${itemName(id)}<div class="d">${C.SLOTS[i.slot]} · ${C.describe(i)}</div></span><button class="btn sm" data-act="sell" data-id="${idx}">${C.gearSellPrice(id, SR)}G 판매</button></div>`; }).join('') : '<div class="empty">비어있음</div>');
+      const matList = Object.entries(s.mats).filter(([, n]) => n >= 1);
+      h += `<div class="sec-t">전리품 판매 — 재료</div>` + (matList.length ? matList.map(([k, n]) => `<div class="itm"><span><b>${esc(C.MATS[k])}</b> ×${Math.floor(n)}<div class="d">${{ common: '일반', elite: '정예', boss: '보스', terrain: '지형' }[C.matKind(k)]} 재료 · 개당 ${Math.floor(C.matPrice(k) * SR)}G (대장간 제작에도 쓰임)</div></span><span><button class="btn sm" data-act="sellmat" data-id="${k}" data-n="1">1개</button> <button class="btn sm" data-act="sellmat" data-id="${k}" data-n="all">전부 +${Math.floor(C.matPrice(k) * Math.floor(n) * SR)}G</button></span></div>`).join('') : '<div class="empty">재료가 없습니다</div>');
     } else if (S.tab === 'quest') {
       h += `<div class="sec-t">수주한 의뢰 (${s.quests.active.length}/3)</div>` + (s.quests.active.length ? s.quests.active.map(q => `<div class="card"><div class="row"><b>${q.title}</b><span class="gold">${q.reward}G</span></div><div class="bar"><i style="width:${pct(q.progress, q.need)}%"></i></div><div class="row dim" style="margin-top:4px"><span>${q.progress}/${q.need}</span><button class="btn sm" data-act="abandon" data-id="${q.id}">포기</button></div></div>`).join('') : '<div class="empty">수주한 의뢰가 없습니다</div>');
       h += `<div class="sec-t">의뢰 게시판</div>` + s.quests.board.map(q => `<div class="card"><div class="row"><b>${q.title}</b><span class="gold">${q.reward}G</span></div><div class="row" style="margin-top:4px"><span class="dim">완료한 의뢰 ${s.quests.done}건</span><button class="btn sm pri" data-act="accept" data-id="${q.id}" ${s.quests.active.length >= 3 ? 'disabled title="동시에 3개까지"' : ''}>수주</button></div></div>`).join('');
@@ -459,7 +462,9 @@
       case 'craft': { const r = C.craft(s, id, b.dataset.grade); if (r.err) toast(r.err, 'bad'); else { save(); toast(`🔨 ${itemNameText(r.id)} 제작 완료!${r.upgraded ? ' (행운으로 등급 상승!)' : ''}`, 'good'); renderStats(); renderCampBody(); } return; }
       case 'buyfood': if (C.buyFood(s, +id)) { save(); renderStats(); renderCampBody(); renderStageBar(); } return;
       case 'buygear': { const i = C.ITEMS[id]; if (s.gold >= i.price) { s.gold -= i.price; s.gear.push(id); save(); renderStats(); renderCampBody(); } return; }
-      case 'sell': { const gid = s.gear[+id]; s.gold += Math.floor(C.ITEMS[gid].price / 2); s.gear.splice(+id, 1); save(); renderStats(); renderCampBody(); return; }
+      case 'sell': { C.sellGear(s, +id, C.SELL_RATE.shop); save(); renderStats(); renderCampBody(); return; }
+      case 'sellallgear': { const g = C.sellAllGear(s, C.SELL_RATE.shop); save(); toast(`장비를 모두 팔았습니다 (+${g}G)`, 'good'); renderStats(); renderCampBody(); return; }
+      case 'sellmat': { const g = C.sellMat(s, id, b.dataset.n === 'all' ? 'all' : +b.dataset.n, C.SELL_RATE.shop); if (g) { save(); renderStats(); renderCampBody(); } return; }
       case 'accept': { const q = s.quests.board.find(x => x.id === +id); if (q && s.quests.active.length < 3) { s.quests.board = s.quests.board.filter(x => x !== q); s.quests.active.push(q); save(); toast('의뢰를 수주했습니다', 'good'); renderTabs(); renderCampBody(); } return; }
       case 'abandon': s.quests.active = s.quests.active.filter(x => x.id !== +id); save(); renderTabs(); renderCampBody(); return;
       case 'sortie-open': sortieModal(); return;
@@ -592,6 +597,9 @@
       else { save(); if (r.left) { closeModal(); toast(`💨 ${u.name}이(가) 실망해 떠났습니다… (실패 ${r.fails}회) — 출현변경권으로 다시 부를 수 있어요`, 'bad'); } else { toast(`고용 실패… ${u.name}이(가) 고개를 저었다 (−${r.loss}G · 실패 ${r.fails}/${C.TAV.legendFailMax})`, 'bad'); tavernModal(uid); } }
       renderStats(); renderCampBody(); renderStageBar();
     }
+    else if (m === 'msellgear') { const g = C.sellGear(s, +b.dataset.i, C.SELL_RATE.merchant); if (g) { save(); renderStats(); toast(`행상인에게 팔았습니다 (+${g}G)`, 'good'); } openEventModal(S.exp); }
+    else if (m === 'msellall') { const g = C.sellAllGear(s, C.SELL_RATE.merchant); if (g) { save(); renderStats(); toast(`장비를 모두 팔았습니다 (+${g}G)`, 'good'); } openEventModal(S.exp); }
+    else if (m === 'msellmat') { const g = C.sellMat(s, b.dataset.id, b.dataset.n === 'all' ? 'all' : +b.dataset.n, C.SELL_RATE.merchant); if (g) { save(); renderStats(); } openEventModal(S.exp); }
     else if (m === 'mbuy') { const r = C.buyMerchant(S.exp, +b.dataset.i); if (r) toast(r, 'bad'); else { save(); renderStats(); } openEventModal(S.exp); }
     else if (m === 'gpull') { const r = C.gachaPull(S.exp, +b.dataset.n); if (r && r.err) toast(r.err, 'bad'); else save(); renderStats(); openEventModal(S.exp); }
     else if (m === 'cqyes') { C.acceptCompanion(S.exp); S.evOpen = false; closeModal(); save(); }
@@ -628,24 +636,37 @@
     const hasBanner = e.events.some(v => v.k === 'banner' && v.c === 'bad'); // 배너가 뜬 틱의 같은 내용 토스트는 생략(부정 이벤트만)
     for (const v of e.events) {
       if (v.k === 'banner') enqueueBanner(v);
-      else if (v.k === 'log' && (v.c === 'good' || v.c === 'bad' || v.c === 'warn') && !hasBanner) toast(v.m, v.c); // 배너가 뜬 틱의 같은 내용 토스트는 생략
+      else if (v.k === 'log' && (v.c === 'good' || v.c === 'bad' || v.c === 'warn') && !hasBanner && !/🎁|📖|📐|🎫|획득|습득|승리|전투 시작/.test(v.m)) toast(v.m, v.c); // 획득·습득·승패 문구는 기록 탭과 중복되므로 토스트 생략(배너가 뜬 틱도 생략)
     }
     e.events = [];
   }
   /* ---------- 이벤트 배너(화면 중앙) · 이벤트 창(행상인/뽑기/의뢰) ---------- */
   const bq = []; let bBusy = false;
   // 중앙 배너는 부정 효과(c==='bad')만 띄운다. 좋은 일·중립 이벤트는 기록 탭과 토스트로만 알린다.
-  function enqueueBanner(v) { if (v.c !== 'bad') return; if (bq.length >= 3) bq.shift(); bq.push(v); pumpBanner(); }
+  // 표시 대상: 부정 효과(bad)와, 코어가 force 로 지정한 것(전투 시작·승리/패배·스킬 습득·전설 장비). prio 는 진행 중인 배너를 끊고 바로 보여 준다.
+  let bTimer = 0;
+  function enqueueBanner(v) {
+    if (!(v.c === 'bad' || v.force)) return;
+    if (v.prio) { clearTimeout(bTimer); bq.length = 0; bBusy = false; }
+    if (bq.length >= 3) bq.shift(); bq.push(v); pumpBanner();
+  }
   function pumpBanner() {
-    if (bBusy || !bq.length) return; const v = bq.shift(), el = $('eventBanner'); bBusy = true;
+    if (bBusy || !bq.length) return; const v = bq.shift(), el = $('eventBanner'), dur = v.dur || (v.c === 'bad' ? 2300 : 1900); bBusy = true;
     el.className = 'event-banner hidden'; el.innerHTML = `<span class="ic">${v.icon}</span><b>${esc(v.name)}</b>${v.sub ? `<small>${esc(v.sub)}</small>` : ''}`;
-    void el.offsetWidth; el.className = 'event-banner ' + (v.c || '');
-    setTimeout(() => { el.classList.add('hidden'); bBusy = false; pumpBanner(); }, v.c === 'bad' || v.name.includes('합류') ? 2300 : 1900);
+    void el.offsetWidth; el.style.animationDuration = dur + 'ms'; el.className = 'event-banner ' + (v.c || '');
+    bTimer = setTimeout(() => { el.classList.add('hidden'); bBusy = false; pumpBanner(); }, dur);
+  }
+  function merchantSellHTML(s) { // 행상인에게 전리품 판매(시세 70%)
+    const R = C.SELL_RATE.merchant, gear = s.gear.slice(0, 40), mats = Object.entries(s.mats).filter(([, n]) => n >= 1), sum = s.gear.reduce((a, id) => a + C.gearSellPrice(id, R), 0);
+    let h = `<h3>전리품 팔기 <span class="dim" style="font-size:12px">행상인 시세 ${Math.round(R * 100)}% (상점 ${Math.round(C.SELL_RATE.shop * 100)}%)</span></h3>`;
+    h += s.gear.length ? `<div class="row" style="margin-bottom:6px"><button class="btn sm" data-m="msellall">장비 전부 팔기 (${s.gear.length}개 · +${sum}G)</button></div>` + gear.map((id, idx) => `<div class="itm"><span>${itemName(id)}<div class="d">${C.SLOTS[C.ITEMS[id].slot]} · ${C.describe(C.ITEMS[id])}</div></span><button class="btn sm" data-m="msellgear" data-i="${idx}">${C.gearSellPrice(id, R)}G</button></div>`).join('') : '<div class="empty">팔 장비가 없습니다</div>';
+    h += mats.length ? mats.map(([k, n]) => `<div class="itm"><span><b>${esc(C.MATS[k])}</b> ×${Math.floor(n)}<div class="d">개당 ${Math.floor(C.matPrice(k) * R)}G</div></span><span><button class="btn sm" data-m="msellmat" data-id="${k}" data-n="1">1개</button> <button class="btn sm" data-m="msellmat" data-id="${k}" data-n="all">전부 +${Math.floor(C.matPrice(k) * Math.floor(n) * R)}G</button></span></div>`).join('') : '';
+    return h;
   }
   function openEventModal(e) {
     const p = e.pending; if (!p) return; S.evOpen = true; const s = S.save, gold = `<span class="gold">💰 ${s.gold.toLocaleString()}G</span>`;
     if (p.type === 'merchant') {
-      openModal(`<h2>🧳 행상인</h2><div class="dim">${gold} · 떠돌이 행상인이 물건을 펼쳤습니다. 이 층에서 한 번만 만날 수 있습니다.</div>` + p.stock.map((it, i) => `<div class="itm"><span><b>${it.k === 'gear' ? itemName(it.id) : esc(C.itemLabel(it))}</b>${it.k === 'gear' ? `<div class="d">${C.SLOTS[C.ITEMS[it.id].slot]} · ${C.describe(C.ITEMS[it.id])}${C.ITEMS[it.id].classes ? ' · ' + C.ITEMS[it.id].classes.map(k => C.CLASSES[k].name).join('/') : ''}</div>` : ''}</span><button class="btn sm pri" data-m="mbuy" data-i="${i}" ${it.sold || s.gold < it.price ? 'disabled' : ''}>${it.sold ? '품절' : it.price + 'G'}</button></div>`).join('') + `<div class="foot"><button class="btn pri" data-m="evclose" data-autofocus>떠나기</button></div>`, { lock: true });
+      openModal(`<h2>🧳 행상인</h2><div class="dim">${gold} · 떠돌이 행상인이 물건을 펼쳤습니다. 이 층에서 한 번만 만날 수 있습니다.</div>` + p.stock.map((it, i) => `<div class="itm"><span><b>${it.k === 'gear' ? itemName(it.id) : esc(C.itemLabel(it))}</b>${it.k === 'gear' ? `<div class="d">${C.SLOTS[C.ITEMS[it.id].slot]} · ${C.describe(C.ITEMS[it.id])}${C.ITEMS[it.id].classes ? ' · ' + C.ITEMS[it.id].classes.map(k => C.CLASSES[k].name).join('/') : ''}</div>` : ''}</span><button class="btn sm pri" data-m="mbuy" data-i="${i}" ${it.sold || s.gold < it.price ? 'disabled' : ''}>${it.sold ? '품절' : it.price + 'G'}</button></div>`).join('') + merchantSellHTML(s) + `<div class="foot"><button class="btn pri" data-m="evclose" data-autofocus>떠나기</button></div>`, { lock: true });
     } else if (p.type === 'gacha') {
       openModal(`<h2>🎰 뽑기방</h2><div class="dim">${gold} · 재료·소모품·장비·식량, 드물게 도면과 전직서가 나옵니다. 10회는 9회 가격에 정예급 장비 1개 보장.</div>
         <div class="row" style="margin:10px 0"><button class="btn pri" data-m="gpull" data-n="1" ${s.gold < p.price ? 'disabled' : ''}>1회 ${p.price}G</button><button class="btn pri" data-m="gpull" data-n="10" ${s.gold < p.price * 9 ? 'disabled' : ''}>10회 ${p.price * 9}G</button></div>
