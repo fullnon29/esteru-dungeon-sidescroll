@@ -22,20 +22,27 @@ const Render = (function () {
   const animFps = (a, act) => (a.m.fps && a.m.fps[act]) || 15;
   // 방향 0~7: 화면 각도(0=오른쪽, 시계 방향)를 45° 단위로 반올림한 값. 0=E 1=SE 2=정면(S) 3=SW 4=W 5=NW 6=뒷모습(N) 7=NE
   const dirOf = (gdx, gdy) => { const ang = Math.atan2((gdx + gdy) * TH / 2, (gdx - gdy) * TW / 2) * 180 / Math.PI; return Math.round(((ang + 360) % 360) / 45) % 8; };
-  function animPlay(c, act, force, face) { if (!c || !animEnt(c)) return; if (!force && c.an) return; c.an = { act, t: 0 }; if (face !== undefined) c.face = face; } // 일회성 동작(공격·시전·피격). 진행 중이면 덮어쓰지 않는다.
+  function animPlay(c, act, force, face) { // 일회성 동작. 같은 동작이 60% 넘게 진행되기 전엔 다시 시작하지 않고, 피격은 현재 동작이 40% 진행된 뒤에 끼어든다(사망은 못 끊음).
+    const a = c && animEnt(c); if (!a) return;
+    const cur = c.an; if (cur) { const prog = cur.t / animN(a, cur.act); if (cur.act === 'die' || (act === 'hurt' && prog < 0.4) || (cur.act === act && prog < 0.6)) return; }
+    if (!force && cur && act !== 'hurt') return; c.an = { act, t: 0 }; if (face !== undefined) c.face = face;
+  } // 일회성 동작(공격·시전·피격). 진행 중이면 덮어쓰지 않는다.
   function animBlit(a, act, dir, fr, sx, sy, scale) { // 발 위치(m.foot)를 (sx, sy)에 맞춰 그린다
     const im = (a.img[act] || a.img.idle)[dir]; if (!im) return false;
-    const sz = (a.m.size || 128) * (scale || 1);
-    ctx.drawImage(im, fr * 128, 0, 128, 128, sx - sz / 2, sy - (a.m.foot || 120) * sz / 128, sz, sz); return true;
+    const cl = a.m.cell || 128, sz = (a.m.size || 128) * (scale || 1), crisp = cl <= 64; // 칸 크기(기본 128). 64px 이하는 도트 그대로 확대
+    if (crisp) ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(im, fr * cl, 0, cl, cl, sx - sz / 2, sy - (a.m.foot || cl * 0.8) * sz / cl, sz, sz);
+    if (crisp) ctx.imageSmoothingEnabled = true; return true;
   }
   // 상태가 있는 개체(전투판·캠프). 이동 중이면 가는 쪽, 일회성 동작 중이면 그 방향 유지, 그 외에는 표적 쪽(없으면 def)을 바라본다.
   function animDraw(a, c, sx, sy, dt, moving, def) {
     if (c.an) { c.an.t += dt * animFps(a, c.an.act); if (c.an.t >= animN(a, c.an.act)) c.an = null; }
-    if (moving) c.face = dirOf(c.x - c.dx, c.y - c.dy);
+    if (moving) { if (Math.hypot(c.x - c.dx, c.y - c.dy) > 0.01) c.face = dirOf(c.x - c.dx, c.y - c.dy); }
     else if (!c.an) { const t = c.curTgt; c.face = t && t.alive ? dirOf(t.dx - c.dx, t.dy - c.dy) : (c.face === undefined ? def : c.face); }
     if (c.face === undefined) c.face = def;
     if (c.an) return animBlit(a, c.an.act, c.face, Math.min(animN(a, c.an.act) - 1, Math.floor(c.an.t)), sx, sy);
     const act = moving ? 'walk' : 'idle'; c.ln = c.ln || { act, t: Math.random() * animN(a, act) };
+    if (moving) return animBlit(a, 'walk', c.face, Math.floor((c.wt || 0) / 1.1 * animN(a, 'walk')) % animN(a, 'walk'), sx, sy); // 걸음은 실제로 걸은 거리에 맞춰 넘긴다(미끄러짐 방지)
     if (c.ln.act !== act) { c.ln.act = act; c.ln.t = 0; } c.ln.t += dt * animFps(a, act);
     return animBlit(a, act, c.face, Math.floor(c.ln.t) % animN(a, act), sx, sy);
   }
@@ -139,7 +146,13 @@ const Render = (function () {
       ctx.fillStyle = '#c98b8b'; [lx, ly] = iso(8.4, 1.5); ctx.textAlign = 'left'; ctx.fillText('적 진영', lx + 44, ly + 4);
     }
     const ents = boardEntities();
-    ents.forEach(c => { if (c.dx === undefined) { c.dx = c.x; c.dy = c.y; } c.dx += (c.x - c.dx) * Math.min(1, dt * 9); c.dy += (c.y - c.dy) * Math.min(1, dt * 9); if (c.lt > 0) c.lt -= dt; });
+    ents.forEach(c => {
+      if (c.dx === undefined) { c.dx = c.x; c.dy = c.y; } const ox = c.dx, oy = c.dy;
+      if (animEnt(c)) { const d = Math.hypot(c.x - c.dx, c.y - c.dy); if (d > 0.0005) { const st = Math.min(d, dt * Math.max(5, d * 4)); c.dx += (c.x - c.dx) / d * st; c.dy += (c.y - c.dy) / d * st; } } // 일정한 속도(칸/초)로 이동
+      else { c.dx += (c.x - c.dx) * Math.min(1, dt * 9); c.dy += (c.y - c.dy) * Math.min(1, dt * 9); }
+      const mv = Math.hypot(c.dx - ox, c.dy - oy); c.wt = (c.wt || 0) + mv; c.mvT = mv > 0.0004 ? 0.1 : Math.max(0, (c.mvT || 0) - dt);
+      if (c.lt > 0) c.lt -= dt;
+    });
     ents.sort((a, b) => (a.dx + a.dy) - (b.dx + b.dy));
     const lineMode = (S.prefs && S.prefs.lines) || 'all';
     if (bt && lineMode !== 'off') { // 표적선: 적→대원은 주황(도발로 묶이면 진한 빨강), 대원→적은 파랑, 치유는 초록 점선
@@ -163,7 +176,7 @@ const Render = (function () {
       ctx.fillStyle = '#0007'; ctx.beginPath(); ctx.ellipse(sx, sy + 4, r * 0.9, r * 0.4, 0, 0, 7); ctx.fill();
       const cy = sy - 12 - (c.size > 1 ? 8 : 0);
       const aa = animEnt(c), img = aa ? null : c.u ? Assets.unit('sprites', c.u) : Assets.enemy(c);
-      if (aa) animDraw(aa, c, sx, sy + 4, dt, Math.hypot(c.x - c.dx, c.y - c.dy) > 0.05, !bt ? 2 : c.side === 'e' ? 3 : 7);
+      if (aa) animDraw(aa, c, sx, sy + 4, dt, c.mvT > 0, !bt ? 2 : c.side === 'e' ? 3 : 7);
       else if (img) { const h = 58 * (c.size || 1), w = img.width * h / img.height; ctx.drawImage(img, sx - w / 2, sy + 6 - h, w, h); }
       else {
         ctx.fillStyle = c.color; ctx.beginPath(); ctx.arc(sx, cy, r, 0, 7); ctx.fill();

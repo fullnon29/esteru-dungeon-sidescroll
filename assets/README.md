@@ -44,3 +44,5 @@ sprites:   { slime: 'assets/sprites/slime.png' },
 ### 장비 외형(시트 이름 규칙)
 - 시트 이름 `직업@무기-갑옷` (예 `knight@sword-plate`). 무기: `sword great spear bow staff mace dagger fist cook`, 갑옷: `cloth leather mail plate mythic`.
 - 조회 순서: 이름 → 직업 → 기본 직업 각각에서 `@무기-갑옷` → `@무기` → `@갑옷` → 기본(`knight`). `mythic` 은 없으면 `plate`. 없는 조합은 자동으로 다음 후보로 대체되므로 일부만 만들어도 된다.
+
+- 매니페스트 `cell`(시트 칸 크기, 기본 128): 64px 시트는 `cell: 64` 로 두면 게임이 도트 그대로 `size` 크기로 확대해 그린다. 변환 도구의 `확대` 옵션으로 미리 2배로 키워 128 규격에 맞출 수도 있다(픽셀 그대로 / Scale2x).
