@@ -9,5 +9,5 @@ for(let i=0;i<500;i++){ const f=1+i%50, m=C.genFloor(f);
 console.log('bad',bad,'vaults',vaults);
 // 평균 탐사 이동 수
 const s=C.newSave(); let steps=0;
-for(let f=1;f<=20;f++){ s.maxFloor=f; const e=C.createExpedition(s,f);  const f0=e.floor; let n=0; while(!e.done&&e.floor===f0&&n<20000){C.stepExpedition(e,0.14);e.events=[];n++;} steps+=n; }
+for(let f=1;f<=20;f++){ s.maxFloor=f; s.units.forEach(u=>{u.lv=40;u.hp=C.stats(u).hp;}); const e=C.createExpedition(s,f); e.autoResolve=true; const f0=e.floor; let n=0; while(!e.done&&e.floor===f0&&n<20000){C.stepExpedition(e,0.14);e.events=[];n++;} steps+=n; }
 console.log('avg ticks/floor',steps/20);
