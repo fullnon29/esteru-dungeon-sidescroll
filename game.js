@@ -25,7 +25,7 @@
     return s;
   }
   function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S.save)); } catch (e) { /* 무시 */ } }
-  function loadPrefs() { try { Object.assign(S.prefs, JSON.parse(localStorage.getItem(PREF_KEY) || '{}')); } catch (e) { /* 무시 */ } document.body.classList.toggle('reduce', !!S.prefs.reduce); S.speed = Math.min(S.prefs.speed || 1, SPEEDS[SPEEDS.length - 1]); }
+  function loadPrefs() { try { Object.assign(S.prefs, JSON.parse(localStorage.getItem(PREF_KEY) || '{}')); } catch (e) { /* 무시 */ } document.body.classList.toggle('reduce', !!S.prefs.reduce); S.speed = Math.min(S.prefs.speed || 1, SPEEDS[SPEEDS.length - 1]); if ([1, 2, 4, 6, 8, 13].includes(S.prefs.pace)) C.TUNE.pace = S.prefs.pace; }
   function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify(S.prefs)); } catch (e) { /* 무시 */ } }
   loadPrefs(); S.save = load(); S.startFloor = S.save.maxFloor;
 
@@ -219,7 +219,7 @@
 
   /* ---------- 원정 HUD ---------- */
   function renderToolbar() {
-    setHTML($('toolbar'), `<button data-act="pause" class="${S.paused ? 'on' : ''}" title="일시정지 / 재개 (Space)">${S.paused ? '▶ 재개' : '⏸ 정지'}</button><span class="sep"></span>${SPEEDS.map((n, i) => `<button data-act="speed" data-id="${n}" class="${S.speed === n ? 'on' : ''}" title="${n}배속 (${i + 1})">×${n}</button>`).join('')}${newFloor(S.exp) && S.speed > NEW_FLOOR_CAP ? `<span class="cap" title="처음 가는 층은 ×${NEW_FLOOR_CAP}배속까지">🔒 신규 층 ×${NEW_FLOOR_CAP}</span>` : ''}${DEV ? '<span class="cap" title="개발 모드(?dev) — 출시 빌드는 ×4까지">DEV</span>' : ''}<span class="sep"></span><button data-act="items" class="${S.itemOpen ? 'on' : ''}" title="아이템 (I) — 사용 시 자동 일시정지">🎒 아이템</button><button class="danger" data-act="retreat" title="지금 귀환">🏳 귀환</button>`);
+    setHTML($('toolbar'), `<button data-act="pause" class="${S.paused ? 'on' : ''}" title="일시정지 / 재개 (Space)">${S.paused ? '▶ 재개' : '⏸ 정지'}</button><span class="sep"></span>${SPEEDS.map((n, i) => `<button data-act="speed" data-id="${n}" class="${S.speed === n ? 'on' : ''}" title="${n}배속 (${i + 1})">×${n}</button>`).join('')}${newFloor(S.exp) && S.speed > NEW_FLOOR_CAP ? `<span class="cap" title="처음 가는 층은 ×${NEW_FLOOR_CAP}배속까지">🔒 신규 층 ×${NEW_FLOOR_CAP}</span>` : ''}${DEV ? '<span class="cap" title="개발 모드(?dev) — 출시 빌드는 ×4까지">DEV</span>' : ''}<span class="cap" title="지금 실제로 적용되는 배속과 기본 진행 속도(설정 ⚙ → 진행 속도에서 바꿀 수 있음)">적용 ×${effSpeed()}${(C.TUNE.pace || 1) > 1 ? ` · 기본 1/${C.TUNE.pace}` : ''}</span><span class="sep"></span><button data-act="items" class="${S.itemOpen ? 'on' : ''}" title="아이템 (I) — 사용 시 자동 일시정지">🎒 아이템</button><button class="danger" data-act="retreat" title="지금 귀환">🏳 귀환</button>`);
   }
   function renderItemPop() {
     const el = $('itemPop'); el.classList.toggle('hidden', !S.itemOpen || !S.exp); if (!S.itemOpen) return;
@@ -476,6 +476,7 @@
     openModal(`<h2>⚙ 설정</h2>
       <h3>화면</h3><label class="check"><input type="checkbox" data-pref="reduce" ${S.prefs.reduce ? 'checked' : ''}> 애니메이션 줄이기</label>
       <div class="pol" style="margin-top:6px"><label>기본 배속</label><select data-pref="speed">${SPEEDS.map(n => `<option value="${n}" ${S.prefs.speed === n ? 'selected' : ''}>×${n}</option>`).join('')}</select></div>
+      <div class="pol" style="margin-top:6px"><label title="모든 배속에 곱해지는 기본 진행 속도. 13=총 플레이 약 60시간 기준(가장 느림), 1=원래 속도(테스트용 가장 빠름)">진행 속도</label><select data-pref="pace">${[[13, '느림 (60시간 기준)'], [8, '조금 느림'], [6, '보통'], [4, '조금 빠름'], [2, '빠름'], [1, '매우 빠름 (원래 속도)']].map(([v, t]) => `<option value="${v}" ${C.TUNE.pace === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
       <label class="check"><input type="checkbox" data-pref="fullscreen" ${S.prefs.fullscreen ? 'checked' : ''}> 시작 시 전체 화면 (첫 클릭/키 입력 때 적용 · 우상단 ⛶ 버튼, F11로도 전환)</label>
       <div class="pol" style="margin-top:6px"><label title="치명타 타일 흔들림·범위 마법 화면 흔들림의 세기">흔들림 강도</label><select data-pref="shake">${[[0, '끔'], [1, '보통'], [1.6, '강하게'], [2.4, '최대']].map(([v, t]) => `<option value="${v}" ${S.prefs.shake === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
       <h3>자동 장비</h3><label class="check"><input type="checkbox" data-opt="autoEquip" ${S.save.opts.autoEquip ? 'checked' : ''}> 귀환 시 획득 장비를 직업에 맞게 자동 장착</label>
@@ -499,7 +500,8 @@
   document.addEventListener('pointerdown', fsOnFirstInput, { once: true }); document.addEventListener('keydown', fsOnFirstInput, { once: true });
   function prefChange(t) {
     const k = t.dataset.pref;
-    if (k === 'fullscreen') S.prefs.fullscreen = t.checked;
+    if (k === 'pace') { S.prefs.pace = +t.value; C.TUNE.pace = S.prefs.pace; if (S.exp) renderToolbar(); }
+    else if (k === 'fullscreen') S.prefs.fullscreen = t.checked;
     else if (k === 'shake') S.prefs.shake = +t.value;
     else if (k === 'reduce') { S.prefs.reduce = t.checked; document.body.classList.toggle('reduce', t.checked); } else if (k === 'speed') { S.prefs.speed = +t.value; S.speed = +t.value; if (S.exp) renderToolbar(); }
     savePrefs();
@@ -543,7 +545,7 @@
   let last = performance.now(), uiT = 0, evTone = 0;
   function consumeEvents(e) {
     Render.procEvents(e);
-    const hasBanner = e.events.some(v => v.k === 'banner');
+    const hasBanner = e.events.some(v => v.k === 'banner' && v.c === 'bad'); // 배너가 뜬 틱의 같은 내용 토스트는 생략(부정 이벤트만)
     for (const v of e.events) {
       if (v.k === 'banner') enqueueBanner(v);
       else if (v.k === 'log' && (v.c === 'good' || v.c === 'bad' || v.c === 'warn') && !hasBanner) toast(v.m, v.c); // 배너가 뜬 틱의 같은 내용 토스트는 생략
@@ -552,7 +554,8 @@
   }
   /* ---------- 이벤트 배너(화면 중앙) · 이벤트 창(행상인/뽑기/의뢰) ---------- */
   const bq = []; let bBusy = false;
-  function enqueueBanner(v) { if (bq.length >= 4) bq.shift(); bq.push(v); pumpBanner(); }
+  // 중앙 배너는 부정 효과(c==='bad')만 띄운다. 좋은 일·중립 이벤트는 기록 탭과 토스트로만 알린다.
+  function enqueueBanner(v) { if (v.c !== 'bad') return; if (bq.length >= 3) bq.shift(); bq.push(v); pumpBanner(); }
   function pumpBanner() {
     if (bBusy || !bq.length) return; const v = bq.shift(), el = $('eventBanner'); bBusy = true;
     el.className = 'event-banner hidden'; el.innerHTML = `<span class="ic">${v.icon}</span><b>${esc(v.name)}</b>${v.sub ? `<small>${esc(v.sub)}</small>` : ''}`;

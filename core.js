@@ -768,7 +768,7 @@ const Core = (function () {
     if (att.side === 'e' && att.abil && att.abil.length && tgt.side === 'p') {
       if (att.abil.includes('drain') && att.hp > 0) { setHp(att, att.hp + Math.round(dmg * 0.3)); }
       if (att.abil.includes('weaken')) { tgt.weak = { n: Math.min(3, (tgt.weak && b.t < tgt.weak.until ? tgt.weak.n : 0) + 1), until: b.t + 8 }; }
-      if (att.abil.includes('steal') && Math.random() < 0.25 && b.exp.loot.gold > 0) { const g = Math.max(1, Math.round(b.exp.loot.gold * 0.08)); b.exp.loot.gold -= g; att.stolen = (att.stolen || 0) + g; ev(b, { k: 'log', m: `🪙 ${att.name}이(가) ${g}G를 훔쳤다! (처치하면 되찾는다)`, c: 'bad' }); }
+      if (att.abil.includes('steal') && Math.random() < 0.25 && b.exp.loot.gold > 0) { const g = Math.max(1, Math.round(b.exp.loot.gold * 0.08)); b.exp.loot.gold -= g; att.stolen = (att.stolen || 0) + g; att.fleeing = true; att.fleeUntil = b.t + 5; ev(b, { k: 'log', m: `🪙 ${att.name}이(가) ${g}G를 훔쳐 달아난다! (도망치기 전에 처치해야 되찾는다)`, c: 'bad' }); }
     }
     // --- 몬스터 특수 능력 (피격자) ---
     if (tgt.side === 'e' && tgt.abil && tgt.abil.length && tgt.hp > 0) {
@@ -911,9 +911,27 @@ const Core = (function () {
     }
     if (best) { c.x = best[0]; c.y = best[1]; }
   }
+  // 도둑질한 몬스터의 도주: 파티에서 먼 쪽(위쪽)으로 이동하다 제한 시간이 지나거나 맨 위 줄에 닿으면 전장을 이탈한다.
+  // 이탈하면 훔친 골드는 돌아오지 않고, 처치 보상도 얻지 못한다. 그 전에 쓰러뜨리면 훔친 골드를 되찾는다.
+  function fleeStep(b, c) {
+    const ps = alive(b, 'p');
+    if (c.y <= 0 || b.t >= c.fleeUntil) {
+      c.alive = false; c.escaped = true;
+      ev(b, { k: 'log', m: `🪙 ${c.name}이(가) 훔친 ${c.stolen || 0}G를 들고 달아났다!`, c: 'bad' }); return;
+    }
+    let best = null, bs = -1e9;
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 0; dy++) {
+      const nx = c.x + dx, ny = c.y + dy; if ((!dx && !dy) || nx < 0 || nx >= GRID || ny < 0) continue;
+      if (b.units.some(o => o.alive && o.x === nx && o.y === ny)) continue;
+      const far = Math.min(...ps.map(p => Math.max(Math.abs(nx - p.x), Math.abs(ny - p.y))), 99), sc = far * 3 - ny; // 파티와 멀수록, 위쪽일수록 좋다
+      if (sc > bs) { bs = sc; best = [nx, ny]; }
+    }
+    if (best) { c.x = best[0]; c.y = best[1]; }
+  }
   function act(b, c) {
     const foes = b.units.filter(o => o.alive && o.side !== c.side), allies = b.units.filter(o => o.alive && o.side === c.side);
     if (!foes.length) return;
+    if (c.fleeing) { fleeStep(b, c); return; } // 훔친 골드를 들고 도망 중: 공격하지 않고 달아난다
     const sealed = cellTh(b, c) === 'resonance'; // 마력공진 구역 안: 스킬 불가(기본공격·소모품은 허용)
     if (c.side === 'p') { if (!sealed && trySkillP(b, c, foes, allies)) return; }
     else if (!sealed && c.skills && Math.random() < 0.25) { if (useSkill(b, c, pick(c.skills), foes, allies)) return; }
