@@ -7,7 +7,7 @@ const HIRE_PRIO = ['priest', 'thief', 'cook', 'knight', 'warrior', 'elf', 'monk'
 const SQUAD_PRIO = ['cheer', 'guardian', 'sniper', 'disrupt', 'battery'];
 
 function runBot(opts) {
-  opts = Object.assign({ maxRuns: 400, verbose: false, craft: true, promo: true, squad: true, combo: true }, opts || {});
+  opts = Object.assign({ maxRuns: 3000, verbose: false, craft: true, promo: true, squad: true, combo: true }, opts || {});
   const s = C.newSave(); s.policy.retreat = 25;
   const st = { newTicks: 0, oldTicks: 0, crafts: 0, promos: 0, squadRuns: 0, squadSum: 0, wipes: 0, earlyWipes: 0, earlyRuns: 0, cookRuns: 0 };
   const crafted = new Set();

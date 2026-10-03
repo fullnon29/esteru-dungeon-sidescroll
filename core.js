@@ -243,7 +243,7 @@ const Core = (function () {
   // food: perStep=이동 1칸·1명당 소모, price=개당 가격, yield=[기본, 층당] 식용 몹 처치 시 식량(요리사 동행), start=새 게임 식량
   // fatigue: rest=휴식 용병 귀환 회복, work=출전 용병 귀환 회복, death=전투불능 시 감소, starve=식량 0 이동당 피로 감소
   // pace: 게임 진행 속도의 기본 배율 역수(1=기본). 클수록 모든 배속에서 느려진다(플레이 시간 조정용)
-  const TUNE = { pace: 2, food: { perStep: 0.012, price: 6, yield: [0.4, 0.03], start: 20 }, fatigue: { rest: 25, work: 5, death: 25, starve: 0.25, cook: 2 }, expScale: 1, growHp: 0.035, growAtk: 0.12, growDef: 0.30, eHp: 0.30, eAtk: 0.12, eDef: 0.15, eHp10: 0.18, eAtk10: 0.13 };
+  const TUNE = { pace: 13, food: { perStep: 0.012, price: 6, yield: [0.4, 0.03], start: 20 }, fatigue: { rest: 25, work: 5, death: 25, starve: 0.25, cook: 2 }, expScale: 4, growHp: 0.035, growAtk: 0.12, growDef: 0.30, eHp: 0.30, eAtk: 0.12, eDef: 0.15, eHp10: 0.18, eAtk10: 0.13 };
   const needExp = lv => Math.max(1, Math.round((EXP_CUM[Math.min(lv + 1, 50)] - EXP_CUM[lv]) * TUNE.expScale));
   // 적 1마리 경험치: 원작 일반 적 EXP 2(1층) → 약 1700(후반) 의 지수 곡선
   const enemyExp = (f, boss) => Math.round(2 * Math.pow(850, (f - 1) / 49) * (boss ? 8 + 20 * f / 50 : 1));
