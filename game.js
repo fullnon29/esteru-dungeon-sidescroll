@@ -5,7 +5,8 @@
   const $ = id => document.getElementById(id);
   const cv = $('cv');
   // 배속: 출시 빌드는 최대 ×4. 개발용(주소에 ?dev, 한 번 켜면 저장)은 ×8까지. 처음 가는 층(이번 원정 이전 최고 층보다 깊은 층)은 ×2 제한.
-  let DEV = false; try { if (/[?&]dev\b/.test(location.search)) localStorage.setItem('esteru_dev', '1'); if (/[?&]nodev\b/.test(location.search)) localStorage.removeItem('esteru_dev'); DEV = localStorage.getItem('esteru_dev') === '1'; } catch (e) { /* 무시 */ }
+  // 개발 모드는 저장하지 않는다(이전 빌드가 남긴 설정도 지운다): 주소에 ?dev 가 있는 그 로딩에서만 켜진다.
+  let DEV = false; try { localStorage.removeItem('esteru_dev'); DEV = /[?&]dev\b/.test(location.search); } catch (e) { DEV = /[?&]dev\b/.test(location.search); }
   const SPEEDS = DEV ? [1, 2, 4, 8] : [1, 2, 4], NEW_FLOOR_CAP = 2;
   const newFloor = e => !!e && e.floor > e.prevMax;
   const effSpeed = () => newFloor(S.exp) ? Math.min(S.speed, NEW_FLOOR_CAP) : S.speed;
@@ -97,7 +98,7 @@
     const st = C.stats(u), c = C.CLASSES[u.cls], pos = S.save.formation[u.id];
     return `<div class="card click ${S.sel === u.id ? 'sel' : ''} ${pos && o.mark ? 'placed' : ''}" ${o.drag ? `data-unit="${u.id}"` : ''} data-act="${o.act}" data-id="${u.id}">
       <div class="ucard"><div class="pt" style="border-color:${c.color}">${portrait(u)}</div>
-      <div title="${luckHint(u)}"><div class="nm">${esc(u.name)} ${rarTag(u)} <span class="dim">${c.name} Lv${u.lv}</span></div><div class="st">HP ${st.hp} · 공 ${st.atk} · 방 ${st.def} · 속 ${st.spd.toFixed(1)} · 사거리 ${st.range}</div><div class="st">${C.ROW_TXT[c.row]}${pos ? ' · <span class="good">배치됨</span>' : ''}${C.inSquad(S.save, u) ? ' · <span class="good">🪖 분대</span>' : ''} · <span class="${C.fatOf(u) < 25 ? 'bad' : C.fatOf(u) < 50 ? 'warn' : 'dim'}" title="100=정상 · 50 미만 공·방 −10% · 25 미만 −25% · 0 출격 불가">피로 ${Math.round(C.fatOf(u))}</span></div></div>
+      <div title="${luckHint(u)}"><div class="nm">${esc(u.name)} ${rarTag(u)} <span class="dim">${c.name} Lv${u.lv}</span></div><div class="st">HP ${st.hp} · 공 ${st.atk} · 방 ${st.def} · 속 ${st.spd.toFixed(1)} · 사거리 ${st.range}</div><div class="st">${C.ROW_TXT[c.row]} · <span title="적의 시선을 끄는 정도. 방어직군이 높고, 큰 피해를 주는 누커는 위협이 쌓이면 어그로를 빼앗는다">도발 ${st.taunt.toFixed(1)}</span>${pos ? ' · <span class="good">배치됨</span>' : ''}${C.inSquad(S.save, u) ? ' · <span class="good">🪖 분대</span>' : ''} · <span class="${C.fatOf(u) < 25 ? 'bad' : C.fatOf(u) < 50 ? 'warn' : 'dim'}" title="100=정상 · 50 미만 공·방 −10% · 25 미만 −25% · 0 출격 불가">피로 ${Math.round(C.fatOf(u))}</span></div></div>
       <div class="cost-badge" title="코스트 ${C.costOf(u)}">${C.costOf(u)}</div></div>${o.more || ''}</div>`;
   }
   function comboHTML(pt) {
@@ -267,7 +268,7 @@
     const body = $('sideBody');
     if (S.sideTab === 'log') { body.innerHTML = '<div class="log" id="logBox"></div>'; S.logShown = 0; const lb = $('logBox'); lb.innerHTML = S.exp.log.slice(-200).map(l => `<div class="${l.c}">${esc(l.m)}</div>`).join(''); S.logShown = S.exp.log.length; lb.scrollTop = lb.scrollHeight; }
     else if (S.sideTab === 'tactics') body.innerHTML = `<div class="sec-t">전술 (실시간 변경 가능)</div>${polHTML(true)}`;
-    else body.innerHTML = `<div id="infoStats"></div><div class="sec-t">지도 기호</div><div class="card" style="line-height:1.9">⬇ 계단 &nbsp; ⬆ 입구 &nbsp; 📦 상자 &nbsp; 🎁 큰 상자(금고) &nbsp; ⚠ 함정(도적이 발견)<br>🚪 문 &nbsp; 🔒 잠긴 문(도적 필요) &nbsp; ⛲ 치유의 샘 &nbsp; ■ 검은 칸 = 적 무리<br>보라 테두리 ☠ = 배회하는 정예 · 파랑 ❗ = 조건부 특수 몹(원혼·도적단) · 📦 일부는 미믹<br>▲ = 전투 무대의 고지대(+6%/단) · 미로의 계단식 바닥 = 고저차<br>붉은 테두리 = 리더 · 노란 점선 = 이동 경로</div><div class="sec-t">조작</div><div class="card" style="line-height:1.9"><span class="kbd">Space</span> 일시정지 · <span class="kbd">1~4</span> 배속 · <span class="kbd">I</span> 아이템 · <span class="kbd">Esc</span> 닫기<br>지도 클릭: 그 위치로 이동 지시</div>`;
+    else body.innerHTML = `<div id="infoStats"></div><div class="sec-t">지도 기호</div><div class="card" style="line-height:1.9">⬇ 계단 &nbsp; ⬆ 입구 &nbsp; 📦 상자 &nbsp; 🎁 큰 상자(금고) &nbsp; ⚠ 함정(도적이 발견)<br>🚪 문 &nbsp; 🔒 잠긴 문(도적 필요) &nbsp; ⛲ 치유의 샘 &nbsp; ■ 검은 칸 = 적 무리<br>보라 테두리 ☠ = 배회하는 정예 · 파랑 ❗ = 조건부 특수 몹(원혼·도적단) · 📦 일부는 미믹<br>▲ = 전투 무대의 고지대(+6%/단) · 미로의 계단식 바닥 = 고저차<br>붉은 테두리 = 리더 · 노란 점선 = 이동 경로</div><div class="sec-t">몬스터 특수 능력 (이름 옆 아이콘)</div><div class="card" style="line-height:1.9">${Object.keys(C.ABIL_ICON).map(k => `${C.ABIL_ICON[k]} ${C.ABIL_DESC[k]}`).join(' &nbsp; ')}</div><div class="sec-t">도발(어그로)</div><div class="card" style="line-height:1.8">적은 <b>위협 수치가 가장 높은 대원</b>을 노립니다(붉은 점선). 기사·전사는 도발 배율이 높아 기본적으로 시선을 끌고, 큰 피해를 주는 마술사·궁수 같은 누커는 위협이 쌓이면 어그로를 빼앗습니다. 기사·전사는 <b>[도발]</b> 스킬로 어그로를 되찾습니다(🛡 표시).</div><div class="sec-t">조작</div><div class="card" style="line-height:1.9"><span class="kbd">Space</span> 일시정지 · <span class="kbd">1~4</span> 배속 · <span class="kbd">I</span> 아이템 · <span class="kbd">Esc</span> 닫기<br>지도 클릭: 그 위치로 이동 지시</div>`;
     S.exp && updateHud();
   }
 

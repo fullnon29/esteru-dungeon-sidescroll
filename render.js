@@ -114,6 +114,16 @@ const Render = (function () {
     const ents = boardEntities();
     ents.forEach(c => { if (c.dx === undefined) { c.dx = c.x; c.dy = c.y; } c.dx += (c.x - c.dx) * Math.min(1, dt * 9); c.dy += (c.y - c.dy) * Math.min(1, dt * 9); if (c.lt > 0) c.lt -= dt; });
     ents.sort((a, b) => (a.dx + a.dy) - (b.dx + b.dy));
+    if (bt) { // 어그로 선: 적이 노리는 대상(위협 1위)을 붉은 점선으로 잇는다. 도발 중인 대원은 🛡 표시
+      ctx.save(); ctx.setLineDash([5, 4]); ctx.lineWidth = 1.6;
+      for (const c of ents) {
+        if (c.side !== 'e' || !c.curTgt || !c.curTgt.alive) continue;
+        const [ax, ay] = iso(c.dx, c.dy), [tx, ty] = iso(c.curTgt.dx, c.curTgt.dy), t = c.curTgt;
+        ctx.strokeStyle = (t.tauntUntil || 0) > bt.t ? '#ff5a5aaa' : '#ff9a5a66';
+        ctx.beginPath(); ctx.moveTo(ax, ay - elAt(c.dx, c.dy) - 12); ctx.lineTo(tx, ty - elAt(t.dx, t.dy) - 12); ctx.stroke();
+      }
+      ctx.restore();
+    }
     for (const c of ents) {
       let [sx, sy] = iso(c.dx, c.dy); sy -= elAt(c.dx, c.dy); const r = 17 * (c.size || 1);
       { const j = jOf(Math.round(c.dx), Math.round(c.dy)); sx += j[0]; sy += j[1]; }
@@ -133,6 +143,8 @@ const Render = (function () {
       if (c.poisoned) emoji('☠️', sx + r - 2, cy - r + 2, 12);
       if (c.cost) { ctx.fillStyle = '#e2b659'; ctx.beginPath(); ctx.arc(sx + r - 2, cy + r - 4, 8, 0, 7); ctx.fill(); ctx.fillStyle = '#1b1608'; ctx.font = '700 11px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(c.cost, sx + r - 2, cy + r - 0.5); }
       if (c.noBar || c.side === 'e') { ctx.font = '11px "Malgun Gothic",sans-serif'; ctx.fillStyle = '#d6dcee'; ctx.textAlign = 'center'; ctx.fillText(c.name, sx, sy + 22); }
+      if (c.abilTxt) { ctx.font = `10px ${EMOJI}`; ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.fillText(c.abilTxt, sx, sy + 33); } // 몬스터 특수 능력 아이콘
+      if (bt && c.side === 'p' && (c.tauntUntil || 0) > bt.t) emoji('🛡️', sx - r + 2, cy - r - 12, 14);
       ctx.globalAlpha = 1;
     }
     for (const f of S.floaters) {

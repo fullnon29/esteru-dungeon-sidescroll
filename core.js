@@ -20,6 +20,10 @@ const Core = (function () {
     cook:    { hpGrow: 0.9, name: '요리사', icon: '🍳', cost: 2, hp: 85, atk: 9, def: 4, spd: 10, range: 1, hire: 180, color: '#d98c4a', row: 'back', eva: 0.05 },
   };
   const ROW_TXT = { front: '전열 전용', back: '후열 전용', any: '전·후열' };
+  // 도발(어그로) 배율: 방어직군(기사·전사)이 적의 시선을 끈다. 적은 위협 수치가 가장 높은 대원을 노린다(Phase 5).
+  const TAUNT = { warrior: 2.0, knight: 3.0, monk: 1.3, elf: 1.0, mage: 0.8, priest: 0.9, thief: 0.6, cook: 0.8 };
+  for (const k in TAUNT) CLASSES[k].taunt = TAUNT[k];
+  CLASSES.warrior.innate = ['taunt']; CLASSES.knight.innate = ['taunt']; // 방어직군 고유 스킬 [도발]: 어그로를 강제로 가져온다
   // 전직 직업 (DEVNOTE 3-B): 기본 직업의 상위. 능력치 ×1.3(속도 +1), 코스트 +1. 직업 판정은 baseCls(u)를 사용.
   const PROMO = {
     warrior: ['swordsaint', '검성', '🌟', 'kenki'], knight: ['paladin', '성기사', '⚜️', 'sacred'], monk: ['monkmaster', '수도승', '☯️', 'renkan'],
@@ -27,7 +31,7 @@ const Core = (function () {
   };
   for (const base in PROMO) {
     const [id, name, icon, skill] = PROMO[base], b = CLASSES[base];
-    CLASSES[id] = Object.assign({}, b, { base, promo: true, name, icon, skill, cost: b.cost + 1, hp: Math.round(b.hp * 1.3), atk: Math.round(b.atk * 1.3), def: Math.round(b.def * 1.3), spd: b.spd + 1, hire: Math.round(b.hire * 2.5) });
+    CLASSES[id] = Object.assign({}, b, { base, promo: true, name, icon, skill, taunt: b.taunt + 0.3, cost: b.cost + 1, hp: Math.round(b.hp * 1.3), atk: Math.round(b.atk * 1.3), def: Math.round(b.def * 1.3), spd: b.spd + 1, hire: Math.round(b.hire * 2.5) });
   }
   const baseCls = u => (CLASSES[u.cls] && CLASSES[u.cls].base) || u.cls;
 
@@ -55,6 +59,7 @@ const Core = (function () {
     antidote:{ name: '해독', type: 'cure', uses: 4, master: 8 },
     guard:  { name: '방어태세', type: 'guard', uses: 3, master: 8 },
     flurry: { name: '연속 찌르기', type: 'flurry', mult: 0.9, uses: 4, master: 12 },
+    taunt:  { name: '도발', type: 'taunt', range: 5, uses: 3, master: 99 }, // 방어직군 고유 — 사거리 안 모든 적의 위협 1위를 차지하고 5초간 강제 표적
     // 전직 전용 스킬 — 스킬셋 업로드 전까지의 임시 구성(기존 스킬 유형 재사용), 숙련 습득 대상 아님(master 99)
     kenki:       { name: '검기 난무', type: 'adjacent', mult: 1.7, uses: 3, master: 99 },
     sacred:      { name: '성스러운 일격', type: 'holy', mult: 2.2, range: 2, magic: true, uses: 3, master: 99 },
@@ -129,6 +134,9 @@ const Core = (function () {
     c_cape: ['thief', 'elf'],
   };
   for (const id in RESTRICT) ITEMS[id].classes = RESTRICT[id];
+  // 방어구·방패의 도발 보정(어그로 획득 배율에 더해짐)
+  const ITEM_TAUNT = { s_buckler: 0.1, s_shield: 0.4, s_tower: 0.8, a_plate: 0.3, a_mithril: 0.5, a_dragon: 0.6, w_lance: 0.2 };
+  for (const id in ITEM_TAUNT) ITEMS[id].taunt = ITEM_TAUNT[id];
   const canUse = (u, i) => !i || !i.classes || i.classes.includes(baseCls(u));
 
   // 전설 장비("!"): 매 드롭마다 무작위 이름/효과
@@ -231,6 +239,12 @@ const Core = (function () {
   const PREMIUM = new Set(['wyvern', 'dragon']);
   ENEMIES.concat(GOLDEN, SPECIALS).forEach(t => { t.edible = EDIBLE[t.id] || 'none'; });
   { const BE = { 5: 'harmless', 15: 'poison', 20: 'poison', 40: 'harmless', 45: 'harmless' }; for (const f in BOSSES) BOSSES[f].edible = BE[f] || 'none'; BOSSES[40].premium = BOSSES[45].premium = true; }
+  // 몬스터 특수 능력 (Phase 5): split 분열 / steal 도둑질 / weaken 쇠약 / revive 부활 / pierce 방어 관통 / drain 흡혈 / enrage 격노 / thorns 가시
+  const ABIL = { slime: ['split'], goblin: ['steal'], bat: ['drain'], spider: ['weaken'], skel: ['revive'], orc: ['enrage'], golem: ['thorns'], vamp: ['drain'], demon: ['pierce'], succ: ['drain'], dragon: ['enrage'], dknight: ['pierce', 'enrage'], lich: ['revive'], bandit: ['steal'], mimic: ['steal'] };
+  const ABIL_ICON = { split: '🧬', steal: '🪙', weaken: '🕸️', revive: '💀', pierce: '🗡️', drain: '🩸', enrage: '💢', thorns: '🌵' };
+  const ABIL_DESC = { split: '피격 시 분열', steal: '골드를 훔침', weaken: '공격력을 깎음', revive: '한 번 되살아남', pierce: '방어 50% 무시', drain: '피해의 30% 흡혈', enrage: 'HP 40%↓ 격노', thorns: '근접 공격 반사' };
+  ENEMIES.concat(GOLDEN, SPECIALS).forEach(t => { t.abil = ABIL[t.id] || []; });
+  { const BA = { 5: ['enrage'], 15: ['weaken'], 20: ['weaken'], 25: ['thorns'], 30: ['revive'], 35: ['pierce'], 45: ['enrage', 'pierce'], 50: ['pierce', 'drain'] }; for (const f in BOSSES) BOSSES[f].abil = BA[f] || []; }
   const bandOf = f => Math.min(4, Math.floor((f - 1) / 10));
   const poolOf = f => { const b = bandOf(f); return ENEMIES.filter(e => e.band === b || e.band === b - 1); };
   const famsOf = f => [...new Set(poolOf(f).map(e => e.fam))];
@@ -250,6 +264,7 @@ const Core = (function () {
   function skillsOf(u) {
     const s = new Set(u.learned || []);
     for (const slot in SLOTS) { const i = u.equip[slot]; if (i && ITEMS[i] && ITEMS[i].skill) s.add(ITEMS[i].skill); }
+    for (const k of (CLASSES[u.cls].innate || [])) s.add(k);
     return [...s];
   }
   function maxCharges(u, sid) { return SKILLS[sid].uses + ((u.learned || []).includes(sid) ? 1 : 0); }
@@ -281,13 +296,13 @@ const Core = (function () {
   const canLead = u => rarOf(u) === 'H' || rarOf(u) === 'L';
   function stats(u) {
     const c = CLASSES[u.cls], L = (u.lv - 1) * growOf(u);
-    let hp = Math.round(c.hp * (1 + TUNE.growHp * L * (c.hpGrow || 1))), atk = Math.round(c.atk * (1 + TUNE.growAtk * L)), def = Math.round(c.def * (1 + TUNE.growDef * L)), spd = c.spd, eva = c.eva, rng = c.range;
+    let hp = Math.round(c.hp * (1 + TUNE.growHp * L * (c.hpGrow || 1))), atk = Math.round(c.atk * (1 + TUNE.growAtk * L)), def = Math.round(c.def * (1 + TUNE.growDef * L)), spd = c.spd, eva = c.eva, rng = c.range, taunt = c.taunt || 1;
     for (const slot in SLOTS) {
       const i = ITEMS[u.equip[slot]]; if (!i) continue;
-      rng += i.range || 0; hp += i.hp || 0; atk += i.atk || 0; def += i.def || 0; spd += i.spd || 0; eva += i.eva || 0;
+      rng += i.range || 0; hp += i.hp || 0; atk += i.atk || 0; def += i.def || 0; spd += i.spd || 0; eva += i.eva || 0; taunt += i.taunt || 0;
     }
     const fm = fatMul(u); atk = Math.round(atk * fm); def = Math.round(def * fm); if (fm < 0.8) eva = Math.max(0, eva - 0.1);
-    return { hp, atk, def, spd, eva: Math.min(eva, 0.5), range: rng };
+    return { hp, atk, def, spd, eva: Math.min(eva, 0.5), range: rng, taunt };
   }
 
   /* ---------- 세이브 ---------- */
@@ -607,6 +622,7 @@ const Core = (function () {
     return {
       side: 'e', tplId: t.id, floorKey: f, name: (mod.elite ? '정예 ' : '') + t.name, icon: t.icon, color: boss ? '#8b1f3f' : (t.golden ? '#b8860b' : (mod.elite ? '#6b2d8b' : '#7a3b3b')), golden: !!t.golden, elite: !!mod.elite, special: !!t.special, boss: !!boss, fam: t.fam || '보스', undead: !!t.undead,
       edible: t.edible || 'none', premium: !!(t.premium || PREMIUM.has(t.id)),
+      abil: t.abil || [], abilTxt: (t.abil || []).map(k => ABIL_ICON[k]).join(''), threat: {}, curTgt: null, canRevive: (t.abil || []).includes('revive') && (boss || t.id === 'lich' || Math.random() < 0.4),
       x, y, dx: x, dy: y, hp, maxhp: hp, atk: Math.round((boss ? 20 : t.atk) * scaleAtk(f) * am * (mod.atk || 1)), def: Math.round((boss ? 8 : t.def) * scaleDef(f) * dm * (mod.def || 1)),
       spd: t.spd, eva: 0, range: t.range, magic: !!t.magic, poison: t.poison || 0, skills: t.skills || null, gauge: rnd(0, 6), alive: true, guard: 0,
       exp: Math.round(enemyExp(f, boss) * (t.expMul || 1) * (mod.exp || 1)), gold: Math.round((5 + f * 2) * (boss ? 8 : 1) * (t.goldMul || 1) * (mod.gold || 1)), size: boss ? 1.5 : 1,
@@ -679,14 +695,15 @@ const Core = (function () {
     for (const u of exp.party) {
       if (u.hp <= 0) continue;
       const p = s.formation[u.id], st = stats(u);
-      units.push({ side: 'p', u, name: u.name, icon: CLASSES[u.cls].icon, color: CLASSES[u.cls].color, x: p[0], y: p[1], dx: p[0], dy: p[1], hp: u.hp, maxhp: st.hp, atk: st.atk, def: st.def, spd: st.spd, eva: st.eva, range: st.range, magic: baseCls(u) === 'mage' || baseCls(u) === 'priest', gauge: rnd(0, 6), alive: true, guard: 0, poisoned: !!u.poison, isLeader: u.id === leaderId, size: 1 });
+      units.push({ side: 'p', u, name: u.name, icon: CLASSES[u.cls].icon, color: CLASSES[u.cls].color, x: p[0], y: p[1], dx: p[0], dy: p[1], hp: u.hp, maxhp: st.hp, atk: st.atk, def: st.def, spd: st.spd, eva: st.eva, range: st.range, taunt: st.taunt, magic: baseCls(u) === 'mage' || baseCls(u) === 'priest', gauge: rnd(0, 6), alive: true, guard: 0, poisoned: !!u.poison, isLeader: u.id === leaderId, size: 1 });
     }
     units.forEach(c => applyCombo(c, exp.combo)); // 직업 조합 보너스
+    if (exp.sleepNext) { units.forEach(c => { c.gauge = -7; }); exp.sleepNext = false; } // 수면 함정: 파티는 한 박자 늦게 시작
     const occ = new Set(), enemies = [];
     const free = () => { for (let k = 0; k < 60; k++) { const x = ri(0, 8), y = ri(0, 3); if (!occ.has(x + ',' + y)) { occ.add(x + ',' + y); return [x, y]; } } return [ri(0, 8), ri(0, 3)]; };
     for (const id of group.tpls) {
       if (id === 'boss') { occ.add('4,1'); enemies.push(mkEnemy(BOSSES[f], f, 4, 1, true)); }
-      else { const [x, y] = free(); enemies.push(mkEnemy(ENEMY_BY_ID[id], f, x, y, false, group.elite ? { hp: 1.8, atk: 1.25, def: 1.2, exp: 2.5, gold: 3, elite: true } : null)); }
+      else { const [x, y] = free(); enemies.push(mkEnemy(ENEMY_BY_ID[id], f, x, y, false, group.elite ? { hp: 1.8, atk: 1.25, def: 1.2, exp: 2.5, gold: 3, elite: true } : (group.house ? { exp: 1.5, gold: 1.5 } : null))); }
     }
     const gT = group.golden ? ENEMY_BY_ID[group.tpls[0]] : null;
     const sq = new Set((exp.squads || []).map(q => q.type));
@@ -712,13 +729,31 @@ const Core = (function () {
     c.atk = Math.round(c.atk * all * ch); c.def = Math.round(c.def * all * dx * ch); c.spd *= all; c.maxhp = Math.round(c.maxhp * all);
     if (!cb.dup && cb.rangePlus && c.range >= 3) c.range += cb.rangePlus;
   }
-  function syncPlayer(c, cb) { const st = stats(c.u); c.maxhp = st.hp; c.atk = st.atk; c.def = st.def; c.spd = st.spd; c.eva = st.eva; c.range = st.range; c.hp = c.u.hp; applyCombo(c, cb); }
+  function syncPlayer(c, cb) { const st = stats(c.u); c.taunt = st.taunt; c.maxhp = st.hp; c.atk = st.atk; c.def = st.def; c.spd = st.spd; c.eva = st.eva; c.range = st.range; c.hp = c.u.hp; applyCombo(c, cb); }
 
+  // 위협(어그로): 가한 피해 × 도발 배율(+스킬 1.5배). 방어직군은 타격마다 고정 위협이 더해져 기본적으로 1위를 유지하지만,
+  // 누커의 큰 한 방은 위협이 크게 쌓여 어그로를 빼앗는다(현재 표적보다 10% 높아지면 전환). 방어직군은 [도발]로 되찾는다.
+  function addThreat(b, att, tgt, dmg) {
+    if (!att.u || tgt.side !== 'e') return; const tm = att.taunt || 1;
+    tgt.threat[att.u.id] = (tgt.threat[att.u.id] || 0) + dmg * tm * (att.inSkill ? 1.5 : 1) + (tm >= 1.5 ? 18 * tm : 0);
+  }
+  function aggroTarget(b, c) {
+    const ps = alive(b, 'p'); if (!ps.length) return null;
+    const forced = ps.filter(p => (p.tauntUntil || 0) > b.t).sort((p, q) => dist(c, p) - dist(c, q))[0];
+    if (forced) { c.curTgt = forced; return forced; }
+    let best = null, bv = 0; for (const p of ps) { const v = c.threat[p.u ? p.u.id : p.id] || 0; if (v > bv) { bv = v; best = p; } }
+    if (!best) { c.curTgt = null; return null; }
+    const cur = c.curTgt && c.curTgt.alive ? c.curTgt : null;
+    if (cur && cur !== best && bv <= (c.threat[cur.u.id] || 0) * 1.1) best = cur; // 이미 노리는 대상은 10% 이상 앞서야 갈아탄다
+    c.curTgt = best; return best;
+  }
   function damage(b, att, tgt, mult, magic, skill) {
     if (!tgt.alive) return;
     if (!magic && Math.random() < tgt.eva + (att.blind || 0) - (cellTh(b, tgt) === 'river' ? 0.1 : 0)) { ev(b, { k: 'miss', x: tgt.x, y: tgt.y }); return; }
     if (b.hgt) mult *= clamp(1 + 0.06 * (b.hgt[att.y][att.x] - b.hgt[tgt.y][tgt.x]), 0.8, 1.25);
-    const a = att.atk * mulFor(b, att) * mult, d = tgt.def * (tgt.guard > b.t ? 2 : 1) * mulFor(b, tgt);
+    const weakK = att.weak && b.t < att.weak.until ? 1 - 0.1 * att.weak.n : 1; // 쇠약(거미): 공격력 −10%×중첩
+    const a = att.atk * mulFor(b, att) * mult * weakK; let d = tgt.def * (tgt.guard > b.t ? 2 : 1) * mulFor(b, tgt);
+    if (att.abil && att.abil.includes('pierce')) d *= 0.5; // 관통: 방어 50% 무시
     let dmg = a * rnd(0.9, 1.1) - d * (magic ? 0.25 : 0.5);
     const crit = Math.random() < 0.08; if (crit) dmg *= 1.5;
     dmg = Math.max(Math.ceil(a * 0.1), Math.round(dmg));
@@ -728,13 +763,39 @@ const Core = (function () {
     setHp(tgt, tgt.hp - dmg); if (tgt.side === 'p') b.pHurt = b.t;
     ev(b, { k: 'dmg', x: tgt.x, y: tgt.y, v: dmg, crit, side: tgt.side });
     if (att.poison && tgt.side === 'p' && !tgt.poisoned && Math.random() < att.poison) { tgt.poisoned = true; tgt.u.poison = true; ev(b, { k: 'log', m: `☠️ ${tgt.name}이(가) 독에 걸렸다!`, c: 'bad' }); }
+    addThreat(b, att, tgt, dmg);
+    // --- 몬스터 특수 능력 (공격자) ---
+    if (att.side === 'e' && att.abil && att.abil.length && tgt.side === 'p') {
+      if (att.abil.includes('drain') && att.hp > 0) { setHp(att, att.hp + Math.round(dmg * 0.3)); }
+      if (att.abil.includes('weaken')) { tgt.weak = { n: Math.min(3, (tgt.weak && b.t < tgt.weak.until ? tgt.weak.n : 0) + 1), until: b.t + 8 }; }
+      if (att.abil.includes('steal') && Math.random() < 0.25 && b.exp.loot.gold > 0) { const g = Math.max(1, Math.round(b.exp.loot.gold * 0.08)); b.exp.loot.gold -= g; att.stolen = (att.stolen || 0) + g; ev(b, { k: 'log', m: `🪙 ${att.name}이(가) ${g}G를 훔쳤다! (처치하면 되찾는다)`, c: 'bad' }); }
+    }
+    // --- 몬스터 특수 능력 (피격자) ---
+    if (tgt.side === 'e' && tgt.abil && tgt.abil.length && tgt.hp > 0) {
+      if (tgt.abil.includes('enrage') && !tgt.enraged && tgt.hp < tgt.maxhp * 0.4) { tgt.enraged = true; tgt.atk = Math.round(tgt.atk * 1.4); ev(b, { k: 'log', m: `💢 ${tgt.name}이(가) 격노했다!`, c: 'warn' }); }
+      if (tgt.abil.includes('split') && (tgt.splits || 0) < 2 && tgt.hp > tgt.maxhp * 0.3 && alive(b, 'e').length < 9) splitUnit(b, tgt);
+    }
+    if (tgt.side === 'e' && tgt.abil && tgt.abil.includes('thorns') && att.side === 'p' && !magic && att.range <= 1 && att.hp > 0) { // 가시: 근접 공격을 12% 반사
+      const r = Math.max(1, Math.round(dmg * 0.12)); setHp(att, att.hp - r); ev(b, { k: 'dmg', x: att.x, y: att.y, v: r, side: 'p', poison: true }); if (att.hp <= 0) die(b, att);
+    }
     if (tgt.hp <= 0) die(b, tgt, att);
   }
+  function splitUnit(b, t) { // 분열: 남은 HP를 둘로 나눈 복제체가 빈 칸에 생긴다
+    const occ = (x, y) => b.units.some(o => o.alive && o.x === x && o.y === y), cand = [];
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) { const nx = t.x + dx, ny = t.y + dy; if ((dx || dy) && nx >= 0 && ny >= 0 && nx < GRID && ny < GRID && ny <= 4 && !occ(nx, ny)) cand.push([nx, ny]); }
+    if (!cand.length) return; const [x, y] = pick(cand), half = Math.max(1, Math.floor(t.hp / 2));
+    const cl = Object.assign({}, t, { x, y, dx: x, dy: y, hp: half, splits: 2, threat: {}, curTgt: null, exp: Math.round(t.exp * 0.4), gold: Math.round(t.gold * 0.4), gauge: rnd(0, 6) });
+    t.hp -= half; t.splits = (t.splits || 0) + 1; b.units.push(cl); ev(b, { k: 'log', m: `🧬 ${t.name}이(가) 둘로 갈라졌다!`, c: 'warn' });
+  }
   function die(b, c) {
+    if (c.side === 'e' && c.canRevive && !c.revived) { // 부활: 한 번 HP 35%로 되살아난다
+      c.revived = true; c.hp = Math.max(1, Math.round(c.maxhp * 0.35)); c.threat = {}; c.curTgt = null;
+      ev(b, { k: 'log', m: `💀 ${c.name}이(가) 되살아났다!`, c: 'warn' }); return;
+    }
     c.alive = false;
     if (c.side === 'e') {
       const e = b.exp, s = b.save;
-      e.loot.gold += c.gold; e.kills++; cqCheck(e);
+      e.loot.gold += c.gold + (c.stolen || 0); e.kills++; cqCheck(e);
       giveExp(b, c.exp); dropLoot(b, c);
       // 요리사 동행 시 식용 몹을 식량으로 (유독 몹은 해독 처리해 ×0.8)
       if (c.edible && c.edible !== 'none' && b.units.some(o => o.side === 'p' && o.alive && o.u && baseCls(o.u) === 'cook')) {
@@ -769,6 +830,7 @@ const Core = (function () {
   function heal(b, c, tgt, amt) {
     const before = tgt.hp; setHp(tgt, tgt.hp + amt);
     ev(b, { k: 'heal', x: tgt.x, y: tgt.y, v: tgt.hp - before });
+    if (c && c.u && c.side === 'p') { const g = (tgt.hp - before) * 0.3 * (c.taunt || 1); if (g > 0) for (const o of b.units) if (o.alive && o.side === 'e' && o.threat) o.threat[c.u.id] = (o.threat[c.u.id] || 0) + g; } // 치유도 위협을 만든다
   }
   function consume(c, sid) {
     if (!c.u) return;
@@ -779,10 +841,13 @@ const Core = (function () {
     }
   }
   // 범위 스킬 시각화: 닿는 칸 목록 + 색 (불=주황 / 얼음=파랑 / 번개=노랑 / 신성=금 / 회복=초록). big=범위 마법 → 화면 흔들림
-  const SKILL_COL = { fire: '#ff7a2a', ice: '#4fa8ff', thunder: '#ffe14a', holy: '#ffd86b', heal: '#5be08a', bless: '#5be08a', antidote: '#5be08a', guard: '#9fb2ff' };
+  const SKILL_COL = { taunt: '#ff4a4a', fire: '#ff7a2a', ice: '#4fa8ff', thunder: '#ffe14a', holy: '#ffd86b', heal: '#5be08a', bless: '#5be08a', antidote: '#5be08a', guard: '#9fb2ff' };
   const box = (cx, cy, r) => { const o = []; for (let y = cy - r; y <= cy + r; y++) for (let x = cx - r; x <= cx + r; x++) if (x >= 0 && y >= 0 && x < GRID && y < GRID) o.push([x, y]); return o; };
   function area(b, sid, cells, big) { const sk = SKILLS[sid]; ev(b, { k: 'area', cells, col: SKILL_COL[sid] || (sk.magic ? '#b48cff' : '#ff6a6a'), big: !!big }); }
-  function useSkill(b, c, sid, foes, allies) {
+  function useSkill(b, c, sid, foes, allies) { // 스킬 시전 중 가한 피해는 위협 ×1.5 (inSkill)
+    c.inSkill = true; try { return useSkill0(b, c, sid, foes, allies); } finally { c.inSkill = false; }
+  }
+  function useSkill0(b, c, sid, foes, allies) {
     const sk = SKILLS[sid], rng = sk.range || c.range;
     const inR = foes.filter(o => dist(c, o) <= rng).sort((p, q) => dist(c, p) - dist(c, q));
     c.b = b;
@@ -799,6 +864,13 @@ const Core = (function () {
       case 'heal': { const t = allies.filter(a => a.hp < a.maxhp).sort((p, q) => p.hp / p.maxhp - q.hp / q.maxhp)[0]; if (!t) return false; area(b, sid, [[t.x, t.y]]); ev(b, { k: 'fx', x: t.x, y: t.y, t: 'heal', n: sk.name, from: c }); heal(b, c, t, c.atk * 1.8 + t.maxhp * 0.15); break; }
       case 'healall': { area(b, sid, allies.map(a => [a.x, a.y])); ev(b, { k: 'fx', x: c.x, y: c.y, t: 'heal', n: sk.name, from: c }); allies.forEach(a => heal(b, c, a, c.atk * 1.0 + a.maxhp * 0.1)); break; }
       case 'cure': { const t = allies.find(a => a.poisoned); if (!t) return false; t.poisoned = false; t.u.poison = false; ev(b, { k: 'log', m: `💊 ${t.name}의 독이 해독됐다`, c: 'good' }); break; }
+      case 'taunt': { // 도발: 사거리 안 모든 적의 위협 1위를 차지하고 5초간 강제 표적이 된다
+        const en = foes.filter(o => dist(c, o) <= rng); if (!en.length) return false;
+        const mx = Math.max(0, ...foes.map(o => Math.max(0, ...Object.values(o.threat || {}))));
+        en.forEach(o => { o.threat[c.u.id] = mx * 1.3 + 60; o.curTgt = c; });
+        c.tauntUntil = b.t + 5; area(b, sid, en.map(o => [o.x, o.y]).concat([[c.x, c.y]]));
+        ev(b, { k: 'fx', x: c.x, y: c.y, t: 'skill', n: sk.name, from: c }); ev(b, { k: 'log', m: `🛡️ ${c.name}의 도발! 적 ${en.length}기의 시선이 쏠린다`, c: 'good' }); break;
+      }
       case 'guard': { c.guard = b.t + 6; area(b, sid, [[c.x, c.y]]); ev(b, { k: 'fx', x: c.x, y: c.y, t: 'skill', n: sk.name, from: c }); break; }
       case 'flurry': { if (!inR.length) return false; const t = inR[0]; area(b, sid, [[t.x, t.y]]); ev(b, { k: 'fx', x: t.x, y: t.y, t: 'skill', n: sk.name, from: c }); damage(b, c, t, sk.mult, false); if (t.alive) damage(b, c, t, sk.mult, false); break; }
     }
@@ -815,13 +887,14 @@ const Core = (function () {
       if (t === 'heal') return allies.some(a => a.hp / a.maxhp < 0.55);
       if (t === 'healall') return ratio < 0.6;
       if (t === 'cure') return allies.some(a => a.poisoned);
+      if (t === 'taunt') return (c.tauntUntil || 0) <= b.t && foes.some(o => dist(c, o) <= rng && o.curTgt && o.curTgt !== c); // 누군가 다른 대원이 노려지고 있을 때
       if (t === 'guard') return c.hp / c.maxhp < 0.7 && foes.some(o => dist(c, o) <= 2) && c.guard <= b.t;
       if (t === 'adjacent') return foes.some(o => dist(c, o) <= 1);
       return foes.some(o => dist(c, o) <= rng);
     };
     const cand = avail.filter(need);
     if (!cand.length) return false;
-    const sup = cand.filter(s => ['heal', 'healall', 'cure'].includes(SKILLS[s].type));
+    const sup = cand.filter(s => ['heal', 'healall', 'cure', 'taunt'].includes(SKILLS[s].type));
     if (sup.length) return useSkill(b, c, sup[0], foes, allies);
     if (Math.random() < freq) return useSkill(b, c, pick(cand), foes, allies);
     return false;
@@ -849,7 +922,7 @@ const Core = (function () {
     if (c.side === 'p' && b.policy.target === 'weakest') {
       const inr = foes.filter(o => dist(c, o) <= c.range);
       t = (inr.length ? inr : foes).slice().sort((p, q) => p.hp - q.hp)[0];
-    } else t = byDist[0];
+    } else t = (c.side === 'e' && aggroTarget(b, c)) || byDist[0]; // 적은 위협이 가장 높은 대원을 노린다
     const d = dist(c, t);
     if (d <= c.range) {
       ev(b, { k: 'fx', x: t.x, y: t.y, t: 'atk', from: c });
@@ -1045,7 +1118,7 @@ const Core = (function () {
   }
   function startBattle(e, g) {
     e.battle = createBattle(e, g); e.phase = 'battle';
-    const names = e.battle.units.filter(c => c.side === 'e').map(c => c.name);
+    const names = e.battle.units.filter(c => c.side === 'e').map(c => c.name + (c.abilTxt || ''));
     elog(e, g.boss ? `⚔️ 수호자 출현! ${names[0]} 외 ${names.length - 1}` : `⚔️ 적과 조우: ${names.join(', ')}`, g.boss ? 'warn' : '');
     if (g.boss) ban(e, '⚔️', '수호자 출현!', names[0], 'bad');
   }
@@ -1057,10 +1130,27 @@ const Core = (function () {
     if (Math.random() < 0.3) { const k = pick(['potion', 'potion', 'antidote', 'elixir']); e.save.cons[k] = (e.save.cons[k] || 0) + 1; m += ` + ${CONS[k].name}`; }
     elog(e, m, 'good'); ban(e, big ? '🎁' : '📦', big ? '큰 보물상자!' : '보물상자', m.replace(/^📦 (큰 )?보물상자! /, ''), 'good'); questEvent(e.save, 'chest', null, (mm, c) => elog(e, mm, c)); cqCheck(e);
   }
+  // 함정 5종 (Phase 5): 독침(2명 피해+독) / 수면(다음 전투 선공 상실) / 소환(적이 나타나 전투) / 부패(식량 손실) / 지뢰(전원 피해)
   function triggerTrap(e, pre) {
-    const t = e.party.filter(u => u.hp > 0).sort(() => Math.random() - 0.5).slice(0, 2);
-    t.forEach(u => { const d = Math.max(1, Math.round(stats(u).hp * rnd(0.08, 0.15))); u.hp = Math.max(1, u.hp - d); if (Math.random() < 0.35) u.poison = true; });
-    elog(e, `⚠️ ${pre || ''}함정 발동! ${t.map(u => u.name).join(', ')} 피해${t.some(u => u.poison) ? ' (독)' : ''}`, 'bad'); ban(e, '⚠️', '함정 발동!', t.map(u => u.name).join(', ') + ' 피해', 'bad');
+    const live = e.party.filter(u => u.hp > 0), r = Math.random(), s = e.save, p = pre || '';
+    if (r < 0.35) { // 독침
+      const t = live.slice().sort(() => Math.random() - 0.5).slice(0, 2);
+      t.forEach(u => { const d = Math.max(1, Math.round(stats(u).hp * rnd(0.08, 0.15))); u.hp = Math.max(1, u.hp - d); if (Math.random() < 0.35) u.poison = true; });
+      elog(e, `⚠️ ${p}독침 함정! ${t.map(u => u.name).join(', ')} 피해${t.some(u => u.poison) ? ' (독)' : ''}`, 'bad'); ban(e, '⚠️', '독침 함정!', t.map(u => u.name).join(', ') + ' 피해', 'bad');
+    } else if (r < 0.5) { // 수면
+      e.sleepNext = true; elog(e, `😴 ${p}수면 함정! 다음 전투에서 선공을 잃는다`, 'bad'); ban(e, '😴', '수면 함정!', '다음 전투에서 파티가 한 박자 늦게 움직인다', 'bad');
+    } else if (r < 0.65) { // 소환
+      const m = e.map, g = genGroup(e.floor, false); g.summoned = true; g.name = '소환'; g.announced = true;
+      const nb = D8.map(([dx, dy]) => [e.pos.x + dx, e.pos.y + dy]).filter(([x, y]) => inb(x, y) && m.grid[y][x] !== T.WALL && m.grid[y][x] !== T.LOCK && !m.groups.some(o => o.alive && o.x === x && o.y === y));
+      const q = nb.length ? pick(nb) : [e.pos.x, e.pos.y]; g.x = q[0]; g.y = q[1]; m.groups.push(g);
+      elog(e, `👹 ${p}소환 함정! 마법진에서 몬스터가 나타났다`, 'bad'); ban(e, '👹', '소환 함정!', '마법진에서 몬스터가 나타났다', 'bad'); startBattle(e, g);
+    } else if (r < 0.8) { // 부패
+      const loss = Math.round(s.food * rnd(0.18, 0.28) * 10) / 10; s.food = Math.max(0, Math.round((s.food - loss) * 100) / 100);
+      elog(e, `🍂 ${p}부패 함정! 식량 ${loss}이(가) 상했다`, 'bad'); ban(e, '🍂', '부패 함정!', `식량 ${loss}개가 상했다`, 'bad');
+    } else { // 지뢰
+      live.forEach(u => { u.hp = Math.max(1, u.hp - Math.max(1, Math.round(stats(u).hp * rnd(0.06, 0.11)))); u.fatigue = Math.max(0, fatOf(u) - 4); });
+      elog(e, `💣 ${p}지뢰! 파티 전원이 폭발에 휘말렸다`, 'bad'); ban(e, '💣', '지뢰!', '파티 전원 피해 · 피로 증가', 'bad');
+    }
   }
   function finish(e, result) {
     const s = e.save; e.done = true; e.result = result; e.phase = 'done'; e.pending = null;
@@ -1177,6 +1267,21 @@ const Core = (function () {
     if (f >= 2 && Math.random() < 0.5) add('merchant');
     if (f >= 3 && Math.random() < 0.4) add('gacha');
     if (f >= 3 && Object.keys(s.comp || {}).length < COMPANIONS.length && !e.cq && Math.random() < 0.25) add('companion');
+    // 몬스터 하우스: 방 하나(시작·계단·금고방 제외)에 처음 들어서면 몬스터가 가득 쏟아진다 (표시 없음)
+    const m = e.map, sr = m.rid[m.stairs.y][m.stairs.x], rooms = m.rooms.filter(r => r.id !== 0 && r.id !== sr && !m.vaults.includes(r.id));
+    m.house = f >= 4 && rooms.length && Math.random() < 0.3 ? { rid: pick(rooms).id, used: false } : null;
+  }
+  function startHouse(e) {
+    const f = e.floor, n = Math.min(8, 6 + Math.floor(f / 25) + ri(0, 1)), pool = poolOf(f);
+    const g = { tpls: Array.from({ length: n }, () => pick(pool).id), boss: false, alive: true, house: true, icon: '🏚️', name: '몬스터 하우스', x: e.pos.x, y: e.pos.y, announced: true };
+    e.map.groups.push(g); ban(e, '🏚️', '몬스터 하우스!', `방 안에 몬스터 ${n}기가 가득 차 있었다`, 'bad'); elog(e, `🏚️ 몬스터 하우스! 방 안에서 몬스터 ${n}기가 쏟아져 나온다`, 'bad'); startBattle(e, g);
+  }
+  function houseReward(e) { // 제압 보상: 골드 대량 + 장비 2개(정예급) + 정예 재료
+    const f = e.floor, L = e.loot; L.mats = L.mats || {}; const g = f * 60 + 120; L.gold += g;
+    const got = [`${g}G`];
+    for (let i = 0; i < 2; i++) { const id = dropItem(f, { party: e.party, luck: partyLuck(e.party), kind: 'elite' }); if (ITEMS[id].legend || ITEMS[id].gen) registerLegend(e.save, id); L.items.push(id); got.push(ITEMS[id].name); }
+    const fams = [...new Set(poolOf(f).map(x => x.fam))].filter(x => FAM_MAT[x]), m = FAM_MAT[pick(fams)][1]; addMats(L.mats, m, 2); got.push(`${MATS[m]} ×2`);
+    ban(e, '🏚️', '몬스터 하우스 제압!', got.join(' · '), 'good'); elog(e, `🏚️ 몬스터 하우스 제압! 보상: ${got.join(', ')}`, 'good');
   }
   const EVT = { merchant: { icon: '🧳', name: '행상인' }, gacha: { icon: '🎰', name: '뽑기방' }, companion: { icon: '📜', name: '의뢰인' } };
   function genStock(e) {
@@ -1281,11 +1386,12 @@ const Core = (function () {
       }
       c.open = true; openChest(e, c.big);
     }
-    const tr = m.traps.find(t2 => !t2.gone && t2.x === x && t2.y === y); if (tr) { tr.gone = true; triggerTrap(e, ''); }
+    const tr = m.traps.find(t2 => !t2.gone && t2.x === x && t2.y === y); if (tr) { tr.gone = true; triggerTrap(e, ''); if (e.phase === 'battle') return; }
     const sp = m.springs.find(s => !s.used && s.x === x && s.y === y);
     if (sp && e.party.some(u => u.hp > 0 && u.hp < stats(u).hp * 0.85)) { sp.used = true; e.party.forEach(u => { if (u.hp > 0) u.hp = Math.min(stats(u).hp, u.hp + Math.round(stats(u).hp * 0.4)); }); elog(e, '⛲ 치유의 샘! 파티의 HP가 회복되었다', 'good'); ban(e, '⛲', '치유의 샘', '파티의 HP가 회복되었다', 'good'); }
     const evt = m.events && m.events.find(v => !v.used && v.x === x && v.y === y); if (evt) { evt.used = true; startEvent(e, evt); }
-    if (t === T.STAIRS) descend(e);
+    if (e.phase === 'explore' && !e.pending && m.house && !m.house.used && m.rid[y][x] === m.house.rid) { m.house.used = true; startHouse(e); } // 몬스터 하우스 방에 진입
+    if (t === T.STAIRS && e.phase === 'explore') descend(e);
   }
   // 정예 몹 배회 / 추격 (3걸음마다 한 칸, 추격 몹은 2걸음마다)
   function moveWanderers(e) {
@@ -1365,6 +1471,7 @@ const Core = (function () {
       if (!t.found && d <= 2) { t.found = true; elog(e, '🔎 도적이 함정을 발견했다'); }
       if (t.found && d <= 1) { t.gone = true; if (Math.random() < 0.85) elog(e, '⚠️ 도적이 함정을 해제했다', 'good'); else triggerTrap(e, '해제 실패! '); }
     }
+    if (e.phase !== 'explore') return; // 해제 실패한 소환 함정 등으로 이미 전투가 시작된 경우
     const g = m.groups.find(g => g.alive && cheb(e.pos, g) <= 1); if (g) { startBattle(e, g); return; }
     e.healT += STEP; if (e.healT > 2) { e.healT = 0; healWalk(e); }
     moveWanderers(e); checkSpecials(e);
@@ -1407,6 +1514,7 @@ const Core = (function () {
         b.group.alive = false; elog(e, '🏆 승리!', 'good');
         if (b.foodGain) elog(e, `🍳 요리사가 몹을 손질했다 (식량 +${Math.round(b.foodGain * 10) / 10})`, 'good');
         if (b.group.chest) { b.group.chest.open = true; openChest(e, true); }
+        if (b.group.house) houseReward(e);
         if (b.fallen === 0) { questEvent(e.save, 'flawless', null, (m, c) => elog(e, m, c)); e.flaw = (e.flaw || 0) + 1; }
         cqCheck(e);
         e.phase = 'explore'; e.moveT = -0.4; e.battle = null;
@@ -1480,11 +1588,11 @@ const Core = (function () {
   function describe(i) {
     const p = [];
     if (i.atk) p.push('공+' + i.atk); if (i.def) p.push('방+' + i.def); if (i.hp) p.push('HP+' + i.hp);
-    if (i.range) p.push('사거리+' + i.range); if (i.spd) p.push('속+' + i.spd); if (i.eva) p.push('회피+' + Math.round(i.eva * 100) + '%');
+    if (i.taunt) p.push('도발+' + i.taunt); if (i.range) p.push('사거리+' + i.range); if (i.spd) p.push('속+' + i.spd); if (i.eva) p.push('회피+' + Math.round(i.eva * 100) + '%');
     if (i.skill) p.push('[' + SKILLS[i.skill].name + ']');
     return p.join(' ');
   }
 
-  return { COMPANIONS, QDESC, EVT, cqProgress, buyMerchant, itemLabel, gachaPull, acceptCompanion, closeEvent, supplyPlan, SQUADS, squadSlots, squadCap, squadUsed, squadErr, activeSquads, squadUnits, inSquad, setSquad, assignSquad, sortieWage, PROMO_PRICE, buyPromo, MATS, matKind, FAM_MAT, craftBases, recipeOf, canCraft, craft, terrainHave, PROMO, PROMO_LV, canPromote, promote, comboOf, baseCls, THEMES, floorThemes, fatOf, fatMul, canSortie, buyFood, RARITY, RAR_ORDER, CRAFT_ENABLED, canUse, canLead, costOf, hireCost, hireUnit, migrateSave, partyLuck, rarOf, GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, MW, MH, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
+  return { ABIL_ICON, ABIL_DESC, COMPANIONS, QDESC, EVT, cqProgress, buyMerchant, itemLabel, gachaPull, acceptCompanion, closeEvent, supplyPlan, SQUADS, squadSlots, squadCap, squadUsed, squadErr, activeSquads, squadUnits, inSquad, setSquad, assignSquad, sortieWage, PROMO_PRICE, buyPromo, MATS, matKind, FAM_MAT, craftBases, recipeOf, canCraft, craft, terrainHave, PROMO, PROMO_LV, canPromote, promote, comboOf, baseCls, THEMES, floorThemes, fatOf, fatMul, canSortie, buyFood, RARITY, RAR_ORDER, CRAFT_ENABLED, canUse, canLead, costOf, hireCost, hireUnit, migrateSave, partyLuck, rarOf, GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, MW, MH, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
 })();
 if (typeof module !== 'undefined') module.exports = Core; else window.Core = Core;
