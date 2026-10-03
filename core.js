@@ -258,7 +258,7 @@ const Core = (function () {
   // fatigue: rest=휴식 용병 귀환 회복, work=출전 용병 귀환 회복, death=전투불능 시 감소, starve=식량 0 이동당 피로 감소
   // pace: 게임 진행 속도의 기본 배율 역수(1=기본). 클수록 모든 배속에서 느려진다(플레이 시간 조정용)
   // goldMul: 탐사(몬스터·상자·몬스터 하우스)로 얻는 골드 배율. 전리품 판매(상점·행상인)로 보충한다
-  const TUNE = { goldMul: 0.4, pace: 13, food: { perStep: 0.012, price: 6, yield: [0.4, 0.03], start: 20 }, fatigue: { rest: 25, work: 5, death: 25, starve: 0.25, cook: 2 }, expScale: 4, growHp: 0.035, growAtk: 0.12, growDef: 0.30, eHp: 0.30, eAtk: 0.12, eDef: 0.15, eHp10: 0.18, eAtk10: 0.13 };
+  const TUNE = { goldMul: 0.4, pace: 7, food: { perStep: 0.012, price: 6, yield: [0.4, 0.03], start: 20 }, fatigue: { rest: 25, work: 5, death: 25, starve: 0.25, cook: 2 }, expScale: 4, growHp: 0.035, growAtk: 0.12, growDef: 0.30, eHp: 0.30, eAtk: 0.12, eDef: 0.15, eHp10: 0.18, eAtk10: 0.13 };
   const needExp = lv => Math.max(1, Math.round((EXP_CUM[Math.min(lv + 1, 50)] - EXP_CUM[lv]) * TUNE.expScale));
   // 적 1마리 경험치: 원작 일반 적 EXP 2(1층) → 약 1700(후반) 의 지수 곡선
   const enemyExp = (f, boss) => Math.round(2 * Math.pow(850, (f - 1) / 49) * (boss ? 8 + 20 * f / 50 : 1));
@@ -367,19 +367,19 @@ const Core = (function () {
     byName('레온').equip.weapon = 'w_sword'; byName('실비아').equip.weapon = 'w_bow';
     byName('루나').equip.weapon = 'w_mace'; byName('핀').equip.weapon = 'w_dagger';
     const s = {
-      v: 3, opts: { autoEquip: true, autoIdle: false }, squads: [], comp: {}, mats: {}, bps: Object.fromEntries(START_BPS.map(id => [id, true])), promo: 0, food: TUNE.food.start, gold: 600, day: 1, maxFloor: 1, cleared: false, units,
+      v: 3, opts: { autoEquip: true, autoIdle: false, fastOld: true }, squads: [], comp: {}, mats: {}, bps: Object.fromEntries(START_BPS.map(id => [id, true])), promo: 0, food: TUNE.food.start, gold: 600, day: 1, maxFloor: 1, cleared: false, units,
       gear: ['a_leather', 'a_leather', 's_buckler', 'r_power'], cons: { potion: 3, antidote: 1, escape: 1 },
       formation: {}, policy: { retreat: 25, skill: 'mid', explore: 'full', stance: 'attack', target: 'nearest', leader: 1, downRetreat: false },
       quests: { board: [], active: [], done: 0 }, qid: 1,
     };
     units.forEach(u => { u.hp = stats(u).hp; resetCharges(u); });
-    s.tickets = 0; autoFormation(s); genQuests(s); refreshTavern(s);
+    s.tickets = 0; s.enh = 0; autoFormation(s); genQuests(s); refreshTavern(s);
     return s;
   }
   // v2 → v3: 기존 용병은 전부 일반(레온 포함 — 고급 시작은 새 게임 한정), 행운=등급 하한, 신규 용병 추가, 옵션 기본값
   function migrateSave(s) {
     if (!s || (s.v !== 2 && s.v !== 3)) return null;
-    s.opts = Object.assign({ autoEquip: true, autoIdle: false }, s.opts || {});
+    s.opts = Object.assign({ autoEquip: true, autoIdle: false, fastOld: true }, s.opts || {});
     for (const u of s.units) {
       if (!RARITY[u.rar]) u.rar = 'N';
       if (!u.growMul) u.growMul = RARITY[u.rar].grow;
@@ -387,7 +387,7 @@ const Core = (function () {
       if (u.fatigue === undefined) u.fatigue = 100;
     }
     if (s.food === undefined) s.food = TUNE.food.start;
-    if (!s.squads) s.squads = []; if (!s.comp) s.comp = {}; if (s.tickets === undefined) s.tickets = 0;
+    if (!s.squads) s.squads = []; if (!s.comp) s.comp = {}; if (s.tickets === undefined) s.tickets = 0; if (s.enh === undefined) s.enh = 0;
     if (!s.mats) s.mats = {}; if (!s.bps) s.bps = Object.fromEntries(START_BPS.map(id => [id, true])); if (s.promo === undefined) s.promo = 0;
     ROSTER.forEach((r, i) => { if (!s.units.find(u => u.id === i + 1)) s.units.push(mkUnit(i, r, false)); });
     if (!s.tavern || !Array.isArray(s.tavern.cands) || !tavCands(s).length) refreshTavern(s); // 미고용 용병은 주점 후보 풀로
@@ -826,7 +826,7 @@ const Core = (function () {
     c.alive = false;
     if (c.side === 'e') {
       const e = b.exp, s = b.save;
-      e.loot.gold += c.gold + (c.stolen || 0); e.kills++; cqCheck(e);
+      e.loot.gold += c.gold + (c.stolen || 0); e.kills++; cqCheck(e); questKill(e, c);
       giveExp(b, c.exp); dropLoot(b, c);
       // 요리사 동행 시 식용 몹을 식량으로 (유독 몹은 해독 처리해 ×0.8)
       if (c.edible && c.edible !== 'none' && b.units.some(o => o.side === 'p' && o.alive && o.u && baseCls(o.u) === 'cook')) {
@@ -1026,7 +1026,10 @@ const Core = (function () {
   }
 
   /* ---------- 미궁 생성 (쿼터뷰 벽돌 미로) ---------- */
-  const MW = 55, MH = 33, STEP = 0.14; // 층 넓이: 기존 39×23 의 약 2배
+  let MW = 55, MH = 33; const STEP = 0.14;
+  // 층 크기: 깊이에 따라 넓어진다(1층 55×33 → 50층 95×57). 지금 활성인 층의 크기를 MW/MH 에 둔다(useDims).
+  const dimsFor = f => [55 + Math.round(40 * (clamp(f, 1, 50) - 1) / 49), 33 + Math.round(24 * (clamp(f, 1, 50) - 1) / 49)];
+  const useDims = m => { MW = m.w; MH = m.h; };
   const T = { WALL: 0, COR: 1, ROOM: 2, DOOR: 3, LOCK: 4, STAIRS: 5, UP: 6, OPEN: 7 };
   const D4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
   const D8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
@@ -1064,14 +1067,15 @@ const Core = (function () {
     return { tpls: [t.id], boss: false, alive: true, icon: t.icon, golden: true, name: t.name, x: 0, y: 0 };
   }
   function tryGen(f) {
+    [MW, MH] = dimsFor(f); const K = MW * MH / 1815; // 면적 배율(콘텐츠 밀도 유지)
     const grid = Array.from({ length: MH }, () => Array(MW).fill(0)), rid = Array.from({ length: MH }, () => Array(MW).fill(-1));
     let rooms = [];
-    for (let i = 0; i < 170 && rooms.length < 18; i++) {
+    for (let i = 0; i < Math.round(170 * K) && rooms.length < Math.round(18 * K); i++) {
       const w = ri(4, 8), h = ri(3, 5), x = ri(2, MW - w - 3), y = ri(2, MH - h - 3);
       if (rooms.some(r => x < r.x + r.w + 3 && x + w + 3 > r.x && y < r.y + r.h + 3 && y + h + 3 > r.y)) continue;
       rooms.push({ x, y, w, h, cx: x + (w >> 1), cy: y + (h >> 1), deg: 0 });
     }
-    if (rooms.length < 12) return null;
+    if (rooms.length < Math.round(12 * K)) return null;
     rooms.sort((a, b) => a.cx - b.cx); rooms.forEach((r, i) => { r.id = i; });
     for (const r of rooms) for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) { grid[y][x] = T.ROOM; rid[y][x] = r.id; }
     const carve = (a, b) => {
@@ -1082,7 +1086,7 @@ const Core = (function () {
       a.deg++; b.deg++;
     };
     for (let i = 0; i < rooms.length - 1; i++) carve(rooms[i], rooms[i + 1]);
-    for (let k = 0; k < 4; k++) { const i = ri(0, rooms.length - 3); carve(rooms[i], rooms[i + 2]); }
+    for (let k = 0; k < Math.round(4 * K); k++) { const i = ri(0, rooms.length - 3); carve(rooms[i], rooms[i + 2]); }
     const r0 = rooms[0], start = { x: r0.cx, y: r0.cy };
     const d0 = floodDist(grid, start.x, start.y, false);
     let sr = rooms[1]; for (const r of rooms) if (r.id !== 0 && d0[r.cy][r.cx] > d0[sr.cy][sr.cx]) sr = r;
@@ -1091,7 +1095,7 @@ const Core = (function () {
     // 금고방: 막다른 방의 입구를 잠근다 (도적이 있어야 열림)
     const entrances = r => { const out = []; for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) if (grid[y][x] === T.COR && D4.some(([dx, dy]) => inb(x + dx, y + dy) && rid[y + dy][x + dx] === r.id)) out.push([x, y]); return out; };
     const vaults = [];
-    const leaves = rooms.filter(r => r.deg === 1 && r.id !== 0 && r.id !== sr.id).sort(() => Math.random() - 0.5).slice(0, 3);
+    const leaves = rooms.filter(r => r.deg === 1 && r.id !== 0 && r.id !== sr.id).sort(() => Math.random() - 0.5).slice(0, 3 + Math.floor(K));
     for (const r of leaves) {
       const en = entrances(r); if (!en.length) continue;
       en.forEach(([x, y]) => { grid[y][x] = T.LOCK; });
@@ -1105,16 +1109,16 @@ const Core = (function () {
     const dist = floodDist(grid, start.x, start.y, true);
     const randTile = (pred) => { for (let k = 0; k < 300; k++) { const x = ri(1, MW - 2), y = ri(1, MH - 2), t = grid[y][x]; if ((t === T.ROOM || t === T.COR) && !used.has(y * MW + x) && pred(x, y)) { used.add(y * MW + x); return { x, y }; } } return null; };
     const chests = [], traps = [], springs = [], groups = [];
-    const nCh = 8 + ri(0, 3) + (f >= 20 ? 2 : 0);
+    const nCh = Math.round((8 + ri(0, 3) + (f >= 20 ? 2 : 0)) * K);
     for (let i = 0; i < nCh; i++) { const p = randTile((x, y) => rid[y][x] >= 0 && rid[y][x] !== 0 && !vaults.some(v => v.id === rid[y][x])); if (p) chests.push({ x: p.x, y: p.y, big: false, open: false }); }
     for (const v of vaults) for (let i = 0; i < 2; i++) { const p = randTile((x, y) => rid[y][x] === v.id); if (p) chests.push({ x: p.x, y: p.y, big: i === 0, open: false }); }
-    const nTr = 8 + Math.floor(f / 4) + ri(0, 3);
+    const nTr = Math.round((8 + Math.floor(f / 4) + ri(0, 3)) * K);
     for (let i = 0; i < nTr; i++) { const p = randTile((x, y) => rid[y][x] !== 0 && !vaults.some(v => v.id === rid[y][x]) && dist[y][x] > 2); if (p) traps.push({ x: p.x, y: p.y, found: false, gone: false }); }
-    for (let k = 0; k < 2; k++) if (Math.random() < 0.45) { const p = randTile((x, y) => rid[y][x] > 0 && !vaults.some(v => v.id === rid[y][x])); if (p) springs.push({ x: p.x, y: p.y, used: false }); }
-    const bossFloor = f % 5 === 0, nG = 14 + Math.floor(f / 4) + ri(0, 3);
+    for (let k = 0; k < Math.round(2 * K); k++) if (Math.random() < 0.45) { const p = randTile((x, y) => rid[y][x] > 0 && !vaults.some(v => v.id === rid[y][x])); if (p) springs.push({ x: p.x, y: p.y, used: false }); }
+    const bossFloor = f % 5 === 0, nG = Math.round((14 + Math.floor(f / 4) + ri(0, 3)) * K);
     if (bossFloor) { const g = genGroup(f, true); g.x = stairs.x; g.y = stairs.y; groups.push(g); }
     for (let i = 0; i < nG; i++) { const p = randTile((x, y) => dist[y][x] >= 6 && !groups.some(g => cheb(g, { x, y }) < 3)); if (p) { const g = genGroup(f, false); g.x = p.x; g.y = p.y; groups.push(g); } }
-    if (f >= 3) for (let k = 0; k < (f >= 25 ? 4 : 3); k++) if (Math.random() < 0.7) { const el = genElite(f); const p = randTile((x, y) => dist[y][x] >= 8 && !groups.some(g => cheb(g, { x, y }) < 3)); if (p) { el.x = p.x; el.y = p.y; groups.push(el); } }
+    if (f >= 3) for (let k = 0; k < Math.round((f >= 25 ? 4 : 3) * K); k++) if (Math.random() < 0.7) { const el = genElite(f); const p = randTile((x, y) => dist[y][x] >= 8 && !groups.some(g => cheb(g, { x, y }) < 3)); if (p) { el.x = p.x; el.y = p.y; groups.push(el); } }
     if (f >= 3) chests.forEach(c => { if (!c.big && Math.random() < 0.12) c.mimic = true; });
     if (f >= 2 && Math.random() < 0.28) { const gg = genGolden(f); const p = gg && randTile((x, y) => dist[y][x] >= 6 && !groups.some(g => cheb(g, { x, y }) < 2)); if (p) { gg.x = p.x; gg.y = p.y; groups.push(gg); } }
     // 이동맵 고저차: 시작점에서 퍼져 나가며 0~3 단 (같은 방은 평탄, 통로/방 경계에서 가끔 ±1)
@@ -1131,7 +1135,17 @@ const Core = (function () {
     }
     return { w: MW, h: MH, hgt, grid, rid, rooms, start, stairs, chests, traps, springs, groups, vaults: vaults.map(v => v.id), seen: Array.from({ length: MH }, () => Array(MW).fill(false)), floor: f };
   }
-  function genFloor(f) { for (let i = 0; i < 200; i++) { const m = tryGen(f); if (m) return m; } throw new Error('map gen failed'); }
+  // 보스층(5의 배수)은 고정맵: 층 번호로 만든 시드로 생성해 매번 같은 배치(방·상자·함정·몹)가 나온다. 나머지 층은 매번 새로 생성.
+  function withSeed(seed, fn) {
+    const orig = Math.random; let a = seed >>> 0;
+    Math.random = () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+    try { return fn(); } finally { Math.random = orig; }
+  }
+  function genFloor(f) {
+    const gen = () => { for (let i = 0; i < 200; i++) { const m = tryGen(f); if (m) return m; } throw new Error('map gen failed'); };
+    if (f % 5 === 0) { const m = withSeed(f * 7919 + 13, gen); m.fixed = true; return m; }
+    return gen();
+  }
 
   /* ---------- 원정 ---------- */
   const wageOf = party => party.reduce((a, u) => a + 10 + u.lv * 4, 0);
@@ -1147,14 +1161,26 @@ const Core = (function () {
     const r = m.rid[y][x];
     if (r >= 0) { const rm = m.rooms[r]; for (let yy = rm.y; yy < rm.y + rm.h; yy++) for (let xx = rm.x; xx < rm.x + rm.w; xx++) mark(xx, yy); }
   }
-  function setFloor(e, f) {
-    const s = e.save; e.floor = f; e.map = genFloor(f); e.pos = { x: e.map.start.x, y: e.map.start.y }; e.trail = []; e.directive = null; e.path = []; e.hist = [];
-    e.reached = Math.max(e.reached, f); s.maxFloor = Math.max(s.maxFloor, f);
-    e.map.themes = floorThemes(f); e.map.tz = genZones(e.map, e.map.themes); e.foodMul = 1; e.volcSteps = 0; placeEvents(e);
-    reveal(e); questEvent(s, 'reach', f, (m, c) => elog(e, m, c));
-    elog(e, `⬇ ${f}층에 도착했다`, 'floor');
-    if (e.map.themes.length) elog(e, `${e.map.themes.map(k => THEMES[k].icon + ' ' + THEMES[k].name).join(' + ')} 지형 — ${e.map.themes.map(k => THEMES[k].desc).join(' / ')}`, 'warn');
+  // 층 전환: 한 원정 동안 방문한 층은 e.floors 에 보존된다(처치한 몹·연 상자·이벤트 상태 유지). from='up' 이면 위층에서 아래로 내려온 게 아니라
+  // 아래층에서 올라온 것이므로 계단(▼) 위치에, 그 외에는 입구(▲) 위치에 도착한다.
+  function setFloor(e, f, from) {
+    const s = e.save; e.floor = f; e.floors = e.floors || {};
+    let m = e.floors[f]; const fresh = !m;
+    if (fresh) { m = e.floors[f] = genFloor(f); m.themes = floorThemes(f); m.tz = genZones(m, m.themes); }
+    e.map = m; useDims(m);
+    const at = from === 'up' ? m.stairs : m.start; e.pos = { x: at.x, y: at.y }; e.trail = []; e.directive = null; e.path = []; e.hist = [];
+    e.reached = Math.max(e.reached, f); s.maxFloor = Math.max(s.maxFloor, f); e.foodMul = 1; e.volcSteps = 0;
+    if (fresh) placeEvents(e);
+    reveal(e);
+    if (fresh && f <= e.prevMax && e.save.opts && e.save.opts.fastOld !== false) m.seen.forEach(r => r.fill(true)); // 이미 가 본 층은 길을 알고 있다: 지도를 모두 공개해 계단으로 곧장 간다
+    if (fresh) questEvent(s, 'reach', f, (mm, c) => elog(e, mm, c));
+    elog(e, `${from === 'up' ? '⬆' : '⬇'} ${f}층${fresh ? '에 도착했다' : '으로 돌아왔다'}`, 'floor');
+    if (fresh && m.themes.length) elog(e, `${m.themes.map(k => THEMES[k].icon + ' ' + THEMES[k].name).join(' + ')} 지형 — ${m.themes.map(k => THEMES[k].desc).join(' / ')}`, 'warn');
+    if (fresh && m.fixed) elog(e, '🏰 보스층 — 고정된 구조의 맵이다', 'warn');
   }
+  // 원정은 1층에서 시작한다. 보스를 쓰러뜨려 지름길이 열리면 그 다음 층(6·11·16…층)에서도 시작할 수 있다(Phase 7).
+  const startFloors = s => [1].concat([6, 11, 16, 21, 26, 31, 36, 41, 46].filter(f => s.maxFloor >= f)); // 보스(5층 단위)를 쓰러뜨릴 때마다 지름길이 열린다
+  const defaultStart = s => startFloors(s).slice(-1)[0];
   function createExpedition(save, startFloor) {
     const party = save.units.filter(u => u.hired && save.formation[u.id] && canSortie(u));
     party.forEach(u => { u.poison = false; ensureCharges(u); });
@@ -1207,6 +1233,7 @@ const Core = (function () {
   function finish(e, result) {
     const s = e.save; e.done = true; e.result = result; e.phase = 'done'; e.pending = null;
     if (e.cq) { elog(e, `📜 ${e.cq.comp.name}의 의뢰에 실패했다 (원정 종료)`, 'warn'); e.cq = null; }
+    (e.quests || []).filter(q => !q.done).forEach(q => elog(e, `📋 미완료 의뢰 포기: ${q.text}`, 'warn'));
     if (result === 'wipe') { s.gold += Math.floor(e.loot.gold * 0.5); e.lost = true; }
     else {
       s.gold += e.loot.gold; e.loot.items.forEach(i => s.gear.push(i));
@@ -1250,6 +1277,11 @@ const Core = (function () {
       if (e.pos.x === d.x && e.pos.y === d.y) e.directive = null;
       else { const p = bfsPath(e, (x, y) => x === d.x && y === d.y); if (p) return { path: p, why: '지시한 위치로 이동' }; e.directive = null; }
     }
+    if (e.goal) { // 층을 오가는 목표: 목표 층이 다르면 계단(▲/▼)으로, 같으면 대상 위치로. 길을 모르면 일반 탐색으로 진행한다.
+      const gl = e.goal;
+      if (e.floor !== gl.floor) { const up = gl.floor < e.floor, p = bfsPath(e, (x, y) => m.grid[y][x] === (up ? T.UP : T.STAIRS)); if (p) return { path: p, why: up ? '위층으로 이동' : '아래층으로 이동' }; }
+      else if (gl.x !== undefined && !(e.pos.x === gl.x && e.pos.y === gl.y)) { const p = bfsPath(e, (x, y) => x === gl.x && y === gl.y); if (p) return { path: p, why: gl.why || '목표 지점으로 이동' }; }
+    }
     const F = {
       chest: (x, y) => m.chests.some(c => !c.open && c.x === x && c.y === y && m.seen[y][x]),
       front: (x, y) => D4.some(([dx, dy]) => inb(x + dx, y + dy) && !m.seen[y + dy][x + dx]),
@@ -1264,7 +1296,8 @@ const Core = (function () {
     if (pcts < 0.7) { const s = get('spring'); if (s) return s; }
     if (pcts >= 0.4) { const v = get('event'); if (v) return v; } // 행상인·뽑기방·의뢰인 우선 방문
     if (pcts >= 0.5 && m.groups.some(g => g.alive && g.golden && m.seen[g.y][g.x])) { const p = bfsPath(e, (x, y) => m.groups.some(g => g.alive && g.golden && m.seen[g.y][g.x] && cheb({ x, y }, g) <= 1)); if (p) return { path: p, why: '✨ 황금 몹을 쫓는다!' }; }
-    const mode = pol.explore;
+    // 이미 가 본 층(이번 원정 이전 최고 층 이하)은 계단 직행으로 빠르게 지나간다(설정 opts.fastOld). 새 층은 탐사 방침대로.
+    const mode = (e.floor <= e.prevMax && e.save.opts && e.save.opts.fastOld !== false) ? 'stairs' : pol.explore;
     let order;
     if (mode === 'stairs') {
       const st = get('stairs'); if (st) return st;
@@ -1296,8 +1329,14 @@ const Core = (function () {
   }
   // 기술 사용 횟수 회복: 층을 넘어갈 때와 던전 중앙의 휴식소에서. 후열 합주(조합 보너스)의 +횟수는 유지한다.
   function refillCharges(e) { e.party.forEach(u => { resetCharges(u); if (e.combo && e.combo.skillUses) for (const k in u.charges) u.charges[k] += e.combo.skillUses; }); }
+  const healStep = e => { for (const u of e.party) if (u.hp > 0) u.hp = Math.min(stats(u).hp, u.hp + Math.round(stats(u).hp * 0.12)); }; // 층을 넘을 때 HP 12% 회복
   function descend(e) {
-    e.floor++; for (const u of e.party) if (u.hp > 0) u.hp = Math.min(stats(u).hp, u.hp + Math.round(stats(u).hp * 0.05)); setFloor(e, e.floor);
+    e.floor++; healStep(e); setFloor(e, e.floor, 'down');
+    refillCharges(e); elog(e, '🔋 층을 넘어 기술 사용 횟수가 회복되었다', 'good');
+  }
+  function ascend(e) { // 위층으로 이동. 1층에서 올라가면 던전 입구로 나가 원정이 끝난다.
+    if (e.floor <= 1) { elog(e, '🚪 던전 입구로 나왔다', 'good'); finish(e, 'retreat'); return; }
+    e.floor--; healStep(e); setFloor(e, e.floor, 'up');
     refillCharges(e); elog(e, '🔋 층을 넘어 기술 사용 횟수가 회복되었다', 'good');
   }
   /* ---------- 이벤트: 행상인 · 뽑기방 · 특수 동료 의뢰 · 기습 (+ 모든 이벤트는 중앙 배너로 알림) ---------- */
@@ -1328,6 +1367,8 @@ const Core = (function () {
       const mm = e.map, sr0 = mm.rid[mm.stairs.y][mm.stairs.x], cr = mm.rooms.filter(r => r.id !== 0 && r.id !== sr0 && !mm.vaults.includes(r.id)).sort((a, b) => Math.hypot(a.cx - MW / 2, a.cy - MH / 2) - Math.hypot(b.cx - MW / 2, b.cy - MH / 2))[0];
       if (cr && !tileBusy(mm, cr.cx, cr.cy)) list.push({ type: 'rest', x: cr.cx, y: cr.cy, used: false });
     }
+    if (f >= 2 && Math.random() < 0.35 && (e.quests || []).filter(q => !q.done).length < 2) add('qgiver'); // 층을 오가는 의뢰인
+    (e.quests || []).forEach(q => { if (!q.done && q.type === 'deliver' && q.tf === f && !q.tpos) { const p = randRoomTile(e); if (p) { list.push({ type: 'qtarget', x: p.x, y: p.y, used: false, qid: q.id }); q.tpos = p; } } }); // 수령인 배치
     if (f >= 2 && Math.random() < 0.5) add('merchant');
     if (f >= 3 && Math.random() < 0.4) add('gacha');
     if (f >= 3 && Object.keys(s.comp || {}).length < COMPANIONS.length && !e.cq && Math.random() < 0.25) add('companion');
@@ -1347,7 +1388,7 @@ const Core = (function () {
     const fams = [...new Set(poolOf(f).map(x => x.fam))].filter(x => FAM_MAT[x]), m = FAM_MAT[pick(fams)][1]; addMats(L.mats, m, 2); got.push(`${MATS[m]} ×2`);
     ban(e, '🏚️', '몬스터 하우스 제압!', got.join(' · '), 'good'); elog(e, `🏚️ 몬스터 하우스 제압! 보상: ${got.join(', ')}`, 'good');
   }
-  const EVT = { rest: { icon: '⛺', name: '휴식소' }, merchant: { icon: '🧳', name: '행상인' }, gacha: { icon: '🎰', name: '뽑기방' }, companion: { icon: '📜', name: '의뢰인' } };
+  const EVT = { qgiver: { icon: '📋', name: '의뢰인' }, qtarget: { icon: '📮', name: '수령인' }, rest: { icon: '⛺', name: '휴식소' }, merchant: { icon: '🧳', name: '행상인' }, gacha: { icon: '🎰', name: '뽑기방' }, companion: { icon: '📜', name: '의뢰인' } };
   function genStock(e) {
     const f = e.floor, luck = partyLuck(e.party), st = [];
     st.push({ k: 'cons', id: 'potion', n: 3, price: Math.round(CONS.potion.price * 3 * 0.9) });
@@ -1364,7 +1405,12 @@ const Core = (function () {
   }
   function startEvent(e, v) {
     const E = EVT[v.type];
-    if (v.type === 'rest') { refillCharges(e); elog(e, '⛺ 휴식소에서 쉬었다 — 기술 사용 횟수가 모두 회복되었다', 'good'); return; }
+    if (v.type === 'rest') { // 휴식소: 기술 사용 횟수 전부 회복 + HP 60% 회복 + 독 해제
+      refillCharges(e); e.party.forEach(u => { if (u.hp > 0) { u.hp = Math.min(stats(u).hp, u.hp + Math.round(stats(u).hp * 0.6)); u.poison = false; } });
+      elog(e, '⛺ 휴식소에서 쉬었다 — 기술 사용 횟수와 HP(60%)가 회복되었다', 'good'); return;
+    }
+    if (v.type === 'qgiver') { e.pending = { type: 'quest', quest: offerQuest(e), evt: v }; elog(e, '📋 의뢰인을 만났다', 'warn'); return; }
+    if (v.type === 'qtarget') { const q = (e.quests || []).find(z => z.id === v.qid && !z.done); if (q) questComplete(e, q, '전달'); return; }
     if (v.type === 'merchant') { e.pending = { type: 'merchant', stock: genStock(e) }; ban(e, E.icon, '행상인 발견', '떠돌이 행상인이 물건을 펼쳤다', 'good'); elog(e, '🧳 행상인을 만났다 — 물건을 구경한다', 'good'); }
     else if (v.type === 'gacha') { e.pending = { type: 'gacha', price: 120 + e.floor * 20, log: [] }; ban(e, E.icon, '뽑기방 발견', '수상한 뽑기 기계가 놓여 있다', 'good'); elog(e, '🎰 뽑기방을 발견했다', 'good'); }
     else if (v.type === 'companion') {
@@ -1418,12 +1464,70 @@ const Core = (function () {
     u.hp = stats(u).hp; resetCharges(u); s.units.push(u); s.comp = s.comp || {}; s.comp[c.name] = true;
     ban(e, '🤝', '특수 동료 합류!', `${c.name}(${CLASSES[c.cls].name}, ${RARITY[c.rar].name})이(가) 합류했다`, 'good'); elog(e, `🤝 ${c.name}이(가) 동료가 되었다! (용병 탭에서 편성)`, 'good'); e.cq = null; e.joined = (e.joined || []).concat(c.name);
   }
+  /* ---------- 층을 오가는 퀘스트 (Phase 7): 전달 · 토벌 보고 · 강화 납품 ---------- */
+  // 의뢰인(📋)이 있는 방에 들어가면 의뢰를 제안한다. 수락하면 이번 원정 동안 진행되고, 자동 탐사가 목표 층으로 올라가고 내려가며 처리한다.
+  //  전달: 의뢰인 층의 짐을 다른 층 수령인(📮)에게 / 토벌 보고: 아래층에서 특정 계열 몹을 잡고 의뢰인에게 돌아와 보고 / 강화 납품: 재료를 모아 의뢰인에게 납품 → 장비 강화권
+  const ENH_MAX = 5;
+  function offerQuest(e) {
+    const f = e.floor, r = Math.random(), id = (e.qid = (e.qid || 0) + 1), g = Math.round((140 + f * 45) * (0.8 + TUNE.goldMul));
+    if (r < 0.38) {
+      const cand = [-3, -2, -1, 1, 2, 3, 4].map(d => f + d).filter(x => x >= 1 && x <= MAXF && x !== f), tf = pick(cand);
+      return { id, type: 'deliver', gf: f, tf, need: 1, progress: 0, text: `${tf}층의 수령인에게 짐을 전달한다 (${tf > f ? '아래로' : '위로'} ${Math.abs(tf - f)}층)`, reward: { gold: g + Math.abs(tf - f) * 90, tickets: Math.random() < 0.25 ? 1 : 0, enh: 0 } };
+    }
+    if (r < 0.72) {
+      const fam = pick([...new Set(poolOf(Math.min(MAXF, f + 1)).map(x => x.fam))]), need = ri(8, 14);
+      return { id, type: 'hunt', gf: f, fam, minFloor: f + 1, need, progress: 0, text: `${f + 1}층 이하에서 ${fam} 계열 ${need}마리를 처치하고 의뢰인(${f}층)에게 보고`, reward: { gold: g + need * 20, tickets: 0, enh: Math.random() < 0.4 ? 1 : 0 } };
+    }
+    const fams = [...new Set(poolOf(Math.min(MAXF, f + 1)).map(x => x.fam))].filter(x => FAM_MAT[x]), mat = FAM_MAT[pick(fams)][0], need = ri(6, 10);
+    return { id, type: 'enhmat', gf: f, mat, need, progress: 0, text: `${MATS[mat]} ${need}개를 모아 의뢰인(${f}층)에게 납품 (이번 원정 획득분 포함)`, reward: { gold: g, tickets: 0, enh: 1 } };
+  }
+  function matHave(e, id) { return Math.floor((e.loot.mats && e.loot.mats[id]) || 0) + Math.floor(e.save.mats[id] || 0); }
+  function questReady(e, q) { return q.type === 'deliver' ? false : q.type === 'hunt' ? q.progress >= q.need : matHave(e, q.mat) >= q.need; }
+  function placeQuestTarget(e, q) { // 수령인(📮)을 목표 층 지도에 둔다(층이 아직 없으면 층 생성 시 placeEvents 가 처리)
+    const m = e.floors && e.floors[q.tf]; if (!m || q.tpos) return;
+    const saveMap = e.map, saveDims = [MW, MH]; e.map = m; useDims(m);
+    const p = randRoomTile(e); e.map = saveMap; MW = saveDims[0]; MH = saveDims[1];
+    if (p) { m.events = m.events || []; m.events.push({ type: 'qtarget', x: p.x, y: p.y, used: false, qid: q.id }); q.tpos = p; }
+  }
+  function acceptQuest(e) {
+    const p = e.pending; if (!p || p.type !== 'quest') return; const q = p.quest; q.gx = p.evt.x; q.gy = p.evt.y; p.evt.qid = q.id;
+    e.quests = (e.quests || []).concat([q]); if (q.type === 'deliver') placeQuestTarget(e, q);
+    elog(e, `📋 의뢰 수락: ${q.text}`, 'warn'); e.pending = null;
+  }
+  function questComplete(e, q, who) {
+    q.done = true; const R = q.reward, parts = [];
+    if (q.type === 'enhmat') { let left = q.need; const lm = e.loot.mats || {}; const a = Math.min(left, Math.floor(lm[q.mat] || 0)); if (a) { addMats(lm, q.mat, -a); left -= a; } if (left) addMats(e.save.mats, q.mat, -left); }
+    if (R.gold) { e.loot.gold += R.gold; parts.push(`${R.gold}G`); }
+    if (R.tickets) { e.loot.tickets = (e.loot.tickets || 0) + R.tickets; parts.push('🎫출현변경권'); }
+    if (R.enh) { e.save.enh = (e.save.enh || 0) + R.enh; parts.push('🔨장비 강화권'); }
+    elog(e, `📋 의뢰 완료! (${who}) 보상: ${parts.join(', ')}`, 'good'); ban(e, '📋', '의뢰 완료!', parts.join(' · '), 'good');
+  }
+  function questKill(e, c) { for (const q of (e.quests || [])) if (!q.done && q.type === 'hunt' && c.fam === q.fam && e.floor >= q.minFloor && q.progress < q.need) { q.progress++; if (q.progress === q.need) elog(e, `📋 토벌 완료 — ${q.gf}층 의뢰인에게 돌아가 보고하자`, 'warn'); } }
+  function questGoal(e) { // 자동 탐사의 목표: 전달은 수령인, 보고/납품은 조건을 채운 뒤 의뢰인에게
+    for (const q of (e.quests || [])) {
+      if (q.done) continue;
+      if (q.type === 'deliver') return { floor: q.tf, x: q.tpos ? q.tpos.x : undefined, y: q.tpos ? q.tpos.y : undefined, why: '짐 전달', q };
+      if (questReady(e, q)) return { floor: q.gf, x: q.gx, y: q.gy, why: '의뢰 보고', q };
+    }
+    return null;
+  }
+  // 장비 강화: 강화권 1장으로 착용 중인 장비 한 칸을 +1(최대 +5). 기본 수치의 10%씩 오른다.
+  function enhanceItem(s, u, slot) {
+    const i = ITEMS[u.equip[slot]]; if (!i) return '비어 있는 칸입니다'; if ((s.enh || 0) <= 0) return '장비 강화권이 없습니다';
+    const plus = i.plus || 0; if (plus >= ENH_MAX) return `이미 +${ENH_MAX} 입니다`;
+    const b0 = i.b0 || { atk: i.atk || 0, def: i.def || 0, hp: i.hp || 0 }, nb = (i.nameBase || i.name), np = plus + 1;
+    const o = Object.assign({}, i, { id: `${(i.baseId || i.id).split('+')[0]}+${np}.${Date.now().toString(36)}${ri(100, 999)}`, gen: true, plus: np, b0, nameBase: nb, baseId: i.baseId || i.id, name: `${nb} +${np}`, price: Math.round(i.price * 1.2) });
+    for (const k of ['atk', 'def', 'hp']) if (b0[k]) o[k] = Math.max(Math.round(b0[k] * (1 + 0.1 * np)), b0[k] + np * (k === 'hp' ? 5 : 1)); // 단계당 기본 수치 10%(최소 +1, HP는 +5)
+    ITEMS[o.id] = o; registerLegend(s, o.id); u.equip[slot] = o.id; s.enh--; u.hp = Math.min(u.hp, stats(u).hp);
+    return null;
+  }
   function closeEvent(e) { e.pending = null; }
   function resolveAuto(e) { // 봇/자동 처리: 행상인=회복약 보충, 뽑기=여유 있으면 1회, 의뢰=수락
     const p = e.pending, s = e.save; if (!p) return;
     if (p.type === 'merchant') { p.stock.forEach((it, i) => { if (it.k === 'cons' && it.id === 'potion' && (s.cons.potion || 0) < 5 && s.gold > it.price * 20) buyMerchant(e, i); }); closeEvent(e); }
     else if (p.type === 'gacha') { if (s.gold > p.price * 30) gachaPull(e, 1); closeEvent(e); }
     else if (p.type === 'companion') acceptCompanion(e);
+    else if (p.type === 'quest') e.pending = null; // 봇은 층을 오가는 의뢰를 거절한다
   }
   // 기습: 은신한 적이 덮쳐 무작위 대원의 남은 HP를 10% 깎고 전투가 강제로 시작된다. 도적이 있으면 50% 확률로 간파.
   function ambush(e) {
@@ -1458,8 +1562,14 @@ const Core = (function () {
     const sp = m.springs.find(s => !s.used && s.x === x && s.y === y);
     if (sp && e.party.some(u => u.hp > 0 && u.hp < stats(u).hp * 0.85)) { sp.used = true; e.party.forEach(u => { if (u.hp > 0) u.hp = Math.min(stats(u).hp, u.hp + Math.round(stats(u).hp * 0.4)); }); elog(e, '⛲ 치유의 샘! 파티의 HP가 회복되었다', 'good'); ban(e, '⛲', '치유의 샘', '파티의 HP가 회복되었다', 'good'); }
     const evt = m.events && m.events.find(v => !v.used && v.x === x && v.y === y); if (evt) { evt.used = true; startEvent(e, evt); }
+    { const rep = m.events && m.events.find(v => v.type === 'qgiver' && v.qid && v.x === x && v.y === y); // 의뢰인에게 돌아와 보고·납품
+      if (rep) { const q = (e.quests || []).find(z => z.id === rep.qid && !z.done); if (q && questReady(e, q)) questComplete(e, q, q.type === 'hunt' ? '보고' : '납품'); } }
     if (e.phase === 'explore' && !e.pending && m.house && !m.house.used && m.rid[y][x] === m.house.rid) { m.house.used = true; startHouse(e); } // 몬스터 하우스 방에 진입
-    if (t === T.STAIRS && e.phase === 'explore') descend(e);
+    if (e.phase === 'explore' && !e.pending) {
+      const g = e.goal; // 층을 오가는 목표(퀘스트)가 있으면 그 방향으로만 계단을 쓴다
+      if (t === T.UP && g && g.floor < e.floor) { ascend(e); return; }
+      if (t === T.STAIRS && !(g && g.floor < e.floor)) descend(e);
+    }
   }
   // 정예 몹 배회 / 추격 (3걸음마다 한 칸, 추격 몹은 2걸음마다)
   function moveWanderers(e) {
@@ -1544,7 +1654,7 @@ const Core = (function () {
     e.healT += STEP; if (e.healT > 2) { e.healT = 0; healWalk(e); }
     moveWanderers(e); checkSpecials(e);
     if (e.floor >= 2 && Math.random() < 0.0009 && ambush(e)) return; // 기습 이벤트(걸음마다 낮은 확률)
-    const tg = pickTarget(e);
+    e.goal = questGoal(e); const tg = pickTarget(e);
     if (!tg) { m.seen.forEach(r => r.fill(true)); e.text = '길을 찾는 중…'; return; }
     e.path = tg.path; e.text = `${e.floor}층 · ${tg.why}`;
     // 안전장치: 같은 두세 칸만 오가며 진전이 없으면 귀환
@@ -1561,6 +1671,7 @@ const Core = (function () {
   }
   function stepExpedition(e, dt) {
     if (e.done) return;
+    if (e.map) useDims(e.map);
     if (e.pending) { if (e.autoResolve) resolveAuto(e); else return; } // 이벤트 창이 열려 있는 동안 진행 정지
     if (e.phase === 'explore') {
       e.moveT += dt; let n = 0;
@@ -1688,6 +1799,6 @@ const Core = (function () {
     return p.join(' ');
   }
 
-  return { SELL_RATE, matPrice, gearSellPrice, sellGear, sellAllGear, sellMat, refillCharges, TAV, tavCands, tavPool, refreshTavern, useTicket, legendChance, tavernHire, describeSkill, describeFull, gearTotals, ABIL_ICON, ABIL_DESC, COMPANIONS, QDESC, EVT, cqProgress, buyMerchant, itemLabel, gachaPull, acceptCompanion, closeEvent, supplyPlan, SQUADS, squadSlots, squadCap, squadUsed, squadErr, activeSquads, squadUnits, inSquad, setSquad, assignSquad, sortieWage, PROMO_PRICE, buyPromo, MATS, matKind, FAM_MAT, craftBases, recipeOf, canCraft, craft, terrainHave, PROMO, PROMO_LV, canPromote, promote, comboOf, baseCls, THEMES, floorThemes, fatOf, fatMul, canSortie, buyFood, RARITY, RAR_ORDER, CRAFT_ENABLED, canUse, canLead, costOf, hireCost, hireUnit, migrateSave, partyLuck, rarOf, GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, MW, MH, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
+  return { startFloors, defaultStart, ENH_MAX, enhanceItem, acceptQuest, questGoal, questReady, matHave, SELL_RATE, matPrice, gearSellPrice, sellGear, sellAllGear, sellMat, refillCharges, TAV, tavCands, tavPool, refreshTavern, useTicket, legendChance, tavernHire, describeSkill, describeFull, gearTotals, ABIL_ICON, ABIL_DESC, COMPANIONS, QDESC, EVT, cqProgress, buyMerchant, itemLabel, gachaPull, acceptCompanion, closeEvent, supplyPlan, SQUADS, squadSlots, squadCap, squadUsed, squadErr, activeSquads, squadUnits, inSquad, setSquad, assignSquad, sortieWage, PROMO_PRICE, buyPromo, MATS, matKind, FAM_MAT, craftBases, recipeOf, canCraft, craft, terrainHave, PROMO, PROMO_LV, canPromote, promote, comboOf, baseCls, THEMES, floorThemes, fatOf, fatMul, canSortie, buyFood, RARITY, RAR_ORDER, CRAFT_ENABLED, canUse, canLead, costOf, hireCost, hireUnit, migrateSave, partyLuck, rarOf, GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, dimsFor, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
 })();
 if (typeof module !== 'undefined') module.exports = Core; else window.Core = Core;

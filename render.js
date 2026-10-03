@@ -331,7 +331,7 @@ const Render = (function () {
     // 고저차가 있으면 타일이 위로 솟아 평면 투영과 어긋나므로, 주변 타일의 (높이 반영) 화면 위치와 가장 가까운 칸을 고른다
     let best = null, bd = 9;
     for (let ox = -3; ox <= 3; ox++) for (let oy = -3; oy <= 3; oy++) {
-      const gx = bx + ox, gy = by + oy; if (gx < 0 || gy < 0 || gx >= C.MW || gy >= C.MH) continue;
+      const gx = bx + ox, gy = by + oy; if (gx < 0 || gy < 0 || gx >= curM.w || gy >= curM.h) continue;
       const el = curM && curM.hgt ? curM.hgt[gy][gx] * HSTEP : 0, [sx, sy] = misoXY(gx, gy);
       const d = Math.abs(mx - sx) / (MTW / 2) + Math.abs(my + 3 - (sy - el)) / (MTH / 2);
       if (d < bd) { bd = d; best = [gx, gy]; }

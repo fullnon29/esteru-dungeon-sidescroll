@@ -25,9 +25,9 @@
     return s;
   }
   function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S.save)); } catch (e) { /* 무시 */ } }
-  function loadPrefs() { try { Object.assign(S.prefs, JSON.parse(localStorage.getItem(PREF_KEY) || '{}')); } catch (e) { /* 무시 */ } document.body.classList.toggle('reduce', !!S.prefs.reduce); S.speed = Math.min(S.prefs.speed || 1, SPEEDS[SPEEDS.length - 1]); if ([1, 2, 4, 6, 8, 13].includes(S.prefs.pace)) C.TUNE.pace = S.prefs.pace; }
+  function loadPrefs() { try { Object.assign(S.prefs, JSON.parse(localStorage.getItem(PREF_KEY) || '{}')); } catch (e) { /* 무시 */ } document.body.classList.toggle('reduce', !!S.prefs.reduce); S.speed = Math.min(S.prefs.speed || 1, SPEEDS[SPEEDS.length - 1]); if ([1, 3, 5, 7, 9, 13].includes(S.prefs.pace)) C.TUNE.pace = S.prefs.pace; }
   function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify(S.prefs)); } catch (e) { /* 무시 */ } }
-  loadPrefs(); S.save = load(); S.startFloor = S.save.maxFloor;
+  loadPrefs(); S.save = load(); S.startFloor = C.defaultStart(S.save);
 
   /* ---------- 유틸 ---------- */
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -59,7 +59,7 @@
   /* ---------- 상단 ---------- */
   function renderStats() {
     const s = S.save, used = C.usedCost(s), cap = C.costCap(s);
-    $('stats').innerHTML = `<span class="chip-stat gold" title="보유 골드">💰 <b>${s.gold.toLocaleString()}</b>G</span><span class="chip-stat" title="경과 일수">📅 <b>${s.day}</b>일차</span><span class="chip-stat ${s.food < 5 ? 'warnc' : ''}" title="식량 (이동할수록 소모 — 상점에서 구매, 요리사가 식용 몹으로 보충)">🍖 <b>${Math.floor(s.food)}</b></span>${s.tickets ? `<span class="chip-stat" title="주점 후보를 다시 뽑는 출현변경권">🎫 <b>${s.tickets}</b></span>` : ''}<span class="chip-stat" title="도달한 최고 층">🏰 최고 <b>${s.maxFloor}</b>/50층</span><span class="chip-stat ${used > cap ? 'over' : used === cap ? 'warnc' : ''}" title="편성 코스트 / 상한 (최고 층이 오르면 상한 증가)">⚖ 코스트 <b>${used}</b>/${cap}</span>${s.cleared ? '<span class="chip-stat gold">👑 클리어</span>' : ''}`;
+    $('stats').innerHTML = `<span class="chip-stat gold" title="보유 골드">💰 <b>${s.gold.toLocaleString()}</b>G</span><span class="chip-stat" title="경과 일수">📅 <b>${s.day}</b>일차</span><span class="chip-stat ${s.food < 5 ? 'warnc' : ''}" title="식량 (이동할수록 소모 — 상점에서 구매, 요리사가 식용 몹으로 보충)">🍖 <b>${Math.floor(s.food)}</b></span>${s.tickets ? `<span class="chip-stat" title="주점 후보를 다시 뽑는 출현변경권">🎫 <b>${s.tickets}</b></span>` : ''}${s.enh ? `<span class="chip-stat" title="장비 강화권 — 용병 장비창에서 장비 한 칸을 +1 강화">🔨 <b>${s.enh}</b></span>` : ''}<span class="chip-stat" title="도달한 최고 층">🏰 최고 <b>${s.maxFloor}</b>/50층</span><span class="chip-stat ${used > cap ? 'over' : used === cap ? 'warnc' : ''}" title="편성 코스트 / 상한 (최고 층이 오르면 상한 증가)">⚖ 코스트 <b>${used}</b>/${cap}</span>${s.cleared ? '<span class="chip-stat gold">👑 클리어</span>' : ''}`;
     const logo = Assets.get('ui', 'logo'); if (logo && !$('logo').querySelector('img')) $('logo').innerHTML = `<img src="${logo.src}" alt="로고">`;
     const btn = $('sortieBtn'); btn.classList.toggle('hidden', !!S.exp); btn.disabled = !party().length;
     btn.title = party().length ? '출발 전 점검 후 던전으로 향합니다' : '먼저 용병을 전장에 배치하세요';
@@ -136,7 +136,7 @@
     const fmt = (k, v) => k === 'eva' ? Math.round(v * 100) + '%' : k === 'taunt' ? v.toFixed(1) : k === 'spd' ? v.toFixed(0) : v;
     const rows = ['hp', 'atk', 'def', 'spd', 'eva', 'range', 'taunt'].map(k => { const d = st[k] - base[k]; return `<tr><td>${P[k]}</td><td>${fmt(k, base[k])}</td><td class="${d > 0 ? 'good' : d < 0 ? 'bad' : 'dim'}">${d ? (d > 0 ? '+' : '') + fmt(k, d) : '—'}</td><td><b>${fmt(k, st[k])}</b></td></tr>`; }).join('');
     const slots = Object.keys(C.SLOTS).map(sl => { const id = u.equip[sl], i = C.ITEMS[id];
-      return `<div class="itm"><span><span class="dim">${C.SLOTS[sl]}</span> ${id ? itemName(id) : '<span class="dim">비어있음</span>'}${i ? `<div class="d" style="white-space:pre-line">${esc(C.describeFull(i))}</div>` : ''}</span><button class="btn sm" data-m="sheetslot" data-u="${u.id}" data-slot="${sl}">변경</button></div>`; }).join('');
+      return `<div class="itm"><span><span class="dim">${C.SLOTS[sl]}</span> ${id ? itemName(id) : '<span class="dim">비어있음</span>'}${i ? `<div class="d" style="white-space:pre-line">${esc(C.describeFull(i))}</div>` : ''}</span><span><button class="btn sm" data-m="sheetslot" data-u="${u.id}" data-slot="${sl}">변경</button>${i ? ` <button class="btn sm" data-m="enhance" data-u="${u.id}" data-slot="${sl}" ${(s.enh || 0) > 0 && (i.plus || 0) < C.ENH_MAX ? '' : `disabled title="${(i.plus || 0) >= C.ENH_MAX ? '최대 강화' : '장비 강화권 필요 (의뢰 보상)'}"`}>🔨 강화${i.plus ? ' +' + i.plus : ''}</button>` : ''}</span></div>`; }).join('');
     const sum = Object.entries(G.t).filter(([, v]) => v).map(([k, v]) => `${P[k]} ${v > 0 ? '+' : ''}${fmt(k, v)}`).join(' · ') || '장비 없음';
     openModal(`<h2>🧾 ${esc(u.name)} ${rarTag(u)} <span class="dim">${c.name} Lv${u.lv}</span></h2>
       <h3>능력치 <span class="dim" style="font-size:12px">기본(성장 포함) + 장비 = 현재</span></h3>
@@ -276,7 +276,7 @@
     for (let y = 0; y < mp.h; y++) for (let x = 0; x < mp.w; x++) if (mp.grid[y][x] !== 0) { totF++; if (mp.seen[y][x]) seenF++; }
     const nCh = mp.chests.length, oCh = mp.chests.filter(c => c.open).length, nG = mp.groups.filter(g => g.alive).length;
     const mission = e.battle ? (e.battle.guardian ? '⚔ 수호자 전투' : '⚔ 전투 중') : (e.text || '').replace(/^\d+층 · /, '') || '탐사 중';
-    setHTML($('hudTop'), `<div class="floor-plate">B${e.floor}F</div><div class="mission"><b>${esc(mission)}${S.paused ? ' · ⏸' : ''}</b><span class="sub">탐사 ${Math.round(seenF / totF * 100)}% · 상자 ${oCh}/${nCh} · 적 ${nG} · <span class="${S.save.food < 1 ? 'bad' : ''}" title="남은 식량">🍖 ${Math.floor(S.save.food)}</span>${e.cq ? ` · 🤝 ${esc(e.cq.comp.name)} 의뢰 ${C.cqProgress(e)}/${e.cq.need}` : ''}${e.bless > 0 ? ` · ✨축복 ${Math.min(3, e.bless)}회` : ''}${mp.groups.some(g => g.alive && g.golden && mp.seen[g.y][g.x]) ? ' · ✨황금 몹!' : ''}</span></div>`);
+    setHTML($('hudTop'), `<div class="floor-plate">B${e.floor}F</div><div class="mission"><b>${esc(mission)}${S.paused ? ' · ⏸' : ''}</b><span class="sub">탐사 ${Math.round(seenF / totF * 100)}% · 상자 ${oCh}/${nCh} · 적 ${nG} · <span class="${S.save.food < 1 ? 'bad' : ''}" title="남은 식량">🍖 ${Math.floor(S.save.food)}</span>${(e.quests || []).filter(q => !q.done).map(q => ` · 📋 ${q.type === 'deliver' ? `전달→${q.tf}층` : q.type === 'hunt' ? `${q.fam} ${q.progress}/${q.need}` : `${C.MATS[q.mat]} ${Math.min(q.need, C.matHave(e, q.mat))}/${q.need}`}${C.questReady(e, q) ? ' ✔보고' : ''}`).join('')}${e.cq ? ` · 🤝 ${esc(e.cq.comp.name)} 의뢰 ${C.cqProgress(e)}/${e.cq.need}` : ''}${e.bless > 0 ? ` · ✨축복 ${Math.min(3, e.bless)}회` : ''}${mp.groups.some(g => g.alive && g.golden && mp.seen[g.y][g.x]) ? ' · ✨황금 몹!' : ''}</span></div>`);
     renderToolbar(); // 신규 층 진입/이탈에 따라 배속 제한 표시 갱신
     const lead = S.save.policy.leader;
     setHTML($('partyStrip'), e.party.map(u => {
@@ -335,7 +335,7 @@
       ${ok(s.food >= pt.length * C.TUNE.food.perStep * 600, `식량 ${Math.floor(s.food)} — 약 ${Math.floor(s.food / Math.max(1, pt.length * C.TUNE.food.perStep * 200))}층 분량${has(u => C.baseCls(u) === 'cook') ? ' (요리사 동행: 식용 몹을 식량으로)' : ''}`, `식량이 부족합니다 (약 ${Math.floor(s.food / Math.max(1, pt.length * C.TUNE.food.perStep * 200))}층 분량). 바닥나면 피로가 쌓입니다.`)}
       ${ok(!pt.some(u => C.fatOf(u) < 50), '파티 피로 양호', `피로 50 미만인 용병이 있습니다 (${pt.filter(u => C.fatOf(u) < 50).map(u => esc(u.name) + ' ' + Math.round(C.fatOf(u))).join(', ')}) — 공·방이 떨어집니다.`)}
       ${ok(s.gold >= wage, `급료 ${wage}G 지불 가능 (출격 후 ${(s.gold - wage).toLocaleString()}G)`, `골드가 부족합니다 (급료 ${wage}G)`)}
-      <h3>설정</h3><div class="pol"><label>시작 층</label><select data-pol="startFloor">${Array.from({ length: s.maxFloor }, (_, i) => i + 1).reverse().map(f => `<option value="${f}" ${f === S.startFloor ? 'selected' : ''}>${f}층${f === s.maxFloor ? ' (최고)' : ''}</option>`).join('')}</select>
+      <h3>설정</h3><div class="pol"><label title="원정은 1층에서 시작합니다. 보스를 쓰러뜨려 지름길이 열리면 그 다음 층(6·11·16…층)에서도 시작할 수 있습니다">시작 층</label><select data-pol="startFloor">${C.startFloors(s).slice().reverse().map(f => `<option value="${f}" ${f === S.startFloor ? 'selected' : ''}>${f}층${f === 1 ? ' (입구)' : ' (지름길)'}</option>`).join('')}</select>
       <label>탐사 방침</label><select data-pol="explore">${[['full', '완전 탐색'], ['treasure', '보물 우선'], ['stairs', '계단 직행']].map(([v, t]) => `<option value="${v}" ${s.policy.explore === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
       <label>후퇴 기준 <b id="retv">${s.policy.retreat}%</b></label><input type="range" min="0" max="70" step="5" value="${s.policy.retreat}" data-pol="retreat"></div>
       <div class="dim" style="font-size:12px;margin-top:6px">그 밖의 전술은 <button class="link" style="background:none;border:0;color:var(--blue);cursor:pointer;text-decoration:underline" data-m="gotab" data-id="tactics">전술 탭</button>에서 바꿀 수 있습니다.</div>
@@ -347,7 +347,7 @@
     s.gold -= wage; closeModal();
     const sp = C.supplyPlan(s); // 요리사 자동 보급 (급료 지불 후 남은 골드로 5층 분량까지)
     if (sp && sp.buy > 0 && C.buyFood(s, sp.buy)) toast(`🍳 요리사가 식량 ${sp.buy}개를 보급했습니다 (−${sp.cost}G)${sp.short ? ' — 골드가 부족해 5층 분량에는 못 미칩니다' : ''}`, sp.short ? 'bad' : 'good');
-    S.exp = C.createExpedition(s, Math.min(S.startFloor, s.maxFloor)); S.paused = false; S.itemSel = null; S.itemOpen = false; S.acc = 0; S.floaters = []; S.resultShown = false; S.lastFloor = 0; S.sideTab = 'log'; S.sel = null;
+    S.exp = C.createExpedition(s, C.startFloors(s).includes(S.startFloor) ? S.startFloor : C.defaultStart(s)); S.paused = false; S.itemSel = null; S.itemOpen = false; S.acc = 0; S.floaters = []; S.resultShown = false; S.lastFloor = 0; S.sideTab = 'log'; S.sel = null;
     S.exp.log.push({ m: `🚪 ${S.exp.floor}층에서 탐사 개시! (급료 ${wage}G)`, c: 'floor' });
     setHint(''); renderStats(); setMode(); renderToolbar(); renderExpSide(); renderStageBar(); updateHud();
   }
@@ -365,7 +365,7 @@
       <div class="foot"><button class="btn pri" data-m="result-camp" data-autofocus>캠프로</button></div>`, { lock: true });
   }
   function endExpedition() {
-    S.exp = null; S.evOpen = false; bq.length = 0; S.paused = false; S.itemOpen = false; S.itemSel = null; S.tab = 'form'; S.startFloor = S.save.maxFloor; S._ents = {};
+    S.exp = null; S.evOpen = false; bq.length = 0; S.paused = false; S.itemOpen = false; S.itemSel = null; S.tab = 'form'; S.startFloor = C.defaultStart(S.save); S._ents = {};
     closeModal(); save(); renderCamp(); setHint('캠프로 돌아왔습니다. 장비와 편성을 정비하세요.', 4000);
   }
   function togglePause(force) {
@@ -526,11 +526,12 @@
     openModal(`<h2>⚙ 설정</h2>
       <h3>화면</h3><label class="check"><input type="checkbox" data-pref="reduce" ${S.prefs.reduce ? 'checked' : ''}> 애니메이션 줄이기</label>
       <div class="pol" style="margin-top:6px"><label>기본 배속</label><select data-pref="speed">${SPEEDS.map(n => `<option value="${n}" ${S.prefs.speed === n ? 'selected' : ''}>×${n}</option>`).join('')}</select></div>
-      <div class="pol" style="margin-top:6px"><label title="모든 배속에 곱해지는 기본 진행 속도. 13=총 플레이 약 60시간 기준(가장 느림), 1=원래 속도(테스트용 가장 빠름)">진행 속도</label><select data-pref="pace">${[[13, '느림 (60시간 기준)'], [8, '조금 느림'], [6, '보통'], [4, '조금 빠름'], [2, '빠름'], [1, '매우 빠름 (원래 속도)']].map(([v, t]) => `<option value="${v}" ${C.TUNE.pace === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+      <div class="pol" style="margin-top:6px"><label title="모든 배속에 곱해지는 기본 진행 속도. 7=총 플레이 약 45시간 기준(기본), 13=더 느림, 1=원래 속도(테스트용 가장 빠름)">진행 속도</label><select data-pref="pace">${[[13, '매우 느림'], [9, '조금 느림'], [7, '기본 (약 45시간 기준)'], [5, '조금 빠름'], [3, '빠름'], [1, '매우 빠름 (원래 속도)']].map(([v, t]) => `<option value="${v}" ${C.TUNE.pace === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
       <div class="pol" style="margin-top:6px"><label title="전투 중 누가 누구를 노리는지 선으로 표시: 적→대원 주황(도발 시 빨강), 대원→적 파랑, 치유 초록">표적선</label><select data-pref="lines">${[['all', '모두 표시'], ['enemy', '적의 표적만'], ['off', '끄기']].map(([v, t]) => `<option value="${v}" ${(S.prefs.lines || 'all') === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
       <div class="pol" style="margin-top:6px"><label title="우상단 ⏺ 버튼으로 게임 캔버스를 녹화해 webm 으로 저장합니다(1분 약 4MB / 11MB)">녹화 화질</label><select data-pref="recq">${Object.entries(RECQ).map(([k, q]) => `<option value="${k}" ${(S.prefs.recq || 'low') === k ? 'selected' : ''}>${q.name} (${q.fps}fps · ${Math.round(q.bps / 1000)}kbps)</option>`).join('')}</select></div>
       <label class="check"><input type="checkbox" data-pref="fullscreen" ${S.prefs.fullscreen ? 'checked' : ''}> 시작 시 전체 화면 (첫 클릭/키 입력 때 적용 · 우상단 ⛶ 버튼, F11로도 전환)</label>
       <div class="pol" style="margin-top:6px"><label title="치명타 타일 흔들림·범위 마법 화면 흔들림의 세기">흔들림 강도</label><select data-pref="shake">${[[0, '끔'], [1, '보통'], [1.6, '강하게'], [2.4, '최대']].map(([v, t]) => `<option value="${v}" ${S.prefs.shake === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+      <label class="check" title="이미 가 본 층은 상자·적을 쫓지 않고 계단으로 곧장 이동합니다(새 층·의뢰 목표는 정상 탐사)"><input type="checkbox" data-opt="fastOld" ${S.save.opts.fastOld !== false ? 'checked' : ''}> 이미 가 본 층은 계단 직행 (빠른 통과)</label>
       <h3>자동 장비</h3><label class="check"><input type="checkbox" data-opt="autoEquip" ${S.save.opts.autoEquip ? 'checked' : ''}> 귀환 시 획득 장비를 직업에 맞게 자동 장착</label>
       <label class="check"><input type="checkbox" data-opt="autoIdle" ${S.save.opts.autoIdle ? 'checked' : ''}> 대기 중(미편성) 용병도 포함</label>
       <div class="dim" style="font-size:12px">고급·전설의 고유 특수 스킬 장비는 자동 배분에서 제외됩니다.</div>
@@ -597,6 +598,8 @@
       else { save(); if (r.left) { closeModal(); toast(`💨 ${u.name}이(가) 실망해 떠났습니다… (실패 ${r.fails}회) — 출현변경권으로 다시 부를 수 있어요`, 'bad'); } else { toast(`고용 실패… ${u.name}이(가) 고개를 저었다 (−${r.loss}G · 실패 ${r.fails}/${C.TAV.legendFailMax})`, 'bad'); tavernModal(uid); } }
       renderStats(); renderCampBody(); renderStageBar();
     }
+    else if (m === 'qaccept') { C.acceptQuest(S.exp); S.evOpen = false; closeModal(); save(); }
+    else if (m === 'enhance') { const u = s.units.find(x => x.id === +b.dataset.u), r = C.enhanceItem(s, u, b.dataset.slot); if (r) toast(r, 'bad'); else { save(); toast(`🔨 ${u.name}의 ${C.SLOTS[b.dataset.slot]} 강화! (${C.ITEMS[u.equip[b.dataset.slot]].name})`, 'good'); renderStats(); renderCampBody(); } sheetModal(u.id); }
     else if (m === 'msellgear') { const g = C.sellGear(s, +b.dataset.i, C.SELL_RATE.merchant); if (g) { save(); renderStats(); toast(`행상인에게 팔았습니다 (+${g}G)`, 'good'); } openEventModal(S.exp); }
     else if (m === 'msellall') { const g = C.sellAllGear(s, C.SELL_RATE.merchant); if (g) { save(); renderStats(); toast(`장비를 모두 팔았습니다 (+${g}G)`, 'good'); } openEventModal(S.exp); }
     else if (m === 'msellmat') { const g = C.sellMat(s, b.dataset.id, b.dataset.n === 'all' ? 'all' : +b.dataset.n, C.SELL_RATE.merchant); if (g) { save(); renderStats(); } openEventModal(S.exp); }
@@ -613,7 +616,7 @@
     else if (m === 'tut-done') { S.prefs.tutDone = true; savePrefs(); closeModal(); }
     else if (m === 'export') { const box = $('ioBox'); box.innerHTML = `<textarea readonly id="ioTa">${esc(JSON.stringify(s))}</textarea>`; const ta = $('ioTa'); ta.select(); try { navigator.clipboard.writeText(ta.value); toast('클립보드에 복사했습니다', 'good'); } catch (e) { /* 수동 복사 */ } }
     else if (m === 'import-ask') $('ioBox').innerHTML = `<textarea id="ioTa" placeholder="내보낸 데이터를 붙여넣으세요"></textarea><button class="btn pri" data-m="import-do" style="margin-top:6px">적용</button>`;
-    else if (m === 'import-do') { try { const d = JSON.parse($('ioTa').value); if (d.v !== 2 && d.v !== 3) throw 0; S.save = fixSave(d); S.startFloor = S.save.maxFloor; save(); closeModal(); renderCamp(); toast('저장 데이터를 불러왔습니다', 'good'); } catch (e) { toast('올바른 저장 데이터가 아닙니다', 'bad'); } }
+    else if (m === 'import-do') { try { const d = JSON.parse($('ioTa').value); if (d.v !== 2 && d.v !== 3) throw 0; S.save = fixSave(d); S.startFloor = C.defaultStart(S.save); save(); closeModal(); renderCamp(); toast('저장 데이터를 불러왔습니다', 'good'); } catch (e) { toast('올바른 저장 데이터가 아닙니다', 'bad'); } }
     else if (m === 'reset-ask') confirmDlg('⚠ 데이터 초기화', '모든 진행 상황이 삭제되고 처음부터 시작합니다. 되돌릴 수 없습니다.', '초기화', () => { localStorage.removeItem(SAVE_KEY); S.save = C.newSave(); S.startFloor = 1; S._ents = {}; save(); renderCamp(); toast('초기화했습니다'); });
   });
 
@@ -672,6 +675,12 @@
         <div class="row" style="margin:10px 0"><button class="btn pri" data-m="gpull" data-n="1" ${s.gold < p.price ? 'disabled' : ''}>1회 ${p.price}G</button><button class="btn pri" data-m="gpull" data-n="10" ${s.gold < p.price * 9 ? 'disabled' : ''}>10회 ${p.price * 9}G</button></div>
         <h3>최근 결과</h3><div class="chips">${p.log.length ? p.log.map(x => `<span class="chip" ${x.rar && x.rar !== 'N' ? `style="color:${C.RARITY[x.rar].color}"` : ''}>${esc(x.t)}</span>`).join('') : '<span class="dim">아직 뽑지 않았습니다</span>'}</div>
         <div class="foot"><button class="btn" data-m="evclose" data-autofocus>떠나기</button></div>`, { lock: true });
+    } else if (p.type === 'quest') {
+      const q = p.quest, R = q.reward, rw = [R.gold ? `${R.gold}G` : '', R.tickets ? '🎫 출현변경권' : '', R.enh ? '🔨 장비 강화권' : ''].filter(Boolean).join(' · ');
+      openModal(`<h2>📋 의뢰인의 부탁</h2><p class="dim">${{ deliver: '짐을 다른 층의 수령인에게 전해 달라는 부탁이다.', hunt: '아래층의 몬스터를 처치하고 돌아와 보고해 달라는 부탁이다.', enhmat: '장비 강화에 쓸 재료를 모아 오면 대가를 주겠다고 한다.' }[q.type]}</p>
+        <div class="itm"><span><b>내용</b><div class="d">${esc(q.text)}</div></span></div><div class="itm"><span><b>보상</b><div class="d">${rw || '—'}</div></span></div>
+        <div class="dim" style="font-size:12.5px;margin-top:6px">수락하면 파티가 자동으로 해당 층까지 <b>올라가거나 내려가며</b> 처리합니다. 원정이 끝나면 미완료 의뢰는 사라집니다.</div>
+        <div class="foot"><button class="btn" data-m="evclose">거절</button><button class="btn pri" data-m="qaccept" data-autofocus>수락</button></div>`, { lock: true });
     } else if (p.type === 'companion') {
       const c = p.comp;
       openModal(`<h2>📜 ${esc(c.name)}의 의뢰</h2><p class="dim">${esc(c.intro)}</p><div class="itm"><span><b>조건</b><div class="d">${esc(p.quest)} (이번 원정 안에 달성)</div></span></div><div class="itm"><span><b>보상</b><div class="d">${esc(c.name)} — <span style="color:${C.RARITY[c.rar].color}">${C.RARITY[c.rar].name}</span> ${C.CLASSES[c.cls].name} 특수 동료 합류</div></span></div>

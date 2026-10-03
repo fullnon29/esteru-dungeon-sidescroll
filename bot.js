@@ -90,7 +90,7 @@ function runBot(opts) {
     const sp = C.supplyPlan(s); if (sp) { if (sp.buy > 0) C.buyFood(s, sp.buy); st.cookRuns++; } else if (s.food < 40) C.buyFood(s, Math.min(40 - Math.floor(s.food), Math.floor(s.gold / 6)));
     buyCons();
     const prevMax = s.maxFloor; // 신규 층 판정: 이번 원정 이전 최고 층보다 깊은 층
-    const e = C.createExpedition(s, Math.max(1, s.maxFloor - (runs % 3)));
+    const e = C.createExpedition(s, C.defaultStart(s)); // 1층 또는 열린 지름길(11·21·31·41층) 중 가장 깊은 곳에서 시작
     e.autoResolve = true; // 이벤트(행상인·뽑기·의뢰)는 봇이 자동 처리
     st.squadSum += e.squads.length; if (e.squads.length) st.squadRuns++;
     let t = 0; while (!e.done && t < 30000) { C.stepExpedition(e, 0.1); e.events = []; t++; if (e.floor > prevMax) st.newTicks++; else st.oldTicks++; }
