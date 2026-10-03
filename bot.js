@@ -14,9 +14,12 @@ function runBot(opts) {
   let runs = 0;
 
   const buyCons = () => { for (const k of ['potion', 'antidote']) while ((s.cons[k] || 0) < 3 && s.gold > 200) { s.gold -= C.CONS[k].price; s.cons[k] = (s.cons[k] || 0) + 1; } };
+  // 주점: 지금 나타난 후보 중에서만 고용(전설은 확률·실패 시 비용 손실). 원정에서 돌아올 때마다 후보가 바뀐다.
   const hirePass = () => {
     const rank = u => (HIRE_PRIO.indexOf(C.baseCls(u)) + 1 || 9) * 10 - C.RAR_ORDER.indexOf(u.rar || 'N');
-    s.units.filter(u => !u.hired).sort((a, b) => rank(a) - rank(b)).forEach(u => { if (s.gold > C.hireCost(u) + 500) C.hireUnit(s, u); });
+    for (const u of C.tavCands(s).sort((a, b) => rank(a) - rank(b))) {
+      for (let tries = 0; tries < 6 && s.gold > C.hireCost(u) + 500 && !u.hired && !u.left; tries++) { const r = C.tavernHire(s, u.id); if (r.ok || r.err) break; }
+    }
   };
   const shop = () => {
     const tmax = Math.min(3, 1 + Math.floor(s.maxFloor / 10));

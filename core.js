@@ -294,11 +294,11 @@ const Core = (function () {
   function buyFood(s, n) { const c = n * TUNE.food.price; if (s.gold < c) return false; s.gold -= c; s.food = Math.round((s.food + n) * 100) / 100; return true; }
   const hireCost = u => Math.round(CLASSES[u.cls].hire * RARITY[rarOf(u)].hireMul);
   const canLead = u => rarOf(u) === 'H' || rarOf(u) === 'L';
-  function stats(u) {
+  function stats(u, noGear) { // noGear=true: 장비 없이 계산한 기본 능력치(장비창 비교용)
     const c = CLASSES[u.cls], L = (u.lv - 1) * growOf(u);
     let hp = Math.round(c.hp * (1 + TUNE.growHp * L * (c.hpGrow || 1))), atk = Math.round(c.atk * (1 + TUNE.growAtk * L)), def = Math.round(c.def * (1 + TUNE.growDef * L)), spd = c.spd, eva = c.eva, rng = c.range, taunt = c.taunt || 1;
     for (const slot in SLOTS) {
-      const i = ITEMS[u.equip[slot]]; if (!i) continue;
+      const i = noGear ? null : ITEMS[u.equip[slot]]; if (!i) continue;
       rng += i.range || 0; hp += i.hp || 0; atk += i.atk || 0; def += i.def || 0; spd += i.spd || 0; eva += i.eva || 0; taunt += i.taunt || 0;
     }
     const fm = fatMul(u); atk = Math.round(atk * fm); def = Math.round(def * fm); if (fm < 0.8) eva = Math.max(0, eva - 0.1);
@@ -325,14 +325,34 @@ const Core = (function () {
   function hireUnit(s, u) {
     const cost = hireCost(u); if (s.gold < cost || u.hired) return null;
     s.gold -= cost; u.hired = true;
-    let dice = null;
-    if (rarOf(u) === 'L' && !u.rolled) {
-      const g = Math.round(rnd(1.25, 1.45) * 100) / 100, R = RARITY.L.luck;
-      u.growMul = g; u.luck = clamp(Math.round(R[0] + (g - 1.25) / 0.2 * (R[1] - R[0]) * 0.6 + rnd(0, (R[1] - R[0]) * 0.4)), R[0], R[1]);
-      u.rolled = true; dice = { grow: g, luck: u.luck };
-    }
+    if (rarOf(u) === 'L' && !u.rolled) { const R = RARITY.L.luck; u.growMul = RARITY.L.grow; u.luck = ri(R[0], R[1]); u.rolled = true; } // 전설: 성장 배율은 고정, 행운만 범위에서 확정
     u.hp = stats(u).hp; resetCharges(u);
-    return { cost, dice };
+    return { cost };
+  }
+  /* ---------- 주점 (Phase 6): 후보 5~7명이 나타나고, 클릭해서 데려온다 ---------- */
+  // 전설 용병은 고용 자체가 확률(성공/실패). 실패하면 고용비의 일부를 잃고, 5회 실패하면 떠난다(변경권으로 재등장 가능).
+  const TAV = { min: 5, max: 7, legendBase: 0.30, legendFailMax: 5, legendLoss: 0.5, reappear: 0.10 };
+  const tavPool = s => s.units.filter(u => !u.hired && !u.left);
+  function refreshTavern(s, o) {
+    o = o || {}; let cands = [];
+    if (o.ticket) for (const u of s.units) if (u.left && Math.random() < TAV.reappear) { u.left = false; u.fails = 0; cands.push(u); } // 떠난 전설이 낮은 확률로 재등장
+    const n = ri(TAV.min, TAV.max), rest = tavPool(s).filter(u => !cands.includes(u)).sort(() => Math.random() - 0.5);
+    cands = cands.concat(rest).slice(0, n);
+    s.tavern = { cands: cands.map(u => u.id), day: s.day };
+    return s.tavern;
+  }
+  const tavCands = s => ((s.tavern && s.tavern.cands) || []).map(id => s.units.find(u => u.id === id)).filter(u => u && !u.hired && !u.left);
+  function useTicket(s) { if ((s.tickets || 0) <= 0) return null; s.tickets--; return refreshTavern(s, { ticket: true }); }
+  const legendChance = s => Math.min(0.45, TAV.legendBase + Math.min(0.15, partyLuck(s.units.filter(u => u.hired && s.formation[u.id])) * 0.004));
+  function tavernHire(s, uid) {
+    const u = s.units.find(x => x.id === uid); if (!u || u.hired || u.left || !s.tavern || !s.tavern.cands.includes(uid)) return { err: '지금 주점에 없는 용병입니다' };
+    const cost = hireCost(u); if (s.gold < cost) return { err: '골드가 부족합니다' };
+    if (rarOf(u) === 'L' && Math.random() >= legendChance(s)) {
+      const loss = Math.round(cost * TAV.legendLoss); s.gold -= loss; u.fails = (u.fails || 0) + 1; const left = u.fails >= TAV.legendFailMax;
+      if (left) { u.left = true; s.tavern.cands = s.tavern.cands.filter(id => id !== uid); }
+      return { ok: false, loss, fails: u.fails, left };
+    }
+    hireUnit(s, u); s.tavern.cands = s.tavern.cands.filter(id => id !== uid); return { ok: true, cost };
   }
   function newSave() {
     const units = ROSTER.map((r, i) => mkUnit(i, r, false));
@@ -346,7 +366,7 @@ const Core = (function () {
       quests: { board: [], active: [], done: 0 }, qid: 1,
     };
     units.forEach(u => { u.hp = stats(u).hp; resetCharges(u); });
-    autoFormation(s); genQuests(s);
+    s.tickets = 0; autoFormation(s); genQuests(s); refreshTavern(s);
     return s;
   }
   // v2 → v3: 기존 용병은 전부 일반(레온 포함 — 고급 시작은 새 게임 한정), 행운=등급 하한, 신규 용병 추가, 옵션 기본값
@@ -360,9 +380,10 @@ const Core = (function () {
       if (u.fatigue === undefined) u.fatigue = 100;
     }
     if (s.food === undefined) s.food = TUNE.food.start;
-    if (!s.squads) s.squads = []; if (!s.comp) s.comp = {};
+    if (!s.squads) s.squads = []; if (!s.comp) s.comp = {}; if (s.tickets === undefined) s.tickets = 0;
     if (!s.mats) s.mats = {}; if (!s.bps) s.bps = Object.fromEntries(START_BPS.map(id => [id, true])); if (s.promo === undefined) s.promo = 0;
     ROSTER.forEach((r, i) => { if (!s.units.find(u => u.id === i + 1)) s.units.push(mkUnit(i, r, false)); });
+    if (!s.tavern || !Array.isArray(s.tavern.cands) || !tavCands(s).length) refreshTavern(s); // 미고용 용병은 주점 후보 풀로
     s.v = 3;
     return s;
   }
@@ -466,7 +487,9 @@ const Core = (function () {
       const fams = [...new Set(poolOf(b.floor).map(x => x.fam))].filter(f => FAM_MAT[f]); for (let k = 0; k < 2; k++) { const f = pick(fams); if (f) got.push(add(FAM_MAT[f][0], ri(1, 2))); }
       if (Math.random() < 0.45) { const id = rollBlueprint(b.exp.save, b.floor, 'boss'); if (id && !L.bps.includes(id)) { L.bps.push(id); got.push(`📐도면 ${ITEMS[id].name}`); } }
       if (Math.random() < 0.25) { L.promo++; got.push('📜전직서'); }
+      if (Math.random() < 0.4) { L.tickets = (L.tickets || 0) + 1; got.push('🎫출현변경권'); }
     } else if (c.elite && fm) {
+      if (Math.random() < 0.1) { L.tickets = (L.tickets || 0) + 1; got.push('🎫출현변경권'); }
       got.push(add(fm[0], ri(1, 2))); if (Math.random() < 0.7) got.push(add(fm[1], 1));
       if (Math.random() < 0.08) { const id = rollBlueprint(b.exp.save, b.floor, 'elite'); if (id && !L.bps.includes(id)) { L.bps.push(id); got.push(`📐도면 ${ITEMS[id].name}`); } }
     } else if (fm && !c.golden && !c.special && Math.random() < 0.3) got.push(add(fm[0], 1));
@@ -749,6 +772,7 @@ const Core = (function () {
   }
   function damage(b, att, tgt, mult, magic, skill) {
     if (!tgt.alive) return;
+    if (att.side) { att.curTgt = tgt; att.curT = b.t; att.curKind = 'atk'; } // 표적선 표시용(누가 누구를 노리는지)
     if (!magic && Math.random() < tgt.eva + (att.blind || 0) - (cellTh(b, tgt) === 'river' ? 0.1 : 0)) { ev(b, { k: 'miss', x: tgt.x, y: tgt.y }); return; }
     if (b.hgt) mult *= clamp(1 + 0.06 * (b.hgt[att.y][att.x] - b.hgt[tgt.y][tgt.x]), 0.8, 1.25);
     const weakK = att.weak && b.t < att.weak.until ? 1 - 0.1 * att.weak.n : 1; // 쇠약(거미): 공격력 −10%×중첩
@@ -830,6 +854,7 @@ const Core = (function () {
   function heal(b, c, tgt, amt) {
     const before = tgt.hp; setHp(tgt, tgt.hp + amt);
     ev(b, { k: 'heal', x: tgt.x, y: tgt.y, v: tgt.hp - before });
+    if (c && c !== tgt) { c.curTgt = tgt; c.curT = b.t; c.curKind = 'heal'; }
     if (c && c.u && c.side === 'p') { const g = (tgt.hp - before) * 0.3 * (c.taunt || 1); if (g > 0) for (const o of b.units) if (o.alive && o.side === 'e' && o.threat) o.threat[c.u.id] = (o.threat[c.u.id] || 0) + g; } // 치유도 위협을 만든다
   }
   function consume(c, sid) {
@@ -837,7 +862,7 @@ const Core = (function () {
     c.u.charges[sid] = (c.u.charges[sid] || 0) - 1;
     if (!(c.u.learned || []).includes(sid)) {
       c.u.mastery[sid] = (c.u.mastery[sid] || 0) + 1;
-      if (c.u.mastery[sid] >= SKILLS[sid].master) { c.u.learned.push(sid); c.u.charges[sid] = (c.u.charges[sid] || 0) + 1; ev(c.b, { k: 'log', m: `📖 ${c.u.name}이(가) [${SKILLS[sid].name}]을(를) 완전히 습득했다!`, c: 'good' }); }
+      if (c.u.mastery[sid] >= SKILLS[sid].master) { c.u.learned.push(sid); c.u.charges[sid] = (c.u.charges[sid] || 0) + 1; ev(c.b, { k: 'log', m: `📖 ${c.u.name}이(가) [${SKILLS[sid].name}]을(를) 완전히 습득했다! — ${describeSkill(sid)} · 장비를 벗어도 쓸 수 있고 전투당 횟수 +1`, c: 'good' }); ev(c.b, { k: 'learn', x: c.x, y: c.y, who: c.u.name, n: SKILLS[sid].name, d: describeSkill(sid) }); }
     }
   }
   // 범위 스킬 시각화: 닿는 칸 목록 + 색 (불=주황 / 얼음=파랑 / 번개=노랑 / 신성=금 / 회복=초록). big=범위 마법 → 화면 흔들림
@@ -941,7 +966,7 @@ const Core = (function () {
       const inr = foes.filter(o => dist(c, o) <= c.range);
       t = (inr.length ? inr : foes).slice().sort((p, q) => p.hp - q.hp)[0];
     } else t = (c.side === 'e' && aggroTarget(b, c)) || byDist[0]; // 적은 위협이 가장 높은 대원을 노린다
-    const d = dist(c, t);
+    const d = dist(c, t); c.curTgt = t; c.curT = b.t; c.curKind = 'atk';
     if (d <= c.range) {
       ev(b, { k: 'fx', x: t.x, y: t.y, t: 'atk', from: c });
       damage(b, c, t, 1, c.magic);
@@ -1146,6 +1171,7 @@ const Core = (function () {
     let m = `📦 ${big ? '큰 ' : ''}보물상자! ${g}G`;
     if (Math.random() < (big ? 0.8 : 0.35)) { const id = dropItem(f, { party: e.party, luck: partyLuck(e.party) }); if (ITEMS[id].legend || ITEMS[id].gen) registerLegend(e.save, id); e.loot.items.push(id); m += ` + ${ITEMS[id].name}`; }
     if (Math.random() < 0.3) { const k = pick(['potion', 'potion', 'antidote', 'elixir']); e.save.cons[k] = (e.save.cons[k] || 0) + 1; m += ` + ${CONS[k].name}`; }
+    if (Math.random() < (big ? 0.12 : 0.05)) { e.loot.tickets = (e.loot.tickets || 0) + 1; m += ' + 🎫출현변경권'; }
     elog(e, m, 'good'); ban(e, big ? '🎁' : '📦', big ? '큰 보물상자!' : '보물상자', m.replace(/^📦 (큰 )?보물상자! /, ''), 'good'); questEvent(e.save, 'chest', null, (mm, c) => elog(e, mm, c)); cqCheck(e);
   }
   // 함정 5종 (Phase 5): 독침(2명 피해+독) / 수면(다음 전투 선공 상실) / 소환(적이 나타나 전투) / 부패(식량 손실) / 지뢰(전원 피해)
@@ -1177,6 +1203,7 @@ const Core = (function () {
     else {
       s.gold += e.loot.gold; e.loot.items.forEach(i => s.gear.push(i));
       for (const k in (e.loot.mats || {})) addMats(s.mats, k, e.loot.mats[k]);
+      s.tickets = (s.tickets || 0) + (e.loot.tickets || 0);
       (e.loot.bps || []).forEach(id => { s.bps[id] = true; }); s.promo = (s.promo || 0) + (e.loot.promo || 0);
     }
     s.day++;
@@ -1188,7 +1215,7 @@ const Core = (function () {
     s.units.forEach(u => { u.hp = stats(u).hp; u.poison = false; resetCharges(u); });
     if (result === 'clear') s.cleared = true;
     e.autoLog = (result !== 'wipe' && s.opts && s.opts.autoEquip) ? autoEquip(s, { idle: !!s.opts.autoIdle }) : [];
-    genQuests(s);
+    genQuests(s); refreshTavern(s); // 귀환할 때마다 주점 후보가 새로 나타난다
   }
 
   /* --- 경로 탐색 (탐사한 칸만 이동 가능) --- */
@@ -1312,6 +1339,7 @@ const Core = (function () {
     const fams = [...new Set(poolOf(f).map(x => x.fam))].filter(x => FAM_MAT[x]), fm = FAM_MAT[pick(fams)];
     st.push({ k: 'mat', id: fm[1], n: 2, price: 150 + f * 12 });
     st.push({ k: 'cons', id: 'revive', n: 1, price: CONS.revive.price });
+    st.push({ k: 'ticket', n: 1, price: 450 + f * 12 });
     st.forEach(x => { x.sold = false; });
     return st;
   }
@@ -1333,9 +1361,10 @@ const Core = (function () {
     else if (it.k === 'food') s.food = Math.round((s.food + it.n) * 100) / 100;
     else if (it.k === 'gear') s.gear.push(it.id);
     else if (it.k === 'mat') addMats(s.mats, it.id, it.n);
+    else if (it.k === 'ticket') s.tickets = (s.tickets || 0) + it.n;
     elog(e, `🧳 ${itemLabel(it)} 구입 (−${it.price}G)`, 'good'); return null;
   }
-  function itemLabel(it) { return it.k === 'cons' ? `${CONS[it.id].name} ×${it.n}` : it.k === 'food' ? `식량 ×${it.n}` : it.k === 'gear' ? ITEMS[it.id].name : `${MATS[it.id]} ×${it.n}`; }
+  function itemLabel(it) { return it.k === 'ticket' ? `🎫 출현변경권 ×${it.n}` : it.k === 'cons' ? `${CONS[it.id].name} ×${it.n}` : it.k === 'food' ? `식량 ×${it.n}` : it.k === 'gear' ? ITEMS[it.id].name : `${MATS[it.id]} ×${it.n}`; }
   // 뽑기: 결과는 즉시 저장에 반영(전멸해도 유지). 10연차는 9회 가격 + 정예급 장비 1개 보장.
   function gachaOnce(e, forceGear) {
     const s = e.save, f = e.floor, luck = partyLuck(e.party), b = Math.min(0.15, luck * 0.004), r = Math.random() - b * 0.3, fams = [...new Set(poolOf(f).map(x => x.fam))].filter(x => FAM_MAT[x]);
@@ -1346,6 +1375,7 @@ const Core = (function () {
     if (r < 0.95) { const m = FAM_MAT[pick(fams)][1]; addMats(s.mats, m, 1); return { t: `${MATS[m]} ×1 (정예 재료)`, rar: 'U' }; }
     if (r < 0.985) { const id = rollBlueprint(s, f, 'boss'); if (id) { s.bps[id] = true; return { t: `📐 ${ITEMS[id].name} 도면`, rar: 'H' }; } }
     if (r >= 0.985 && Math.random() < 0.5) { s.promo = (s.promo || 0) + 1; return { t: '📜 전직서', rar: 'L' }; }
+    if (Math.random() < 0.2) { s.tickets = (s.tickets || 0) + 1; return { t: '🎫 출현변경권', rar: 'H' }; }
     const g = 150 + f * 40; s.gold += g; return { t: `${g}G` };
   }
   function gachaPull(e, n) {
@@ -1603,6 +1633,32 @@ const Core = (function () {
     }
     return log;
   }
+  // 스킬 효과 설명(습득 알림·툴팁·장비창에서 사용)
+  function describeSkill(sid) {
+    const k = SKILLS[sid]; if (!k) return '';
+    const m = k.mult ? `공격력 ×${k.mult}` : '', ph = k.magic ? '마법' : '물리', r = k.range ? ` · 사거리 ${k.range}` : '';
+    const T = {
+      single: `단일 대상에 ${m} ${ph} 피해`, adjacent: `주변 1칸의 모든 적에게 ${m} 물리 피해`, line: `사거리 안 앞쪽 적 최대 3명에게 ${m} ${ph} 피해`,
+      aoe: `대상 중심 3×3 범위에 ${m} 마법 피해`, holy: `대상에게 ${m} 신성 피해(언데드에게는 ×1.8)`, heal: '가장 다친 아군 1명을 회복', healall: '아군 전체를 회복',
+      cure: '독 상태를 해제', guard: '6초간 받는 방어력 2배', flurry: `한 대상을 ${m}로 2연타`, taunt: '사거리 안 모든 적의 위협 1위를 차지하고 5초간 강제 표적이 됨',
+    };
+    return `${T[k.type] || ''}${r} · 전투당 ${k.uses}회`;
+  }
+  // 장비 전체 스펙 문자열(툴팁·장비창)
+  function describeFull(i) {
+    if (!i) return '';
+    const R = RARITY[i.rarity || 'N'], p = [`${R.name} · T${i.tier} · ${SLOTS[i.slot]}`, describe(i)];
+    if (i.classes) p.push('착용 직업: ' + i.classes.map(k => CLASSES[k].name).join('/')); else p.push('착용 직업: 전 직업');
+    if (i.skill) p.push(`[${SKILLS[i.skill].name}] ${describeSkill(i.skill)}`);
+    if (i.noAuto) p.push('자동 장비 제외');
+    return p.join('\n');
+  }
+  // 장비가 올려 주는 능력치 합계(장비창 하단 표시용)
+  function gearTotals(u) {
+    const t = { hp: 0, atk: 0, def: 0, spd: 0, eva: 0, range: 0, taunt: 0 }, sk = [];
+    for (const slot in SLOTS) { const i = ITEMS[u.equip[slot]]; if (!i) continue; for (const k in t) t[k] += i[k] || 0; if (i.skill) sk.push({ slot, sid: i.skill, item: i.name }); }
+    return { t, sk };
+  }
   function describe(i) {
     const p = [];
     if (i.atk) p.push('공+' + i.atk); if (i.def) p.push('방+' + i.def); if (i.hp) p.push('HP+' + i.hp);
@@ -1611,6 +1667,6 @@ const Core = (function () {
     return p.join(' ');
   }
 
-  return { ABIL_ICON, ABIL_DESC, COMPANIONS, QDESC, EVT, cqProgress, buyMerchant, itemLabel, gachaPull, acceptCompanion, closeEvent, supplyPlan, SQUADS, squadSlots, squadCap, squadUsed, squadErr, activeSquads, squadUnits, inSquad, setSquad, assignSquad, sortieWage, PROMO_PRICE, buyPromo, MATS, matKind, FAM_MAT, craftBases, recipeOf, canCraft, craft, terrainHave, PROMO, PROMO_LV, canPromote, promote, comboOf, baseCls, THEMES, floorThemes, fatOf, fatMul, canSortie, buyFood, RARITY, RAR_ORDER, CRAFT_ENABLED, canUse, canLead, costOf, hireCost, hireUnit, migrateSave, partyLuck, rarOf, GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, MW, MH, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
+  return { TAV, tavCands, tavPool, refreshTavern, useTicket, legendChance, tavernHire, describeSkill, describeFull, gearTotals, ABIL_ICON, ABIL_DESC, COMPANIONS, QDESC, EVT, cqProgress, buyMerchant, itemLabel, gachaPull, acceptCompanion, closeEvent, supplyPlan, SQUADS, squadSlots, squadCap, squadUsed, squadErr, activeSquads, squadUnits, inSquad, setSquad, assignSquad, sortieWage, PROMO_PRICE, buyPromo, MATS, matKind, FAM_MAT, craftBases, recipeOf, canCraft, craft, terrainHave, PROMO, PROMO_LV, canPromote, promote, comboOf, baseCls, THEMES, floorThemes, fatOf, fatMul, canSortie, buyFood, RARITY, RAR_ORDER, CRAFT_ENABLED, canUse, canLead, costOf, hireCost, hireUnit, migrateSave, partyLuck, rarOf, GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, MW, MH, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
 })();
 if (typeof module !== 'undefined') module.exports = Core; else window.Core = Core;

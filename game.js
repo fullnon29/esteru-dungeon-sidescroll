@@ -31,7 +31,7 @@
 
   /* ---------- 유틸 ---------- */
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const itemName = id => { const i = C.ITEMS[id]; if (!i) return '-'; const r = i.rarity && i.rarity !== 'N' ? C.RARITY[i.rarity] : null; return `<span class="${i.legend ? 'legend' : ''}" ${r && !i.legend ? `style="color:${r.color}"` : ''}>${esc(i.name)}</span>`; };
+  const itemName = id => { const i = C.ITEMS[id]; if (!i) return '-'; const r = i.rarity && i.rarity !== 'N' ? C.RARITY[i.rarity] : null; return `<span class="${i.legend ? 'legend' : ''}" ${r && !i.legend ? `style="color:${r.color}"` : ''} title="${esc(C.describeFull(i))}">${esc(i.name)}</span>`; };
   const itemNameText = id => (C.ITEMS[id] || { name: id }).name;
   const rarTag = u => { const k = C.rarOf(u); return k !== 'N' ? `<span style="color:${C.RARITY[k].color}" title="${C.RARITY[k].name} 등급">[${C.RARITY[k].name}]</span>` : ''; };
   const luckHint = u => { const l = u.luck || 0; return l >= 18 ? '행운이 넘쳐 보인다' : l >= 10 ? '운이 좋아 보인다' : l >= 4 ? '평범한 운' : '운이 별로 없어 보인다'; };
@@ -59,7 +59,7 @@
   /* ---------- 상단 ---------- */
   function renderStats() {
     const s = S.save, used = C.usedCost(s), cap = C.costCap(s);
-    $('stats').innerHTML = `<span class="chip-stat gold" title="보유 골드">💰 <b>${s.gold.toLocaleString()}</b>G</span><span class="chip-stat" title="경과 일수">📅 <b>${s.day}</b>일차</span><span class="chip-stat ${s.food < 5 ? 'warnc' : ''}" title="식량 (이동할수록 소모 — 상점에서 구매, 요리사가 식용 몹으로 보충)">🍖 <b>${Math.floor(s.food)}</b></span><span class="chip-stat" title="도달한 최고 층">🏰 최고 <b>${s.maxFloor}</b>/50층</span><span class="chip-stat ${used > cap ? 'over' : used === cap ? 'warnc' : ''}" title="편성 코스트 / 상한 (최고 층이 오르면 상한 증가)">⚖ 코스트 <b>${used}</b>/${cap}</span>${s.cleared ? '<span class="chip-stat gold">👑 클리어</span>' : ''}`;
+    $('stats').innerHTML = `<span class="chip-stat gold" title="보유 골드">💰 <b>${s.gold.toLocaleString()}</b>G</span><span class="chip-stat" title="경과 일수">📅 <b>${s.day}</b>일차</span><span class="chip-stat ${s.food < 5 ? 'warnc' : ''}" title="식량 (이동할수록 소모 — 상점에서 구매, 요리사가 식용 몹으로 보충)">🍖 <b>${Math.floor(s.food)}</b></span>${s.tickets ? `<span class="chip-stat" title="주점 후보를 다시 뽑는 출현변경권">🎫 <b>${s.tickets}</b></span>` : ''}<span class="chip-stat" title="도달한 최고 층">🏰 최고 <b>${s.maxFloor}</b>/50층</span><span class="chip-stat ${used > cap ? 'over' : used === cap ? 'warnc' : ''}" title="편성 코스트 / 상한 (최고 층이 오르면 상한 증가)">⚖ 코스트 <b>${used}</b>/${cap}</span>${s.cleared ? '<span class="chip-stat gold">👑 클리어</span>' : ''}`;
     const logo = Assets.get('ui', 'logo'); if (logo && !$('logo').querySelector('img')) $('logo').innerHTML = `<img src="${logo.src}" alt="로고">`;
     const btn = $('sortieBtn'); btn.classList.toggle('hidden', !!S.exp); btn.disabled = !party().length;
     btn.title = party().length ? '출발 전 점검 후 던전으로 향합니다' : '먼저 용병을 전장에 배치하세요';
@@ -88,7 +88,7 @@
   }
 
   /* ---------- 사이드 패널 (캠프) ---------- */
-  const CAMP_TABS = [['form', '⚔', '편성'], ['roster', '👥', '용병'], ['tactics', '🧭', '전술'], ['squad', '🪖', '분대'], ['forge', '🔨', '대장간'], ['shop', '🛒', '상점'], ['quest', '📜', '의뢰']];
+  const CAMP_TABS = [['form', '⚔', '편성'], ['tavern', '🍺', '주점'], ['roster', '👥', '용병'], ['tactics', '🧭', '전술'], ['squad', '🪖', '분대'], ['forge', '🔨', '대장간'], ['shop', '🛒', '상점'], ['quest', '📜', '의뢰']];
   const EXP_TABS = [['log', '📜', '기록'], ['tactics', '🧭', '전술'], ['info', '🗺', '정보']];
   function renderTabs() {
     const tabs = S.exp ? EXP_TABS : CAMP_TABS, cur = S.exp ? S.sideTab : S.tab;
@@ -105,6 +105,45 @@
     const cb = C.comboOf(pt);
     if (cb.dup) return '<div class="dim" style="font-size:12.5px;margin:4px 0">⚠ 같은 직업이 3명 이상이라 조합 보너스가 없습니다.</div>';
     return cb.list.length ? `<div class="chips" style="margin:6px 0">${cb.list.map(x => `<span class="chip m" title="${x.desc}">✨ ${x.name}: ${x.desc}</span>`).join('')}</div>` : '<div class="dim" style="font-size:12.5px;margin:4px 0">조합 보너스 없음 — 전사+승려+도적 / 전열 3명 / 마술사+승려 / 엘프 / 요리사 편성 시 발동</div>';
+  }
+  /* ---------- 주점 UI / 장비창(용병 상세) ---------- */
+  function tavernHTML(s) {
+    const cands = C.tavCands(s), T = C.TAV, left = s.units.filter(u => u.left);
+    let h = `<div class="row"><b>🍺 주점</b><span class="dim">후보 ${cands.length}명 · 귀환할 때마다 5~7명이 새로 나타남</span></div>
+      <div class="dim" style="margin:6px 0 10px;font-size:12.5px">가운데 화면의 손님을 <b>클릭</b>하거나 아래 목록에서 골라 고용합니다. <b style="color:${C.RARITY.L.color}">전설</b> 용병은 고용 자체가 확률이며, 실패하면 고용비의 ${Math.round(T.legendLoss * 100)}%를 잃고 ${T.legendFailMax}번 실패하면 떠납니다.</div>
+      <div class="row" style="margin-bottom:8px"><button class="btn pri" data-act="useticket" ${(s.tickets || 0) > 0 ? '' : 'disabled title="출현변경권이 없습니다 (보물상자·정예·보스·뽑기방·행상인)"'}>🎫 출현변경권 사용</button><span class="dim">보유 ${s.tickets || 0}장 · 후보 전체를 다시 뽑음(떠난 전설이 가끔 재등장)</span></div>`;
+    h += cands.map(u => {
+      const c = C.CLASSES[u.cls], st = C.stats(u), rk = C.rarOf(u);
+      return `<div class="card click" data-act="tavcand" data-id="${u.id}"><div class="ucard"><div class="pt" style="border-color:${C.RARITY[rk].color}">${portrait(u)}</div><div title="${luckHint(u)}"><div class="nm">${esc(u.name)} ${rarTag(u)} <span class="dim">${c.name}</span></div><div class="st">HP ${st.hp} · 공 ${st.atk} · 방 ${st.def} · 도발 ${st.taunt.toFixed(1)} · 코스트 ${C.costOf(u)}</div><div class="st">💰 ${C.hireCost(u)}G${rk === 'L' ? ` · 성공률 약 ${Math.round(C.legendChance(s) * 100)}%${u.fails ? ` · 실패 ${u.fails}/${T.legendFailMax}` : ''}` : ''}</div></div></div></div>`;
+    }).join('') || '<div class="empty">지금은 손님이 없습니다. 원정에서 돌아오면 새 손님이 나타납니다.</div>';
+    if (left.length) h += `<div class="dim" style="margin-top:8px;font-size:12px">떠난 전설 용병: ${left.map(u => esc(u.name)).join(', ')} — 출현변경권으로 다시 부를 수 있습니다.</div>`;
+    return h;
+  }
+  function tavernModal(uid) {
+    const s = S.save, u = s.units.find(x => x.id === uid); if (!u || u.hired || u.left) return;
+    const c = C.CLASSES[u.cls], st = C.stats(u), rk = C.rarOf(u), R = C.RARITY[rk], T = C.TAV, innate = (c.innate || []).map(k => `[${C.SKILLS[k].name}] ${C.describeSkill(k)}`);
+    openModal(`<h2>${portrait(u)} ${esc(u.name)} ${rarTag(u)} <span class="dim">${c.name}</span></h2>
+      <div class="stat-grid"><div class="stat-box"><b>${st.hp}</b><span>HP</span></div><div class="stat-box"><b>${st.atk}</b><span>공격</span></div><div class="stat-box"><b>${st.def}</b><span>방어</span></div><div class="stat-box"><b>${st.spd.toFixed(0)}</b><span>속도</span></div></div>
+      <div class="dim" style="margin:6px 0">사거리 ${st.range} · 도발 ${st.taunt.toFixed(1)} · 코스트 ${C.costOf(u)} · ${C.ROW_TXT[c.row]} · 성장 ×${C.RARITY[rk].grow}${rk === 'L' ? '' : ''}</div>
+      ${innate.length ? `<div class="dim" style="font-size:12.5px">고유 스킬: ${innate.map(esc).join('<br>')}</div>` : ''}
+      <div class="dim" style="margin-top:6px;font-size:12.5px">행운은 직접 보이지 않지만 <b style="color:${R.color}">${R.name}</b> 등급일수록 드롭 운이 좋습니다. ${luckHint(u)}.</div>
+      ${rk === 'L' ? `<div class="warn" style="margin-top:8px">⚠ 전설 용병 — 고용 성공률 약 <b>${Math.round(C.legendChance(s) * 100)}%</b> (파티 행운이 높을수록 ↑). 실패하면 고용비의 ${Math.round(T.legendLoss * 100)}%를 잃고, ${T.legendFailMax}번 실패하면 떠납니다. 현재 실패 ${u.fails || 0}/${T.legendFailMax}.</div>` : ''}
+      <div class="foot"><button class="btn" data-m="close">닫기</button><button class="btn pri" data-m="thire" data-id="${u.id}" ${s.gold < C.hireCost(u) ? 'disabled' : ''} data-autofocus>고용 ${C.hireCost(u)}G${rk === 'L' ? ' (도전)' : ''}</button></div>`);
+  }
+  function sheetModal(uid) { // 장비창: 능력치(기본+장비), 슬롯별 장비 상세 스펙, 장비로 오른 스펙 합계, 장비 스킬
+    const s = S.save, u = s.units.find(x => x.id === uid); if (!u) return;
+    const c = C.CLASSES[u.cls], st = C.stats(u), base = C.stats(u, true), G = C.gearTotals(u), P = { hp: 'HP', atk: '공격', def: '방어', spd: '속도', eva: '회피', range: '사거리', taunt: '도발' };
+    const fmt = (k, v) => k === 'eva' ? Math.round(v * 100) + '%' : k === 'taunt' ? v.toFixed(1) : k === 'spd' ? v.toFixed(0) : v;
+    const rows = ['hp', 'atk', 'def', 'spd', 'eva', 'range', 'taunt'].map(k => { const d = st[k] - base[k]; return `<tr><td>${P[k]}</td><td>${fmt(k, base[k])}</td><td class="${d > 0 ? 'good' : d < 0 ? 'bad' : 'dim'}">${d ? (d > 0 ? '+' : '') + fmt(k, d) : '—'}</td><td><b>${fmt(k, st[k])}</b></td></tr>`; }).join('');
+    const slots = Object.keys(C.SLOTS).map(sl => { const id = u.equip[sl], i = C.ITEMS[id];
+      return `<div class="itm"><span><span class="dim">${C.SLOTS[sl]}</span> ${id ? itemName(id) : '<span class="dim">비어있음</span>'}${i ? `<div class="d" style="white-space:pre-line">${esc(C.describeFull(i))}</div>` : ''}</span><button class="btn sm" data-m="sheetslot" data-u="${u.id}" data-slot="${sl}">변경</button></div>`; }).join('');
+    const sum = Object.entries(G.t).filter(([, v]) => v).map(([k, v]) => `${P[k]} ${v > 0 ? '+' : ''}${fmt(k, v)}`).join(' · ') || '장비 없음';
+    openModal(`<h2>🧾 ${esc(u.name)} ${rarTag(u)} <span class="dim">${c.name} Lv${u.lv}</span></h2>
+      <h3>능력치 <span class="dim" style="font-size:12px">기본(성장 포함) + 장비 = 현재</span></h3>
+      <table class="sheet-t"><tr><th></th><th>기본</th><th>장비</th><th>현재</th></tr>${rows}</table>
+      <h3>장비</h3>${slots}
+      <h3>장비로 오른 스펙</h3><div class="card" style="line-height:1.7">${sum}${G.sk.length ? `<br>${G.sk.map(x => `<span class="chip m" title="${esc(C.describeSkill(x.sid))}">${esc(C.SKILLS[x.sid].name)}</span> <span class="d">${esc(x.item)} — ${esc(C.describeSkill(x.sid))}</span>`).join('<br>')}` : ''}</div>
+      <div class="foot"><button class="btn pri" data-m="close" data-autofocus>닫기</button></div>`, { wide: true });
   }
   function squadHTML(s) {
     const slots = C.squadSlots(s), cap = C.squadCap(s), used = C.squadUsed(s), SQ = C.SQUADS;
@@ -146,15 +185,15 @@
     if (!pt.length) return { t: '용병 카드를 전장의 <b>파란 칸</b>으로 끌어다 놓아 편성하세요.' };
     const fit = unplaced.filter(u => C.costOf(u) <= cap - used).sort((a, b) => b.lv - a.lv)[0];
     if (fit) return { t: `코스트 여유 <b>${cap - used}</b> — ${esc(fit.name)}(${C.CLASSES[fit.cls].name})도 편성할 수 있어요.` };
-    if (!pt.some(u => C.baseCls(u) === 'thief')) return { t: '<b>도적</b>이 없으면 함정을 그대로 밟고 잠긴 문을 열 수 없습니다.', tab: 'roster', l: '용병 보기' };
+    if (!pt.some(u => C.baseCls(u) === 'thief')) return { t: '<b>도적</b>이 없으면 함정을 그대로 밟고 잠긴 문을 열 수 없습니다.', tab: 'tavern', l: '주점 가기' };
     if (!pt.some(u => C.skillsOf(u).includes('heal') || C.baseCls(u) === 'priest')) return { t: '치유 수단이 없습니다. <b>회복약</b>을 넉넉히 준비하세요.', tab: 'shop', l: '상점 가기' };
     if ((s.cons.potion || 0) < 2) return { t: '회복약이 부족합니다.', tab: 'shop', l: '상점 가기' };
-    const cheap = s.units.filter(u => !u.hired).map(u => C.hireCost(u)).sort((a, b) => a - b)[0];
-    if (cheap && s.gold >= cheap + C.sortieWage(s) + 100) return { t: '고용할 수 있는 용병이 있습니다.', tab: 'roster', l: '용병 보기' };
+    const cheap = C.tavCands(s).map(u => C.hireCost(u)).sort((a, b) => a - b)[0];
+    if (cheap && s.gold >= cheap + C.sortieWage(s) + 100) return { t: '주점에 고용할 수 있는 용병이 있습니다.', tab: 'tavern', l: '주점 가기' };
     return { t: '준비 완료! 우측 상단 <b>출격 준비</b>를 눌러 던전으로 향하세요.' };
   }
   function renderCampBody() {
-    const s = S.save; let h = '';
+    const s = S.save; let h = ''; const chEl = $('campHint'); if (chEl) chEl.style.display = S.tab === 'tavern' ? 'none' : ''; // 주점 화면에서는 편성 안내 문구를 숨긴다
     if (S.tab === 'form') {
       const used = C.usedCost(s), cap = C.costCap(s);
       h += `<div class="row"><b>편성 코스트 ${used} / ${cap}</b><span class="dim">최고 층↑ → 상한↑</span></div><div class="bar cost ${used > cap ? 'over' : ''}"><i style="width:${pct(used, cap)}%"></i></div>
@@ -162,20 +201,22 @@
         <div class="dim" style="margin:6px 0 10px;font-size:12.5px">카드를 <b>전장으로 끌어다 놓기</b>(또는 선택 후 칸 클릭). 배치된 용병을 끌어 자리를 바꾸고, 우클릭/<span class="kbd">Del</span>로 해제합니다.</div>`;
       const hired = s.units.filter(u => u.hired);
       h += hired.map(u => ucard(u, { act: 'selunit', drag: true, mark: true })).join('') || '<div class="empty">고용한 용병이 없습니다</div>';
-      if (s.units.some(u => !u.hired)) h += `<div class="empty"><button class="btn" data-act="tab" data-id="roster">👥 용병 고용하러 가기</button></div>`;
+      h += `<div class="empty"><button class="btn" data-act="tab" data-id="tavern">🍺 주점에서 용병 고용하기 (${C.tavCands(s).length}명 대기)</button></div>`;
+    } else if (S.tab === 'tavern') {
+      h += tavernHTML(s);
     } else if (S.tab === 'roster') {
-      h += `<div class="row" style="margin-bottom:8px"><button class="btn" data-act="autoeq" title="보관함 장비 중 가장 좋은 것을 자동 장착">🛡 전원 자동 장비</button><span class="dim">보관 장비 ${s.gear.length}개</span></div>`;
+      h += `<div class="row" style="margin-bottom:8px"><button class="btn" data-act="autoeq" title="보관함 장비 중 가장 좋은 것을 자동 장착">🛡 전원 자동 장비</button><button class="btn" data-act="tab" data-id="tavern">🍺 주점</button><span class="dim">보관 장비 ${s.gear.length}개</span></div>`;
       h += s.units.map(u => {
         const c = C.CLASSES[u.cls];
-        if (!u.hired) return `<div class="card"><div class="ucard"><div class="pt" style="border-color:${c.color};opacity:.6">${portrait(u)}</div><div title="${luckHint(u)}"><div class="nm">${esc(u.name)} ${rarTag(u)} <span class="dim">${c.name}</span></div><div class="st">코스트 ${C.costOf(u)} · ${C.ROW_TXT[c.row]} · HP ${c.hp} 공 ${c.atk}${C.rarOf(u) === 'L' ? ' · 🎲 고용 시 주사위' : ''}</div></div><button class="btn sm" data-act="hire" data-id="${u.id}" ${s.gold < C.hireCost(u) ? 'disabled title="골드가 부족합니다"' : ''}>고용 ${C.hireCost(u)}G</button></div></div>`;
+        if (!u.hired) return ''; // 미고용 용병은 주점에서 고용한다(Phase 6)
         let det = '';
         if (S.detail === u.id) {
-          det = `<div style="margin-top:8px">` + Object.keys(C.SLOTS).map(sl => {
+          det = `<div class="row" style="margin-top:8px"><button class="btn sm pri" data-act="sheet" data-id="${u.id}">🧾 장비창 · 상세 스펙</button></div><div style="margin-top:8px">` + Object.keys(C.SLOTS).map(sl => {
             const id = u.equip[sl], i = C.ITEMS[id];
             return `<div class="itm"><span><span class="dim">${C.SLOTS[sl]}</span> ${id ? itemName(id) : '<span class="dim">비어있음</span>'} ${i ? `<span class="d">${C.describe(i)}</span>` : ''}</span><button class="btn sm" data-act="slot" data-id="${u.id}" data-slot="${sl}">변경</button></div>`;
           }).join('');
           const sk = C.skillsOf(u);
-          det += `<div class="dim" style="margin:8px 0 2px;font-size:12px">스킬 — 장비 착용 시 사용, 숙련도가 차면 영구 습득</div><div class="chips">${sk.length ? sk.map(k => { const L = (u.learned || []).includes(k); return `<span class="chip ${L ? 'm' : ''}">${C.SKILLS[k].name} ${L ? '습득' : (u.mastery[k] || 0) + '/' + C.SKILLS[k].master} · ${u.charges[k] ?? C.maxCharges(u, k)}회</span>`; }).join('') : '<span class="dim">없음</span>'}</div>
+          det += `<div class="dim" style="margin:8px 0 2px;font-size:12px">스킬 — 장비 착용 시 사용, 숙련도가 차면 영구 습득</div><div class="chips">${sk.length ? sk.map(k => { const L = (u.learned || []).includes(k); return `<span class="chip ${L ? 'm' : ''}" title="${esc(C.describeSkill(k))}">${C.SKILLS[k].name} ${L ? '습득' : (u.mastery[k] || 0) + '/' + C.SKILLS[k].master} · ${u.charges[k] ?? C.maxCharges(u, k)}회</span>`; }).join('') : '<span class="dim">없음</span>'}</div>
             <div class="dim" style="margin-top:6px;font-size:12px">경험치 ${u.exp}/${C.needExp(u.lv)}</div><div class="bar"><i style="width:${pct(u.exp, C.needExp(u.lv))}%;background:var(--blue)"></i></div>
             ${C.CLASSES[u.cls].promo ? `<div class="dim" style="margin-top:6px;font-size:12px">⭐ 전직 완료 — 전용 스킬 [${C.SKILLS[C.CLASSES[u.cls].skill].name}]</div>` : C.PROMO[u.cls] ? `<div class="row" style="margin-top:8px"><span class="dim" style="font-size:12px">전직: ${C.CLASSES[C.PROMO[u.cls][0]].name} (능력치 ×1.3 · 코스트 +1 · 전용 스킬 [${C.SKILLS[C.PROMO[u.cls][3]].name}] · Lv${C.PROMO_LV}+ · 전직서 필요)</span><button class="btn sm pri" data-act="promo" data-id="${u.id}" ${C.canPromote(u) && s.promo > 0 ? '' : `disabled title="${u.lv < C.PROMO_LV ? `Lv${C.PROMO_LV} 필요` : '전직서가 없습니다'}"`}>전직</button></div>` : ''}</div>`;
         }
@@ -314,7 +355,7 @@
     openModal(`<h2>${t[0]}</h2><div class="${e.result === 'wipe' ? 'bad' : 'dim'}">${t[1]}</div>
       <div class="stat-grid"><div class="stat-box"><b>${e.reached}층</b><span>도달</span></div><div class="stat-box"><b>${e.kills}</b><span>처치</span></div><div class="stat-box"><b>${e.chests}</b><span>상자</span></div><div class="stat-box"><b>${e.result === 'wipe' ? Math.floor(e.loot.gold / 2) : e.loot.gold}G</b><span>획득 골드</span></div></div>
       ${e.result === 'wipe' ? '' : `<h3>획득 장비 (${items.length})</h3><div class="chips">${items.map(i => `<span class="chip">${itemName(i)}</span>`).join('') || '<span class="dim">없음</span>'}</div>`}
-      ${e.result !== 'wipe' && (Object.keys(e.loot.mats || {}).length || (e.loot.bps || []).length || e.loot.promo) ? `<h3>획득 재료·도면</h3><div class="chips">${Object.entries(e.loot.mats || {}).map(([k, n]) => `<span class="chip">${esc(C.MATS[k])} ×${Math.round(n * 10) / 10}</span>`).join('')}${(e.loot.bps || []).map(id => `<span class="chip m">📐 ${esc(itemNameText(id))} 도면</span>`).join('')}${e.loot.promo ? `<span class="chip m">📜 전직서 ×${e.loot.promo}</span>` : ''}</div>` : ''}
+      ${e.result !== 'wipe' && (Object.keys(e.loot.mats || {}).length || (e.loot.bps || []).length || e.loot.promo || e.loot.tickets) ? `<h3>획득 재료·도면</h3><div class="chips">${Object.entries(e.loot.mats || {}).map(([k, n]) => `<span class="chip">${esc(C.MATS[k])} ×${Math.round(n * 10) / 10}</span>`).join('')}${(e.loot.bps || []).map(id => `<span class="chip m">📐 ${esc(itemNameText(id))} 도면</span>`).join('')}${e.loot.promo ? `<span class="chip m">📜 전직서 ×${e.loot.promo}</span>` : ''}${e.loot.tickets ? `<span class="chip m">🎫 출현변경권 ×${e.loot.tickets}</span>` : ''}</div>` : ''}
       ${e.joined && e.joined.length ? `<h3>🤝 새 특수 동료</h3><div class="chips">${e.joined.map(n => `<span class="chip m">${esc(n)}</span>`).join('')}</div>` : ''}
       <div class="dim" style="font-size:12.5px;margin-top:6px">😓 피로 회복: 쉰 용병 +25 · 출전 용병 +5${e.fatLog && e.fatLog.mul > 1 ? ` · 승려 동행 ×${e.fatLog.mul}` : ''}${e.fatLog && e.fatLog.bonus ? ` · 요리사 식사 +${e.fatLog.bonus}` : ''} · 남은 식량 🍖 ${Math.floor(S.save.food)}</div>
       ${e.autoLog && e.autoLog.length ? `<h3>자동 장착 내역 (${e.autoLog.length})</h3><div class="dim" style="font-size:12.5px;max-height:130px;overflow:auto">${e.autoLog.map(l => `<div>${esc(l)}</div>`).join('')}</div>` : ''}
@@ -357,7 +398,7 @@
     if (S.exp || ev.button > 0) return;
     const card = ev.target.closest('[data-unit]');
     if (card && S.tab === 'form' && ev.pointerType !== 'touch') { startPress(+card.dataset.unit, ev, false); return; }
-    if (ev.target === cv) { const c = Render.cellAt(ev); const u = c && C.unitAt(S.save, c[0], c[1]); if (u) startPress(u.id, ev, true); else P.id = null; }
+    if (ev.target === cv && S.tab !== 'tavern') { const c = Render.cellAt(ev); const u = c && C.unitAt(S.save, c[0], c[1]); if (u) startPress(u.id, ev, true); else P.id = null; }
   });
   document.addEventListener('pointermove', ev => {
     if (P.id === null) return;
@@ -386,6 +427,7 @@
     }
   });
   cv.addEventListener('click', ev => {
+    if (!S.exp && S.tab === 'tavern') { const id = Render.tavernAt(ev); if (id) tavernModal(id); return; } // 주점: 손님을 클릭해 데려온다
     if (S.exp) {
       if (S.exp.battle || S.exp.done) return;
       const t = Render.mazeTile(ev); if (!t) return;
@@ -397,7 +439,7 @@
     else if (!C.unitAt(S.save, c[0], c[1])) setHint('왼쪽 목록의 카드를 끌어다 놓거나, 카드를 선택한 뒤 칸을 클릭하세요', 3500);
   });
   cv.addEventListener('contextmenu', ev => { ev.preventDefault(); if (S.exp) return; const c = Render.cellAt(ev), u = c && C.unitAt(S.save, c[0], c[1]); if (u) { delete S.save.formation[u.id]; setHint(`<b>${esc(u.name)}</b> 배치 해제`); afterFormChange(); } });
-  cv.addEventListener('mousemove', ev => { if (P.moved) return; S.hover = S.exp ? (S.exp.battle ? null : Render.mazeTile(ev)) : Render.cellAt(ev); });
+  cv.addEventListener('mousemove', ev => { if (!S.exp && S.tab === 'tavern') { S.tavernHover = Render.tavernAt(ev); cv.style.cursor = S.tavernHover ? 'pointer' : ''; return; } if (P.moved) return; S.hover = S.exp ? (S.exp.battle ? null : Render.mazeTile(ev)) : Render.cellAt(ev); });
   cv.addEventListener('mouseleave', () => { if (!P.moved) S.hover = null; });
 
   /* ---------- 패널·툴바 클릭 ---------- */
@@ -411,7 +453,6 @@
       case 'detail': S.detail = S.detail === +id ? null : +id; renderCampBody(); return;
       case 'slot': slotModal(s.units.find(u => u.id === +id), b.dataset.slot); ev.stopPropagation(); return;
       case 'autoeq': { const lg = C.autoEquip(s, { idle: true }); save(); toast(lg.length ? `자동 장비 완료 (${lg.length}건 변경)` : '바꿀 장비가 없습니다', 'good'); renderCampBody(); return; }
-      case 'hire': { const u = s.units.find(x => x.id === +id), r = C.hireUnit(s, u); if (r) { save(); toast(r.dice ? `🎲 ${u.name} 고용! 성장 ×${r.dice.grow} · 행운이 따르는 듯하다` : `${u.name} 고용! 편성 탭에서 배치하세요`, 'good'); renderStats(); renderCampBody(); renderStageBar(); } return; }
       case 'buycons': { const v = C.CONS[id]; if (s.gold >= v.price) { s.gold -= v.price; s.cons[id] = (s.cons[id] || 0) + 1; save(); renderStats(); renderCampBody(); renderStageBar(); } return; }
       case 'buypromo': if (C.buyPromo(s)) { save(); renderStats(); renderCampBody(); } return;
       case 'promo': { const u = s.units.find(x => x.id === +id), nm = C.CLASSES[C.PROMO[u.cls][0]].name, r = C.promote(s, u); if (r) toast(r, 'bad'); else { save(); toast(`⭐ ${u.name}이(가) ${nm}(으)로 전직했습니다!`, 'good'); renderStats(); renderCampBody(); renderStageBar(); } ev.stopPropagation(); return; }
@@ -424,6 +465,9 @@
       case 'sortie-open': sortieModal(); return;
       case 'fullscreen': toggleFullscreen(); return;
       case 'rec': toggleRec(); return;
+      case 'sheet': sheetModal(+id); ev.stopPropagation(); return;
+      case 'tavcand': tavernModal(+id); return;
+      case 'useticket': { const r = C.useTicket(s); if (!r) { toast('출현변경권이 없습니다', 'bad'); return; } save(); toast(`🎫 주점 후보가 바뀌었습니다 (${C.tavCands(s).length}명)`, 'good'); renderStats(); renderCampBody(); return; }
       case 'help': tutorial(0); return;
       case 'settings': settingsModal(); return;
       case 'pause': togglePause(); return;
@@ -478,6 +522,7 @@
       <h3>화면</h3><label class="check"><input type="checkbox" data-pref="reduce" ${S.prefs.reduce ? 'checked' : ''}> 애니메이션 줄이기</label>
       <div class="pol" style="margin-top:6px"><label>기본 배속</label><select data-pref="speed">${SPEEDS.map(n => `<option value="${n}" ${S.prefs.speed === n ? 'selected' : ''}>×${n}</option>`).join('')}</select></div>
       <div class="pol" style="margin-top:6px"><label title="모든 배속에 곱해지는 기본 진행 속도. 13=총 플레이 약 60시간 기준(가장 느림), 1=원래 속도(테스트용 가장 빠름)">진행 속도</label><select data-pref="pace">${[[13, '느림 (60시간 기준)'], [8, '조금 느림'], [6, '보통'], [4, '조금 빠름'], [2, '빠름'], [1, '매우 빠름 (원래 속도)']].map(([v, t]) => `<option value="${v}" ${C.TUNE.pace === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+      <div class="pol" style="margin-top:6px"><label title="전투 중 누가 누구를 노리는지 선으로 표시: 적→대원 주황(도발 시 빨강), 대원→적 파랑, 치유 초록">표적선</label><select data-pref="lines">${[['all', '모두 표시'], ['enemy', '적의 표적만'], ['off', '끄기']].map(([v, t]) => `<option value="${v}" ${(S.prefs.lines || 'all') === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
       <div class="pol" style="margin-top:6px"><label title="우상단 ⏺ 버튼으로 게임 캔버스를 녹화해 webm 으로 저장합니다(1분 약 4MB / 11MB)">녹화 화질</label><select data-pref="recq">${Object.entries(RECQ).map(([k, q]) => `<option value="${k}" ${(S.prefs.recq || 'low') === k ? 'selected' : ''}>${q.name} (${q.fps}fps · ${Math.round(q.bps / 1000)}kbps)</option>`).join('')}</select></div>
       <label class="check"><input type="checkbox" data-pref="fullscreen" ${S.prefs.fullscreen ? 'checked' : ''}> 시작 시 전체 화면 (첫 클릭/키 입력 때 적용 · 우상단 ⛶ 버튼, F11로도 전환)</label>
       <div class="pol" style="margin-top:6px"><label title="치명타 타일 흔들림·범위 마법 화면 흔들림의 세기">흔들림 강도</label><select data-pref="shake">${[[0, '끔'], [1, '보통'], [1.6, '강하게'], [2.4, '최대']].map(([v, t]) => `<option value="${v}" ${S.prefs.shake === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
@@ -525,7 +570,8 @@
   document.addEventListener('pointerdown', fsOnFirstInput, { once: true }); document.addEventListener('keydown', fsOnFirstInput, { once: true });
   function prefChange(t) {
     const k = t.dataset.pref;
-    if (k === 'recq') S.prefs.recq = t.value;
+    if (k === 'lines') S.prefs.lines = t.value;
+    else if (k === 'recq') S.prefs.recq = t.value;
     else if (k === 'pace') { S.prefs.pace = +t.value; C.TUNE.pace = S.prefs.pace; if (S.exp) renderToolbar(); }
     else if (k === 'fullscreen') S.prefs.fullscreen = t.checked;
     else if (k === 'shake') S.prefs.shake = +t.value;
@@ -538,6 +584,14 @@
     const m = b.dataset.m, s = S.save;
     if (m === 'close') closeModal();
     else if (m === 'confirm') { const cb = confirmCb; confirmCb = null; closeModal(); cb && cb(); }
+    else if (m === 'sheetslot') { slotModal(s.units.find(x => x.id === +b.dataset.u), b.dataset.slot); }
+    else if (m === 'thire') {
+      const uid = +b.dataset.id, u = s.units.find(x => x.id === uid), r = C.tavernHire(s, uid);
+      if (r.err) { toast(r.err, 'bad'); closeModal(); }
+      else if (r.ok) { save(); closeModal(); toast(`🍺 ${u.name} 고용! 편성 탭에서 배치하세요`, 'good'); }
+      else { save(); if (r.left) { closeModal(); toast(`💨 ${u.name}이(가) 실망해 떠났습니다… (실패 ${r.fails}회) — 출현변경권으로 다시 부를 수 있어요`, 'bad'); } else { toast(`고용 실패… ${u.name}이(가) 고개를 저었다 (−${r.loss}G · 실패 ${r.fails}/${C.TAV.legendFailMax})`, 'bad'); tavernModal(uid); } }
+      renderStats(); renderCampBody(); renderStageBar();
+    }
     else if (m === 'mbuy') { const r = C.buyMerchant(S.exp, +b.dataset.i); if (r) toast(r, 'bad'); else { save(); renderStats(); } openEventModal(S.exp); }
     else if (m === 'gpull') { const r = C.gachaPull(S.exp, +b.dataset.n); if (r && r.err) toast(r.err, 'bad'); else save(); renderStats(); openEventModal(S.exp); }
     else if (m === 'cqyes') { C.acceptCompanion(S.exp); S.evOpen = false; closeModal(); save(); }

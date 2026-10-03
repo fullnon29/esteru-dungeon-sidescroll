@@ -43,6 +43,7 @@ canvas{width:100%;height:100%;display:block;touch-action:none}
 .toolbar button:hover{background:var(--surface3)}.toolbar button.on{background:var(--blue);color:#06142b}
 .icon-btn.rec{width:auto;padding:0 12px;color:#ff6b6b;border-color:#ff6b6b;font-weight:700;animation:recBlink 1.2s infinite}
 @keyframes recBlink{50%{background:#3a1414}}
+.sheet-t{width:100%;border-collapse:collapse;font-size:13px}.sheet-t th{color:var(--dim,#8b93a7);font-weight:600;text-align:right;padding:2px 8px}.sheet-t td{text-align:right;padding:3px 8px;border-top:1px solid #ffffff10}.sheet-t td:first-child,.sheet-t th:first-child{text-align:left}
 .toolbar .cap{font-size:11px;font-weight:700;color:#ffd86b;background:#3a2f12;border-radius:999px;padding:3px 8px;white-space:nowrap}
 .toolbar .sep{width:1px;height:20px;background:var(--line);margin:0 2px}.toolbar .danger:hover{background:#6e2a2a}
 .item-pop{position:absolute;right:12px;top:54px;width:268px;background:#12151fee;border:1px solid var(--line);border-radius:12px;padding:10px;box-shadow:var(--shadow);backdrop-filter:blur(6px);z-index:5}

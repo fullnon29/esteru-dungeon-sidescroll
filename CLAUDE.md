@@ -25,6 +25,7 @@
 - 층 넓이: 미로 55×33(기존 39×23의 약 2배), 방·상자·함정·몹·정예 수도 약 2배.
 - 전투 규칙: 적은 **위협(어그로) 1위**를 노린다(`addThreat`/`aggroTarget`, 클래스 `taunt` 배율, 기사·전사 고유 스킬 `taunt`). 몬스터 특수 능력은 `ABIL`(분열·도둑질·쇠약·부활·관통·흡혈·격노·가시), 몬스터 하우스·함정 5종은 `placeEvents`/`triggerTrap`.
 - 배속 규칙: 출시 빌드 ×1/×2/×4. **개발 모드는 주소에 `?dev`**(그 로딩에서만 켜짐, 저장되지 않음)로 ×8까지. 처음 가는 층(이번 원정 이전 최고 층보다 깊은 층)은 ×2로 제한. `TUNE.pace`(기본 1)를 키우면 모든 배속이 비례해 느려진다(플레이 시간 조정용).
+- 고용: **주점**(캠프 탭 🍺, `core.js` `refreshTavern`/`tavernHire`/`useTicket`, `render.js` `drawTavern`). 후보 5~7명은 귀환 때마다 갱신, 출현변경권(`s.tickets`)으로 재추첨. 전설은 고용이 확률(`legendChance`), 실패 5회면 떠남(`u.left`). 용병 상세는 장비창(`sheetModal`).
 - 이벤트: 행상인(🧳)·뽑기방(🎰)·특수 동료 의뢰인(📜)은 방에 배치되어 도착 시 이벤트 창이 열리고(진행 정지), 기습은 이동 중 낮은 확률로 발생(남은 HP −10%, 도적 동행 시 50% 간파). 모든 이벤트는 화면 중앙 배너로 알린다(`core.js` `ban()` → `game.js` 배너 큐). 봇은 `e.autoResolve=true`로 자동 처리. 특수 동료 8명은 `COMPANIONS`(의뢰 달성 시 합류, 세이브 `comp`).
 - 캐시 주의: `index.html`의 스크립트 주소 `?v=` 값을 파일을 고칠 때 올려야 브라우저가 새 파일을 받는다.
 - 녹화: 우상단 ⏺ 버튼이 게임 **캔버스만** 저용량 webm(저용량 15fps·600kbps / 보통 20fps·1.5Mbps, 설정에서 선택)으로 저장한다(HTML 패널·배너·이벤트 창은 안 찍힘). 화면 전체를 찍으려면 Windows 캡처 도구(Win+Shift+R) 후 `ffmpeg -i in.mp4 -vf scale=-2:540 -r 20 -c:v libx264 -crf 30 -preset slow -an out.mp4` 로 압축(ffmpeg 는 winget `Gyan.FFmpeg`).

@@ -32,6 +32,7 @@ const Render = (function () {
   function procEvents(e) {
     S.areas = S.areas || []; S.tileShake = S.tileShake || {};
     for (const v of e.events) {
+      if (v.k === 'learn') { S.learnFx = S.learnFx || []; S.learnFx.push({ x: v.x, y: v.y, age: 0 }); }
       if (v.k === 'area') { S.areas.push({ cells: v.cells, col: v.col, age: 0 }); if (v.big && !reduced()) S.frameShake = { t: 0.4, d: 0.4, amp: 16 * shakeK() }; }
       if (v.k === 'dmg' && v.crit && !reduced()) S.tileShake[v.x + ',' + v.y] = 0.45; // 치명타: 맞은 타일이 크게 흔들리고 번쩍인다
       if (v.k === 'dmg' && v.crit) S.floaters.push({ x: v.x, y: v.y, t: '치명타!', col: '#ffd24a', age: 0, big: true, crit: true, up: 44 }); // 머리 위 치명타 문구
@@ -114,13 +115,17 @@ const Render = (function () {
     const ents = boardEntities();
     ents.forEach(c => { if (c.dx === undefined) { c.dx = c.x; c.dy = c.y; } c.dx += (c.x - c.dx) * Math.min(1, dt * 9); c.dy += (c.y - c.dy) * Math.min(1, dt * 9); if (c.lt > 0) c.lt -= dt; });
     ents.sort((a, b) => (a.dx + a.dy) - (b.dx + b.dy));
-    if (bt) { // 어그로 선: 적이 노리는 대상(위협 1위)을 붉은 점선으로 잇는다. 도발 중인 대원은 🛡 표시
-      ctx.save(); ctx.setLineDash([5, 4]); ctx.lineWidth = 1.6;
+    const lineMode = (S.prefs && S.prefs.lines) || 'all';
+    if (bt && lineMode !== 'off') { // 표적선: 적→대원은 주황(도발로 묶이면 진한 빨강), 대원→적은 파랑, 치유는 초록 점선
+      ctx.save(); ctx.setLineDash([5, 4]);
       for (const c of ents) {
-        if (c.side !== 'e' || !c.curTgt || !c.curTgt.alive) continue;
-        const [ax, ay] = iso(c.dx, c.dy), [tx, ty] = iso(c.curTgt.dx, c.curTgt.dy), t = c.curTgt;
-        ctx.strokeStyle = (t.tauntUntil || 0) > bt.t ? '#ff5a5aaa' : '#ff9a5a66';
-        ctx.beginPath(); ctx.moveTo(ax, ay - elAt(c.dx, c.dy) - 12); ctx.lineTo(tx, ty - elAt(t.dx, t.dy) - 12); ctx.stroke();
+        const t = c.curTgt; if (!t || !t.alive || !c.alive) continue;
+        if (c.side === 'p' && (lineMode === 'enemy' || bt.t - (c.curT || 0) > 2.5)) continue;
+        const forced = c.side === 'e' && (t.tauntUntil || 0) > bt.t, [ax, ay] = iso(c.dx, c.dy), [tx, ty] = iso(t.dx, t.dy), y0 = ay - elAt(c.dx, c.dy) - 12, y1 = ty - elAt(t.dx, t.dy) - 12;
+        ctx.lineWidth = forced ? 2.6 : c.side === 'e' ? 1.7 : 1.4;
+        ctx.strokeStyle = c.curKind === 'heal' ? '#5be08acc' : c.side === 'e' ? (forced ? '#ff4a4af0' : '#ff9a5a99') : '#6aa8ffaa';
+        ctx.beginPath(); ctx.moveTo(ax, y0); ctx.lineTo(tx, y1); ctx.stroke();
+        ctx.setLineDash([]); ctx.fillStyle = ctx.strokeStyle; ctx.beginPath(); ctx.arc(tx, y1, 3.2, 0, 7); ctx.fill(); ctx.setLineDash([5, 4]);
       }
       ctx.restore();
     }
@@ -147,6 +152,17 @@ const Render = (function () {
       if (bt && c.side === 'p' && (c.tauntUntil || 0) > bt.t) emoji('🛡️', sx - r + 2, cy - r - 12, 14);
       ctx.globalAlpha = 1;
     }
+    // 스킬 습득 이펙트: 머리 위로 반짝이는 전구 + 주위를 도는 별빛
+    S.learnFx = (S.learnFx || []).filter(f => (f.age += dt) < 2.4);
+    for (const f of S.learnFx) {
+      const [lx, ly] = iso(f.x, f.y), by = ly - elAt(f.x, f.y) - 70 - Math.min(f.age, 0.6) * 14 + Math.sin(f.age * 7) * 2, a = Math.min(1, (2.4 - f.age) / 0.7);
+      ctx.save(); ctx.globalAlpha = a;
+      const g = ctx.createRadialGradient(lx, by, 2, lx, by, 34); g.addColorStop(0, '#fff3a0cc'); g.addColorStop(1, '#fff3a000'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(lx, by, 34, 0, 7); ctx.fill();
+      emoji('💡', lx, by, 30 + Math.sin(f.age * 10) * 2);
+      for (let k = 0; k < 6; k++) { const an = f.age * 3 + k * Math.PI / 3, rr = 20 + 6 * Math.sin(f.age * 6 + k); emoji('✨', lx + Math.cos(an) * rr, by + Math.sin(an) * rr * 0.7, 10); }
+      ctx.font = '700 13px "Malgun Gothic",sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = '#000'; ctx.strokeText('스킬 습득!', lx, by - 26); ctx.fillStyle = '#ffe27a'; ctx.fillText('스킬 습득!', lx, by - 26);
+      ctx.restore();
+    }
     for (const f of S.floaters) {
       f.age += dt; const [sx, sy] = iso(f.x, f.y), a = 1 - f.age / (f.fx ? 0.5 : 1.0); if (a <= 0) continue;
       ctx.globalAlpha = Math.max(0, a); ctx.textAlign = 'center';
@@ -156,6 +172,48 @@ const Render = (function () {
     S.floaters = S.floaters.filter(f => f.age < 1.0);
     vignette(0.45);
     ctx.restore();
+  }
+
+  /* ---------- 주점 (Phase 6): 후보 5~7명이 무대에 서 있고, 클릭해서 데려온다 ---------- */
+  function tavernSlots() {
+    const cands = C.tavCands(S.save), n = cands.length, out = [];
+    cands.forEach((u, i) => { out.push({ u, x: n === 1 ? W / 2 : 90 + i * (W - 180) / (n - 1), y: 345 + (i % 2) * 14 }); });
+    return out;
+  }
+  function tavernAt(ev) {
+    const [mx, my] = mouse(ev); let best = null, bd = 1e9;
+    for (const s of tavernSlots()) { const d = Math.hypot(mx - s.x, my - (s.y - 40)); if (d < 62 && d < bd) { bd = d; best = s.u.id; } }
+    return best;
+  }
+  function drawTavern(dt) {
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#2b1b12'); g.addColorStop(0.62, '#3a2417'); g.addColorStop(0.62, '#241610'); g.addColorStop(1, '#120a07'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    const bg = Assets.get('backgrounds', 'tavern'); if (bg) ctx.drawImage(bg, 0, 0, W, H);
+    ctx.fillStyle = '#00000033'; for (let i = 0; i < 9; i++) ctx.fillRect(0, 330 + i * 24, W, 2); // 마룻바닥 줄
+    for (const x of [120, 450, 780]) { ctx.fillStyle = '#ffd68a'; ctx.globalAlpha = 0.5 + 0.1 * Math.sin(S.time * 3 + x); ctx.beginPath(); ctx.arc(x, 70, 20, 0, 7); ctx.fill(); ctx.globalAlpha = 1; emoji('🏮', x, 70, 30); }
+    ctx.font = '800 26px "Malgun Gothic",sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#f2d9a8'; ctx.fillText('🍺 주점 — 오늘의 손님', W / 2, 44);
+    ctx.font = '13px "Malgun Gothic",sans-serif'; ctx.fillStyle = '#b89e78'; ctx.fillText('마음에 드는 용병을 클릭하세요 · 후보는 원정에서 돌아올 때마다 바뀝니다', W / 2, 66);
+    const slots = tavernSlots(), hov = S.tavernHover; let tip = null;
+    if (!slots.length) { ctx.font = '700 18px "Malgun Gothic",sans-serif'; ctx.fillStyle = '#d9c19a'; ctx.fillText('오늘은 손님이 없습니다 — 출현변경권으로 다른 손님을 부를 수 있어요', W / 2, 260); }
+    for (const s of slots) {
+      const u = s.u, c = C.CLASSES[u.cls], rk = C.rarOf(u), R = C.RARITY[rk], on = hov === u.id, sc = on ? 1.12 : 1, r = 40 * sc, cy = s.y - 40;
+      ctx.fillStyle = '#0008'; ctx.beginPath(); ctx.ellipse(s.x, s.y + 6, r * 0.95, r * 0.32, 0, 0, 7); ctx.fill();
+      if (rk !== 'N') { const gl = ctx.createRadialGradient(s.x, cy, r * 0.6, s.x, cy, r * (rk === 'L' ? 2.0 : 1.6)); gl.addColorStop(0, R.color + (rk === 'L' ? '88' : '55')); gl.addColorStop(1, R.color + '00'); ctx.fillStyle = gl; ctx.globalAlpha = rk === 'L' ? 0.75 + 0.25 * Math.sin(S.time * 4 + s.x) : 1; ctx.beginPath(); ctx.arc(s.x, cy, r * 2, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
+      const img = Assets.unit('sprites', u);
+      if (img) { const h = 96 * sc, w = img.width * h / img.height; ctx.drawImage(img, s.x - w / 2, s.y + 6 - h, w, h); }
+      else { ctx.fillStyle = c.color; ctx.beginPath(); ctx.arc(s.x, cy, r, 0, 7); ctx.fill(); ctx.lineWidth = on ? 4 : 2.5; ctx.strokeStyle = on ? '#fff' : R.color; ctx.stroke(); emoji(c.icon, s.x, cy + 2, Math.round(44 * sc)); }
+      ctx.font = '700 14px "Malgun Gothic",sans-serif'; ctx.fillStyle = on ? '#fff' : '#ecdcc0'; ctx.fillText(u.name, s.x, s.y + 28);
+      ctx.font = '11px "Malgun Gothic",sans-serif'; ctx.fillStyle = R.color; ctx.fillText(`${c.name}${rk !== 'N' ? ' · ' + R.name : ''}`, s.x, s.y + 43);
+      ctx.fillStyle = '#e2b659'; ctx.fillText(`💰 ${C.hireCost(u)}G`, s.x, s.y + 58);
+      if (rk === 'L' && (u.fails || 0) > 0) { ctx.fillStyle = '#ff9a9a'; ctx.fillText(`실패 ${u.fails}/${C.TAV.legendFailMax}`, s.x, s.y + 72); }
+      if (on) tip = s;
+    }
+    if (tip) { // 호버 툴팁: 능력치 요약
+      const u = tip.u, st = C.stats(u), lines = [`${u.name} · ${C.CLASSES[u.cls].name} Lv${u.lv}`, `HP ${st.hp} · 공 ${st.atk} · 방 ${st.def} · 속 ${st.spd.toFixed(0)}`, `사거리 ${st.range} · 도발 ${st.taunt.toFixed(1)} · 코스트 ${C.costOf(u)}`, C.rarOf(u) === 'L' ? `고용 성공률 약 ${Math.round(C.legendChance(S.save) * 100)}%` : '클릭하면 자세히 보고 고용합니다'];
+      const bw = 214, bh = 78, bx = Math.max(8, Math.min(W - bw - 8, tip.x - bw / 2)), by = tip.y - 160;
+      ctx.fillStyle = '#0d0907ee'; ctx.strokeStyle = '#c9a56a'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.rect(bx, by, bw, bh); ctx.fill(); ctx.stroke();
+      ctx.textAlign = 'left'; lines.forEach((t, i) => { ctx.font = i === 0 ? '700 13px "Malgun Gothic",sans-serif' : '12px "Malgun Gothic",sans-serif'; ctx.fillStyle = i === 0 ? '#ffe9b8' : '#d8c6a6'; ctx.fillText(t, bx + 10, by + 20 + i * 17); }); ctx.textAlign = 'center';
+    }
+    vignette(0.5);
   }
 
   /* ---------- 쿼터뷰 벽돌 미로 (지3 탐사 화면) ---------- */
@@ -283,8 +341,8 @@ const Render = (function () {
   function draw(dt) {
     S.time += dt;
     ctx.clearRect(0, 0, W, H);
-    if (S.exp && !S.exp.battle) { drawMaze(dt); vignette(0.25); } else drawBoard(dt);
+    if (S.exp && !S.exp.battle) { drawMaze(dt); vignette(0.25); } else if (!S.exp && S.tab === 'tavern') drawTavern(dt); else drawBoard(dt);
   }
   function init(state, canvas) { S = state; cv = canvas; ctx = cv.getContext('2d'); }
-  return { init, draw, cellAt, mazeTile, procEvents, W, H };
+  return { init, draw, cellAt, mazeTile, tavernAt, procEvents, W, H };
 })();
