@@ -167,7 +167,7 @@
       h += `<div class="row" style="margin-bottom:8px"><button class="btn" data-act="autoeq" title="보관함 장비 중 가장 좋은 것을 자동 장착">🛡 전원 자동 장비</button><span class="dim">보관 장비 ${s.gear.length}개</span></div>`;
       h += s.units.map(u => {
         const c = C.CLASSES[u.cls];
-        if (!u.hired) return `<div class="card"><div class="ucard"><div class="pt" style="border-color:${c.color};opacity:.6">${portrait(u)}</div><div><div title="${luckHint(u)}"><div class="nm">${esc(u.name)} ${rarTag(u)} <span class="dim">${c.name}</span></div><div class="st">코스트 ${C.costOf(u)} · ${C.ROW_TXT[c.row]} · HP ${c.hp} 공 ${c.atk}${C.rarOf(u) === 'L' ? ' · 🎲 고용 시 주사위' : ''}</div></div><button class="btn sm" data-act="hire" data-id="${u.id}" ${s.gold < C.hireCost(u) ? 'disabled title="골드가 부족합니다"' : ''}>고용 ${C.hireCost(u)}G</button></div></div>`;
+        if (!u.hired) return `<div class="card"><div class="ucard"><div class="pt" style="border-color:${c.color};opacity:.6">${portrait(u)}</div><div title="${luckHint(u)}"><div class="nm">${esc(u.name)} ${rarTag(u)} <span class="dim">${c.name}</span></div><div class="st">코스트 ${C.costOf(u)} · ${C.ROW_TXT[c.row]} · HP ${c.hp} 공 ${c.atk}${C.rarOf(u) === 'L' ? ' · 🎲 고용 시 주사위' : ''}</div></div><button class="btn sm" data-act="hire" data-id="${u.id}" ${s.gold < C.hireCost(u) ? 'disabled title="골드가 부족합니다"' : ''}>고용 ${C.hireCost(u)}G</button></div></div>`;
         let det = '';
         if (S.detail === u.id) {
           det = `<div style="margin-top:8px">` + Object.keys(C.SLOTS).map(sl => {
