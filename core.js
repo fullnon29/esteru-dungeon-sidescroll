@@ -139,6 +139,17 @@ const Core = (function () {
   for (const id in ITEM_TAUNT) ITEMS[id].taunt = ITEM_TAUNT[id];
   const canUse = (u, i) => !i || !i.classes || i.classes.includes(baseCls(u));
 
+  /* ---------- 외형 (장비 반영 애니메이션용) ----------
+     무기 종류 sword/great/spear/bow/staff/mace/dagger/fist/cook, 갑옷 등급 cloth/leather/mail/plate/mythic.
+     assets.js 가 `이름@무기-갑옷` → `이름@무기` → `이름@갑옷` → `이름` 순으로 시트를 찾는다(없으면 다음 후보). */
+  const WLOOK = { w_sword: 'sword', w_flame: 'sword', w_saint: 'sword', w_great: 'great', w_lance: 'spear', w_bow: 'bow', w_longbow: 'bow', w_rod: 'staff', w_icerod: 'staff', w_mace: 'mace', w_dagger: 'dagger', w_knuckle: 'fist', w_claw: 'fist', w_dfist: 'fist', w_cleaver: 'cook', w_wok: 'cook' };
+  const ALOOK = { a_robe: 'cloth', a_mrobe: 'cloth', a_archrobe: 'cloth', a_leather: 'leather', a_chain: 'mail', a_plate: 'plate', a_mithril: 'mythic', a_dragon: 'mythic' };
+  const LEG_WLOOK = { 검: 'sword', 창: 'spear', 지팡이: 'staff', 활: 'bow', 권갑: 'fist' }, LEG_ALOOK = { 갑주: 'plate', 로브: 'cloth' };
+  const legendNoun = i => (i.name || '').replace(/!$/, '').split(' ').pop();
+  const lookWeapon = i => i ? (WLOOK[i.base || i.id] || (i.legend ? LEG_WLOOK[legendNoun(i)] : null) || null) : null;
+  const lookArmor = i => i ? (ALOOK[i.base || i.id] || (i.legend ? (LEG_ALOOK[legendNoun(i)] === 'cloth' ? 'cloth' : (i.tier >= 4 ? 'mythic' : 'plate')) : null) || null) : null;
+  const looks = u => ({ w: lookWeapon(u.equip && ITEMS[u.equip.weapon]), a: lookArmor(u.equip && ITEMS[u.equip.armor]) });
+
   // 전설 장비("!"): 매 드롭마다 무작위 이름/효과
   const LEG_PRE = ['고대의', '불멸의', '저주받은', '신들의', '서리의', '폭풍의', '황혼의'];
   function makeLegend(floor) {
@@ -1801,6 +1812,6 @@ const Core = (function () {
     return p.join(' ');
   }
 
-  return { startFloors, defaultStart, ENH_MAX, enhanceItem, acceptQuest, questGoal, questReady, matHave, SELL_RATE, matPrice, gearSellPrice, sellGear, sellAllGear, sellMat, refillCharges, TAV, tavCands, tavPool, refreshTavern, useTicket, legendChance, tavernHire, describeSkill, describeFull, gearTotals, ABIL_ICON, ABIL_DESC, COMPANIONS, QDESC, EVT, cqProgress, buyMerchant, itemLabel, gachaPull, acceptCompanion, closeEvent, supplyPlan, SQUADS, squadSlots, squadCap, squadUsed, squadErr, activeSquads, squadUnits, inSquad, setSquad, assignSquad, sortieWage, PROMO_PRICE, buyPromo, MATS, matKind, FAM_MAT, craftBases, recipeOf, canCraft, craft, terrainHave, PROMO, PROMO_LV, canPromote, promote, comboOf, baseCls, THEMES, floorThemes, fatOf, fatMul, canSortie, buyFood, RARITY, RAR_ORDER, CRAFT_ENABLED, canUse, canLead, costOf, hireCost, hireUnit, migrateSave, partyLuck, rarOf, GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, dimsFor, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
+  return { looks, startFloors, defaultStart, ENH_MAX, enhanceItem, acceptQuest, questGoal, questReady, matHave, SELL_RATE, matPrice, gearSellPrice, sellGear, sellAllGear, sellMat, refillCharges, TAV, tavCands, tavPool, refreshTavern, useTicket, legendChance, tavernHire, describeSkill, describeFull, gearTotals, ABIL_ICON, ABIL_DESC, COMPANIONS, QDESC, EVT, cqProgress, buyMerchant, itemLabel, gachaPull, acceptCompanion, closeEvent, supplyPlan, SQUADS, squadSlots, squadCap, squadUsed, squadErr, activeSquads, squadUnits, inSquad, setSquad, assignSquad, sortieWage, PROMO_PRICE, buyPromo, MATS, matKind, FAM_MAT, craftBases, recipeOf, canCraft, craft, terrainHave, PROMO, PROMO_LV, canPromote, promote, comboOf, baseCls, THEMES, floorThemes, fatOf, fatMul, canSortie, buyFood, RARITY, RAR_ORDER, CRAFT_ENABLED, canUse, canLead, costOf, hireCost, hireUnit, migrateSave, partyLuck, rarOf, GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, dimsFor, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
 })();
 if (typeof module !== 'undefined') module.exports = Core; else window.Core = Core;

@@ -16,6 +16,30 @@ const Render = (function () {
   }
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   function emoji(ch, x, y, sz) { ctx.font = `${sz}px ${EMOJI}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.fillText(ch, x, y); ctx.textBaseline = 'alphabetic'; }
+  /* ---------- 스프라이트 애니메이션 (assets/manifest.js 의 anims, 프레임 15장 가로 스트립) ---------- */
+  const animN = (a, act) => (a.m.n && a.m.n[act]) || 15; // 동작별 프레임 수(기본 15)
+  const animEnt = c => (c.u ? Assets.anim(c.u) : Assets.animEnemy(c)); // 개체(용병 또는 적)의 애니메이션
+  const animFps = (a, act) => (a.m.fps && a.m.fps[act]) || 15;
+  // 방향 0~7: 화면 각도(0=오른쪽, 시계 방향)를 45° 단위로 반올림한 값. 0=E 1=SE 2=정면(S) 3=SW 4=W 5=NW 6=뒷모습(N) 7=NE
+  const dirOf = (gdx, gdy) => { const ang = Math.atan2((gdx + gdy) * TH / 2, (gdx - gdy) * TW / 2) * 180 / Math.PI; return Math.round(((ang + 360) % 360) / 45) % 8; };
+  function animPlay(c, act, force, face) { if (!c || !animEnt(c)) return; if (!force && c.an) return; c.an = { act, t: 0 }; if (face !== undefined) c.face = face; } // 일회성 동작(공격·시전·피격). 진행 중이면 덮어쓰지 않는다.
+  function animBlit(a, act, dir, fr, sx, sy, scale) { // 발 위치(m.foot)를 (sx, sy)에 맞춰 그린다
+    const im = (a.img[act] || a.img.idle)[dir]; if (!im) return false;
+    const sz = (a.m.size || 128) * (scale || 1);
+    ctx.drawImage(im, fr * 128, 0, 128, 128, sx - sz / 2, sy - (a.m.foot || 120) * sz / 128, sz, sz); return true;
+  }
+  // 상태가 있는 개체(전투판·캠프). 이동 중이면 가는 쪽, 일회성 동작 중이면 그 방향 유지, 그 외에는 표적 쪽(없으면 def)을 바라본다.
+  function animDraw(a, c, sx, sy, dt, moving, def) {
+    if (c.an) { c.an.t += dt * animFps(a, c.an.act); if (c.an.t >= animN(a, c.an.act)) c.an = null; }
+    if (moving) c.face = dirOf(c.x - c.dx, c.y - c.dy);
+    else if (!c.an) { const t = c.curTgt; c.face = t && t.alive ? dirOf(t.dx - c.dx, t.dy - c.dy) : (c.face === undefined ? def : c.face); }
+    if (c.face === undefined) c.face = def;
+    if (c.an) return animBlit(a, c.an.act, c.face, Math.min(animN(a, c.an.act) - 1, Math.floor(c.an.t)), sx, sy);
+    const act = moving ? 'walk' : 'idle'; c.ln = c.ln || { act, t: Math.random() * animN(a, act) };
+    if (c.ln.act !== act) { c.ln.act = act; c.ln.t = 0; } c.ln.t += dt * animFps(a, act);
+    return animBlit(a, act, c.face, Math.floor(c.ln.t) % animN(a, act), sx, sy);
+  }
+  function animLoop(a, act, dir, sx, sy, scale, seed) { return animBlit(a, act, dir, Math.floor(S.time * animFps(a, act) + (seed || 0)) % animN(a, act), sx, sy, scale); } // 상태 없는 반복 재생(주점·미로)
   function vignette(a) {
     const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.95); g.addColorStop(0, '#00000000'); g.addColorStop(1, `rgba(0,0,0,${a})`);
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
@@ -34,6 +58,8 @@ const Render = (function () {
     for (const v of e.events) {
       if (v.k === 'learn') { S.learnFx = S.learnFx || []; S.learnFx.push({ x: v.x, y: v.y, age: 0 }); }
       if (v.k === 'area') { S.areas.push({ cells: v.cells, col: v.col, age: 0 }); if (v.big && !reduced()) S.frameShake = { t: 0.4, d: 0.4, amp: 16 * shakeK() }; }
+      if (v.k === 'dmg' && e.battle) animPlay(e.battle.units.find(c => c.alive && Math.round(c.x) === Math.round(v.x) && Math.round(c.y) === Math.round(v.y)), 'hurt'); // 맞은 대원은 피격 동작
+      if (v.k === 'fx' && v.from) { if (v.t === 'atk') animPlay(v.from, 'atk', true, dirOf(v.x - v.from.x, v.y - v.from.y)); else if (v.t === 'fire' || v.t === 'skill' || v.t === 'heal') animPlay(v.from, 'cast', true, dirOf(v.x - v.from.x, v.y - v.from.y)); }
       if (v.k === 'dmg' && v.crit && !reduced()) S.tileShake[v.x + ',' + v.y] = 0.45; // 치명타: 맞은 타일이 크게 흔들리고 번쩍인다
       if (v.k === 'dmg' && v.crit) S.floaters.push({ x: v.x, y: v.y, t: '치명타!', col: '#ffd24a', age: 0, big: true, crit: true, up: 44 }); // 머리 위 치명타 문구
       if (v.k === 'dmg') S.floaters.push({ x: v.x, y: v.y, t: (v.crit ? '💥' : '') + (v.poison ? '☠' : '') + v.v, col: v.side === 'p' ? '#ff8a8a' : '#ffffff', age: 0, big: v.crit });
@@ -136,8 +162,9 @@ const Render = (function () {
       const lifted = camp && S.dragId === c.id; if (lifted) ctx.globalAlpha = 0.35;
       ctx.fillStyle = '#0007'; ctx.beginPath(); ctx.ellipse(sx, sy + 4, r * 0.9, r * 0.4, 0, 0, 7); ctx.fill();
       const cy = sy - 12 - (c.size > 1 ? 8 : 0);
-      const img = c.u ? Assets.unit('sprites', c.u) : Assets.enemy(c);
-      if (img) { const h = 58 * (c.size || 1), w = img.width * h / img.height; ctx.drawImage(img, sx - w / 2, sy + 6 - h, w, h); }
+      const aa = animEnt(c), img = aa ? null : c.u ? Assets.unit('sprites', c.u) : Assets.enemy(c);
+      if (aa) animDraw(aa, c, sx, sy + 4, dt, Math.hypot(c.x - c.dx, c.y - c.dy) > 0.05, !bt ? 2 : c.side === 'e' ? 3 : 7);
+      else if (img) { const h = 58 * (c.size || 1), w = img.width * h / img.height; ctx.drawImage(img, sx - w / 2, sy + 6 - h, w, h); }
       else {
         ctx.fillStyle = c.color; ctx.beginPath(); ctx.arc(sx, cy, r, 0, 7); ctx.fill();
         ctx.lineWidth = 2.5; ctx.strokeStyle = c.side === 'p' ? '#8fc0ff' : '#ff8f8f'; ctx.stroke();
@@ -150,6 +177,16 @@ const Render = (function () {
       if (c.noBar || c.side === 'e') { ctx.font = '11px "Malgun Gothic",sans-serif'; ctx.fillStyle = '#d6dcee'; ctx.textAlign = 'center'; ctx.fillText(c.name, sx, sy + 22); }
       if (c.abilTxt) { ctx.font = `10px ${EMOJI}`; ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.fillText(c.abilTxt, sx, sy + 33); } // 몬스터 특수 능력 아이콘
       if (bt && c.side === 'p' && (c.tauntUntil || 0) > bt.t) emoji('🛡️', sx - r + 2, cy - r - 12, 14);
+      ctx.globalAlpha = 1;
+    }
+    // 쓰러진 대원: 사망 동작을 재생하고 마지막 프레임에서 잠시 머문 뒤 사라진다
+    S.ghosts = S.ghosts || [];
+    if (bt) for (const c of bt.units) if (!c.alive && !c.ghosted && animEnt(c)) { c.ghosted = true; S.ghosts.push({ c, age: 0 }); }
+    S.ghosts = S.ghosts.filter(g => (g.age += dt) < 2.2);
+    for (const g of S.ghosts) {
+      const a = animEnt(g.c); if (!a) continue; const [gx0, gy0] = iso(g.c.dx, g.c.dy);
+      ctx.globalAlpha = g.age > 1.4 ? Math.max(0, 1 - (g.age - 1.4) / 0.8) : 1;
+      animBlit(a, 'die', g.c.face === undefined ? 7 : g.c.face, Math.min(animN(a, 'die') - 1, Math.floor(g.age * animFps(a, 'die'))), gx0, gy0 - elAt(g.c.dx, g.c.dy) + 4);
       ctx.globalAlpha = 1;
     }
     // 스킬 습득 이펙트: 머리 위로 반짝이는 전구 + 주위를 도는 별빛
@@ -198,8 +235,9 @@ const Render = (function () {
       const u = s.u, c = C.CLASSES[u.cls], rk = C.rarOf(u), R = C.RARITY[rk], on = hov === u.id, sc = on ? 1.12 : 1, r = 40 * sc, cy = s.y - 40;
       ctx.fillStyle = '#0008'; ctx.beginPath(); ctx.ellipse(s.x, s.y + 6, r * 0.95, r * 0.32, 0, 0, 7); ctx.fill();
       if (rk !== 'N') { const gl = ctx.createRadialGradient(s.x, cy, r * 0.6, s.x, cy, r * (rk === 'L' ? 2.0 : 1.6)); gl.addColorStop(0, R.color + (rk === 'L' ? '88' : '55')); gl.addColorStop(1, R.color + '00'); ctx.fillStyle = gl; ctx.globalAlpha = rk === 'L' ? 0.75 + 0.25 * Math.sin(S.time * 4 + s.x) : 1; ctx.beginPath(); ctx.arc(s.x, cy, r * 2, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
-      const img = Assets.unit('sprites', u);
-      if (img) { const h = 96 * sc, w = img.width * h / img.height; ctx.drawImage(img, s.x - w / 2, s.y + 6 - h, w, h); }
+      const img = Assets.unit('sprites', u), aa = Assets.anim(u);
+      if (aa) animLoop(aa, 'idle', 2, s.x, s.y + 6, 1.45 * sc, slots.indexOf(s) * 3);
+      else if (img) { const h = 96 * sc, w = img.width * h / img.height; ctx.drawImage(img, s.x - w / 2, s.y + 6 - h, w, h); }
       else { ctx.fillStyle = c.color; ctx.beginPath(); ctx.arc(s.x, cy, r, 0, 7); ctx.fill(); ctx.lineWidth = on ? 4 : 2.5; ctx.strokeStyle = on ? '#fff' : R.color; ctx.stroke(); emoji(c.icon, s.x, cy + 2, Math.round(44 * sc)); }
       ctx.font = '700 14px "Malgun Gothic",sans-serif'; ctx.fillStyle = on ? '#fff' : '#ecdcc0'; ctx.fillText(u.name, s.x, s.y + 28);
       ctx.font = '11px "Malgun Gothic",sans-serif'; ctx.fillStyle = R.color; ctx.fillText(`${c.name}${rk !== 'N' ? ' · ' + R.name : ''}`, s.x, s.y + 43);
@@ -259,7 +297,11 @@ const Render = (function () {
       const tgt = i === 0 ? e.pos : (e.trail[i - 1] || e.pos); let en = e.ents[u.id];
       if (!en) en = e.ents[u.id] = { dx: tgt.x, dy: tgt.y };
       if (Math.abs(en.dx - e.pos.x) > 6 || Math.abs(en.dy - e.pos.y) > 6) { en.dx = tgt.x; en.dy = tgt.y; }
-      en.dx += (tgt.x - en.dx) * Math.min(1, dt * 11); en.dy += (tgt.y - en.dy) * Math.min(1, dt * 11);
+      const ox = en.dx, oy = en.dy; en.dx += (tgt.x - en.dx) * Math.min(1, dt * 11); en.dy += (tgt.y - en.dy) * Math.min(1, dt * 11);
+      // 걷기 애니메이션용: 실제로 움직인 거리만큼 걸음 위상을 진행시키고, 가는 방향을 바라본다(멈추면 잠시 뒤 대기로 전환)
+      const mv = Math.hypot(en.dx - ox, en.dy - oy), left = Math.hypot(tgt.x - en.dx, tgt.y - en.dy);
+      if (mv > 0.004 && !S.paused) { en.wt = (en.wt || 0) + mv; en.mvT = 0.18; } else en.mvT = Math.max(0, (en.mvT || 0) - dt);
+      if (left > 0.06) en.face = dirOf(tgt.x - en.dx, tgt.y - en.dy);
     });
     const buckets = {}, put = (gx, gy, fn) => { const k = Math.round(gx + gy); (buckets[k] = buckets[k] || []).push(fn); };
     m.chests.forEach(c => { if (m.seen[c.y][c.x]) put(c.x, c.y, () => { const [sx, sy] = misoXYe(c.x, c.y); ctx.globalAlpha = c.open ? 0.4 : 1; if (!objImg(c.open ? 'chest_open' : (c.big ? 'chest_big' : 'chest'), sx, sy, 22)) emoji(c.big ? '🎁' : '📦', sx, sy - 8, 15); ctx.globalAlpha = 1; }); });
@@ -282,8 +324,9 @@ const Render = (function () {
       put(en.dx, en.dy, () => {
         const [sx, sy] = misoXYe(en.dx, en.dy), bob = S.paused ? 0 : Math.abs(Math.sin(S.time * 9 + k)) * 2;
         ctx.fillStyle = '#0005'; ctx.beginPath(); ctx.ellipse(sx, sy - 1, 8, 3.5, 0, 0, 7); ctx.fill();
-        const img = Assets.unit('sprites', u);
-        if (img) { const h = 26, w = img.width * h / img.height; ctx.drawImage(img, sx - w / 2, sy + 1 - h - bob, w, h); if (lead) { ctx.strokeStyle = '#ff3b3b'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(sx, sy, 9, 4, 0, 0, 7); ctx.stroke(); } }
+        const img = Assets.unit('sprites', u), aa = Assets.anim(u);
+        if (aa) { const fc = en.face === undefined ? 2 : en.face; if (en.mvT > 0) animBlit(aa, 'walk', fc, Math.floor(en.wt / 1.1 * animN(aa, 'walk')) % animN(aa, 'walk'), sx, sy + 1, 0.48); else animLoop(aa, 'idle', fc, sx, sy + 1, 0.48, k * 3); if (lead) { ctx.strokeStyle = '#ff3b3b'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(sx, sy, 9, 4, 0, 0, 7); ctx.stroke(); } }
+        else if (img) { const h = 26, w = img.width * h / img.height; ctx.drawImage(img, sx - w / 2, sy + 1 - h - bob, w, h); if (lead) { ctx.strokeStyle = '#ff3b3b'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(sx, sy, 9, 4, 0, 0, 7); ctx.stroke(); } }
         else {
           ctx.fillStyle = cl.color; ctx.beginPath(); ctx.arc(sx, sy - 10 - bob, 8, 0, 7); ctx.fill();
           ctx.lineWidth = lead ? 2.5 : 1.5; ctx.strokeStyle = lead ? '#ff3b3b' : '#e6ecff'; ctx.stroke();

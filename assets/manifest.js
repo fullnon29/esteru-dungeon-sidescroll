@@ -36,3 +36,10 @@ window.ASSET_MANIFEST = {
     logo: '',       // 헤더 로고 (높이 40px 권장)
   },
 };
+
+// 애니메이션(가로 스트립, 프레임 15장 x 128px): 이름(용병 이름 또는 직업) → { size: 그리는 크기(px), foot: 칸 안 발 위치 y, fps, path: '{act}'·'{dir}' 자리표시자 경로 }
+// 방향 {dir} 은 0~7 (시계 방향, 0=오른쪽(E) 1=오른쪽 아래 2=정면(S) 3=왼쪽 아래 4=왼쪽 5=왼쪽 위 6=뒷모습(N) 7=오른쪽 위). 스트립은 tools/extract_anim.ps1 로 만든다.
+// 선언이 없거나 못 불러오면 정지 이미지/이모지로 대체된다.
+window.ASSET_MANIFEST.anims = {
+  knight: { size: 128, foot: 102, fps: { idle: 10, walk: 18, atk: 30, cast: 24, hurt: 24, die: 18 }, path: 'assets/anim/knight/{act}_{dir}.png' },
+};

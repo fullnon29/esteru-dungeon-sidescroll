@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>애니메이션 변환 도구</title>
+<style>
+  :root { --bg:#14161d; --panel:#1d2130; --line:#2f3550; --txt:#e4e8f5; --dim:#8d96b4; --acc:#6aa8ff; --ok:#6fd08c; --bad:#ef6b6b; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:14px/1.5 "Malgun Gothic",system-ui,sans-serif; }
+  header { padding:14px 20px; border-bottom:1px solid var(--line); }
+  h1 { margin:0; font-size:18px; } header small { color:var(--dim); }
+  main { display:grid; grid-template-columns:380px 1fr; gap:16px; padding:16px 20px; }
+  @media (max-width:1000px) { main { grid-template-columns:1fr; } }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:14px; }
+  h2 { margin:0 0 8px; font-size:14px; color:var(--acc); }
+  button, select, input { background:#252b40; color:var(--txt); border:1px solid var(--line); border-radius:5px; padding:5px 9px; font:inherit; }
+  button { cursor:pointer; } button:hover { border-color:var(--acc); } button.primary { background:#2f5fb0; border-color:#4a7fd8; }
+  button:disabled { opacity:.45; cursor:default; }
+  input[type=number] { width:70px; } input[type=text] { width:100%; }
+  table { border-collapse:collapse; width:100%; } td, th { padding:3px 4px; text-align:left; vertical-align:middle; } th { color:var(--dim); font-weight:normal; font-size:12px; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:4px 0; }
+  .dim { color:var(--dim); font-size:12px; } .ok { color:var(--ok); } .bad { color:var(--bad); }
+  #chars { max-height:260px; overflow:auto; border:1px solid var(--line); border-radius:5px; }
+  #chars div { display:flex; gap:6px; align-items:center; padding:3px 6px; border-bottom:1px solid #262b40; cursor:pointer; }
+  #chars div.sel { background:#27304d; } #chars input[type=text] { flex:1; padding:2px 6px; }
+  #ring { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .cell { background:#10131c; border:1px solid var(--line); border-radius:6px; padding:4px; text-align:center; }
+  .cell canvas { width:100%; image-rendering:auto; background:#10131c; } .cell select { width:100%; margin-top:2px; }
+  #mock { background:#10131c; border:1px solid var(--line); border-radius:6px; display:block; }
+  #log { height:150px; overflow:auto; font:12px/1.5 Consolas,monospace; background:#0d0f16; border:1px solid var(--line); border-radius:5px; padding:6px; white-space:pre-wrap; }
+</style>
+</head>
+<body>
+<header><h1>애니메이션 변환 도구 <small>— 스프라이트 시트(방향×프레임)를 게임용 스트립으로 바꾸고 manifest 를 자동으로 만든다</small></h1></header>
+<main>
+<div>
+  <section>
+    <h2>① 원본 시트 폴더</h2>
+    <div class="row"><button id="pickSrc" class="primary">폴더 선택…</button><span id="srcInfo" class="dim">아직 선택 안 함</span></div>
+    <div class="dim">캐릭터 1개 폴더(<code>Idle.png</code> 등이 든 곳)나 여러 캐릭터가 든 상위 폴더를 고른다. "With shadows"/"Without shadows" 가 둘 다 있으면 아래 설정에 따라 고른다.</div>
+    <div class="row"><label><input type="checkbox" id="preferNoShadow"> 그림자 없는 폴더 우선</label></div>
+  </section>
+  <section>
+    <h2>② 게임의 assets 폴더</h2>
+    <div class="row"><button id="pickOut">assets 폴더 선택…</button><span id="outInfo" class="dim">아직 선택 안 함</span></div>
+    <div class="dim">크롬/엣지에서만 쓰기가 된다. <code>assets/anim/&lt;이름&gt;/</code> 에 PNG, <code>assets/anim/anims.js</code> 에 manifest 항목을 쓴다(이미 있으면 합친다).</div>
+  </section>
+  <section>
+    <h2>③ 시트 규격·동작 파일</h2>
+    <div class="row">칸 <input type="number" id="cell" value="128" min="16"> px · 열 <input type="number" id="cols" value="15" min="1"> · 행 <input type="number" id="rows" value="8" min="1"></div>
+    <table id="acts"><tr><th>동작</th><th>파일명(확장자 제외)</th><th>fps</th></tr></table>
+    <div class="row"><label>그림자 제거 <select id="shadowMode"><option value="auto">자동(폴더 이름)</option><option value="cut">알파&lt;255 지움</option><option value="none">안 함</option></select></label></div>
+  </section>
+  <section>
+    <h2>④ 캐릭터 (<span id="charCount">0</span>)</h2>
+    <div class="row"><button id="allOn">전체 선택</button><button id="allOff">전체 해제</button><label>이름 접두 <input type="text" id="prefix" style="width:80px" placeholder="mon_"></label><label>접미 <input type="text" id="suffix" style="width:110px" placeholder="@sword-plate"></label></div>
+    <div class="dim">장비 외형 이름 규칙: <code>직업@무기-갑옷</code> 예) <code>knight@sword-plate</code>. 무기 <code>sword great spear bow staff mace dagger fist cook</code>, 갑옷 <code>cloth leather mail plate mythic</code>. 없는 조합은 <code>@무기</code> → <code>@갑옷</code> → 기본(<code>knight</code>) 순으로 대체된다.</div>
+    <div id="chars"></div>
+    <div class="dim">이름이 게임에서 쓰는 키다: 직업(<code>knight</code>), 용병 이름, 몬스터 id(<code>goblin</code>), 보스(<code>boss10</code>…).</div>
+  </section>
+  <section>
+    <h2>⑤ 내보내기</h2>
+    <div class="row"><button id="export" class="primary" disabled>선택한 캐릭터 내보내기</button></div>
+    <div id="log"></div>
+  </section>
+</div>
+<div>
+  <section>
+    <h2>방향 확인 — 칸마다 그 방향으로 보이는 행을 고른다 (프로필로 저장돼 다음 캐릭터에도 쓰인다)</h2>
+    <div class="row"><label>동작 <select id="prevAct"></select></label><label>크기 <input type="number" id="size" value="128" min="16" max="512"></label>
+      <label>발 위치 y <input type="number" id="foot" value="102" min="0" max="255"></label><button id="autoFoot">자동 감지</button>
+      <button id="resetDirs">방향 초기화</button></div>
+    <div id="ring"></div>
+  </section>
+  <section>
+    <h2>게임 화면 미리보기</h2>
+    <div class="row dim">전투판(타일 76×38)과 미로(타일 28×14, 0.48배)에서 어떻게 보이는지. 점선은 기준 발 위치.</div>
+    <canvas id="mock" width="640" height="230"></canvas>
+  </section>
+</div>
+</main>
+<script>
+'use strict';
+const COMPASS = ['오른쪽(E)', '오른쪽 아래(SE)', '정면(S)', '왼쪽 아래(SW)', '왼쪽(W)', '왼쪽 위(NW)', '뒷모습(N)', '오른쪽 위(NE)']; // 게임의 방향 번호 0~7 (시계 방향)
+const DEFAULT_ROWS = [0, 1, 2, 3, 4, 5, 6, 7];   // 방향 번호 → 시트 행 (초기값은 SmallScaleInt 시트에서 확인한 대응)
+const ACTS = [['idle', 'Idle', 10], ['walk', 'Walk', 18], ['atk', 'Melee', 30], ['cast', 'CastSpell', 24], ['hurt', 'TakeDamage', 24], ['die', 'Die', 18]];
+const $ = id => document.getElementById(id);
+const st = { files: [], chars: [], sel: -1, outDir: null, dirRows: DEFAULT_ROWS.slice(), sheets: {}, strips: {}, t0: performance.now() };
+const log = m => { const l = $('log'); l.textContent += m + '\n'; l.scrollTop = l.scrollHeight; };
+
+/* ---------- 프로필 (설정 기억) ---------- */
+function saveProfile() {
+  try { localStorage.setItem('anim_tool_profile', JSON.stringify({ dirRows: st.dirRows, cell: +$('cell').value, cols: +$('cols').value, rows: +$('rows').value, size: +$('size').value, shadowMode: $('shadowMode').value, preferNoShadow: $('preferNoShadow').checked, acts: ACTS.map(a => [a[0], $('af_' + a[0]).value, +$('fps_' + a[0]).value]) })); } catch (e) { }
+}
+function loadProfile() {
+  try { const p = JSON.parse(localStorage.getItem('anim_tool_profile') || 'null'); if (!p) return;
+    st.dirRows = p.dirRows || st.dirRows; $('cell').value = p.cell; $('cols').value = p.cols; $('rows').value = p.rows; $('size').value = p.size; $('shadowMode').value = p.shadowMode; $('preferNoShadow').checked = !!p.preferNoShadow;
+    (p.acts || []).forEach(a => { if ($('af_' + a[0])) { $('af_' + a[0]).value = a[1]; $('fps_' + a[0]).value = a[2]; } }); } catch (e) { }
+}
+
+/* ---------- 화면 구성 ---------- */
+ACTS.forEach(([k, f, fps]) => { const tr = document.createElement('tr'); tr.innerHTML = `<td>${k}</td><td><input type="text" id="af_${k}" value="${f}"></td><td><input type="number" id="fps_${k}" value="${fps}" min="1" max="60"></td>`; $('acts').appendChild(tr); });
+ACTS.forEach(([k]) => { const o = document.createElement('option'); o.value = k; o.textContent = k; $('prevAct').appendChild(o); });
+function buildRing() {
+  $('ring').innerHTML = '';
+  for (let d = 0; d < 8; d++) {
+    const c = document.createElement('div'); c.className = 'cell'; c.innerHTML = `<div class="dim">${d} · ${COMPASS[d]}</div><canvas width="128" height="128" id="rc${d}"></canvas><select id="rs${d}"></select>`; $('ring').appendChild(c);
+    const s = c.querySelector('select'); for (let r = 0; r < Math.max(8, +$('rows').value); r++) { const o = document.createElement('option'); o.value = r; o.textContent = '시트 ' + r + '행'; s.appendChild(o); }
+    s.value = st.dirRows[d]; s.onchange = () => { st.dirRows[d] = +s.value; st.strips = {}; saveProfile(); };
+  }
+}
+
+/* ---------- 폴더 읽기 → 캐릭터 목록 ---------- */
+const SKIP = /^(spritesheets?|sprite ?sheets?|with[ _-]*shadows?|without[ _-]*shadows?|no[ _-]*shadows?|individual.*|frames?|png)$/i;
+function scan(files) {
+  const af = ACTS.map(a => ({ k: a[0], f: $('af_' + a[0]).value.toLowerCase() })), byDir = {};
+  for (const f of files) {
+    if (!/\.png$/i.test(f.name)) continue; const base = f.name.replace(/\.png$/i, '').toLowerCase(), a = af.find(x => x.f === base); if (!a) continue;
+    const parts = (f.webkitRelativePath || f.name).split('/'); parts.pop(); const dir = parts.join('/');
+    (byDir[dir] = byDir[dir] || { dir, parts, acts: {} }).acts[a.k] = f;
+  }
+  const groups = {};
+  for (const d of Object.values(byDir)) {
+    const names = d.parts.filter(p => !SKIP.test(p)); let name = (names[names.length - 1] || 'char').replace(/^2d hd character /i, '').replace(/[^\w가-힣-]+/g, '_').replace(/^_+|_+$/g, '').toLowerCase() || 'char';
+    const noShadow = /without|no[ _-]*shadow/i.test(d.dir), pref = $('preferNoShadow').checked;
+    const g = groups[name] || (groups[name] = { name, variants: [] }); g.variants.push({ d, noShadow });
+  }
+  return Object.values(groups).map(g => {
+    const v = g.variants.find(x => x.noShadow === $('preferNoShadow').checked) || g.variants[0];
+    return { name: g.name, key: g.name, acts: v.d.acts, noShadow: v.noShadow, on: true, dir: v.d.dir };
+  }).sort((a, b) => a.name.localeCompare(b.name));
+}
+function renderChars() {
+  $('charCount').textContent = st.chars.length; $('chars').innerHTML = '';
+  st.chars.forEach((c, i) => {
+    const row = document.createElement('div'); if (i === st.sel) row.className = 'sel';
+    row.innerHTML = `<input type="checkbox" ${c.on ? 'checked' : ''}><input type="text" value="${c.key}"><span class="dim">${Object.keys(c.acts).length}/${ACTS.length}${c.noShadow ? ' · 그림자없음' : ''}</span>`;
+    const [cb, tx] = row.querySelectorAll('input'); cb.onclick = e => { e.stopPropagation(); c.on = cb.checked; updateExportBtn(); }; tx.onclick = e => e.stopPropagation(); tx.oninput = () => { c.key = tx.value.trim(); };
+    row.onclick = () => selectChar(i); $('chars').appendChild(row);
+  });
+  updateExportBtn();
+}
+const updateExportBtn = () => { $('export').disabled = !(st.outDir && st.chars.some(c => c.on)); };
+
+$('pickSrc').onclick = () => { const inp = document.createElement('input'); inp.type = 'file'; inp.webkitdirectory = true; inp.multiple = true;
+  inp.onchange = () => { st.files = [...inp.files]; st.chars = scan(st.files); st.sel = -1; $('srcInfo').textContent = `${st.files.length}개 파일 · 캐릭터 ${st.chars.length}개`; renderChars(); if (st.chars.length) selectChar(0); else log('시트(동작 파일명과 일치하는 PNG)를 찾지 못했다. ③의 파일명을 확인한다.'); };
+  inp.click(); };
+$('pickOut').onclick = async () => {
+  if (!window.showDirectoryPicker) { log('이 브라우저는 폴더 쓰기를 지원하지 않는다. 크롬/엣지를 쓴다.'); return; }
+  try { st.outDir = await showDirectoryPicker({ mode: 'readwrite' }); $('outInfo').textContent = st.outDir.name; updateExportBtn(); } catch (e) { }
+};
+['allOn', 'allOff'].forEach(id => $(id).onclick = () => { st.chars.forEach(c => c.on = id === 'allOn'); renderChars(); });
+$('prefix').oninput = () => { };
+
+/* ---------- 시트 불러오기·스트립 만들기 ---------- */
+const cellPx = () => +$('cell').value, colsN = () => +$('cols').value;
+async function loadSheet(file) {
+  const bmp = await createImageBitmap(file), cv = document.createElement('canvas'); cv.width = bmp.width; cv.height = bmp.height; const cx = cv.getContext('2d', { willReadFrequently: true }); cx.drawImage(bmp, 0, 0); return cv;
+}
+const cutOn = ch => { const m = $('shadowMode').value; return m === 'cut' || (m === 'auto' && !ch.noShadow); };
+function makeStrip(ch, sheet, row, n) { // 시트의 한 행에서 n프레임을 잘라 (그림자 제거 후) 가로 스트립 캔버스로
+  const C = cellPx(), cv = document.createElement('canvas'); cv.width = C * n; cv.height = C; const cx = cv.getContext('2d', { willReadFrequently: true });
+  cx.drawImage(sheet, 0, row * C, C * n, C, 0, 0, C * n, C);
+  if (cutOn(ch)) { const im = cx.getImageData(0, 0, cv.width, C), p = im.data; for (let i = 3; i < p.length; i += 4) if (p[i] < 255) p[i] = 0; cx.putImageData(im, 0, 0); }
+  return cv;
+}
+async function ensureSheets(ch) {
+  ch.sheets = ch.sheets || {};
+  for (const k of Object.keys(ch.acts)) if (!ch.sheets[k]) ch.sheets[k] = await loadSheet(ch.acts[k]);
+}
+function stripOf(ch, act, d) {
+  const key = ch.key + '|' + act + '|' + d; st.strips[key] = st.strips[key] || makeStrip(ch, ch.sheets[act], st.dirRows[d], colsN()); return st.strips[key];
+}
+function detectFoot(ch) { // 정면(2번) 방향 대기 첫 프레임에서 가장 아래 불투명 픽셀
+  const s = ch.sheets && ch.sheets.idle; if (!s) return null; const C = cellPx(), cv = makeStrip(ch, s, st.dirRows[2], 1), p = cv.getContext('2d').getImageData(0, 0, C, C).data;
+  for (let y = C - 1; y >= 0; y--) for (let x = 0; x < C; x++) if (p[(y * C + x) * 4 + 3] > 0) return y; return null;
+}
+async function selectChar(i) {
+  st.sel = i; renderChars(); const ch = st.chars[i]; st.strips = {}; await ensureSheets(ch);
+  const f = detectFoot(ch); if (f !== null) { ch.foot = ch.foot ?? f; $('foot').value = ch.foot; }
+  buildRing();
+}
+$('autoFoot').onclick = () => { const ch = st.chars[st.sel]; if (!ch) return; const f = detectFoot(ch); if (f !== null) { ch.foot = f; $('foot').value = f; } };
+$('foot').oninput = () => { const ch = st.chars[st.sel]; if (ch) ch.foot = +$('foot').value; };
+['size', 'cell', 'cols', 'rows', 'shadowMode', 'preferNoShadow'].forEach(id => $(id).onchange = () => { st.strips = {}; saveProfile(); if (id === 'rows') buildRing(); });
+$('resetDirs').onclick = () => { st.dirRows = DEFAULT_ROWS.slice(); st.strips = {}; buildRing(); saveProfile(); };
+
+/* ---------- 미리보기 애니메이션 ---------- */
+const prevN = () => colsN();
+function frame() {
+  const ch = st.chars[st.sel], act = $('prevAct').value;
+  if (ch && ch.sheets && ch.sheets[act] && !st.busy) { // 내보내는 동안은 미리보기를 멈춰 인코딩에 CPU를 몰아준다
+    const fps = +$('fps_' + act).value, fr = Math.floor((performance.now() - st.t0) / 1000 * fps) % prevN(), C = cellPx();
+    for (let d = 0; d < 8; d++) { const c = $('rc' + d); if (!c) continue; const x = c.getContext('2d'); x.clearRect(0, 0, 128, 128); x.fillStyle = '#10131c'; x.fillRect(0, 0, 128, 128);
+      x.strokeStyle = '#3a4160'; x.setLineDash([3, 3]); x.beginPath(); x.moveTo(0, +$('foot').value * 128 / C + 0.5); x.lineTo(128, +$('foot').value * 128 / C + 0.5); x.stroke(); x.setLineDash([]);
+      x.drawImage(stripOf(ch, act, d), fr * C, 0, C, C, 0, 0, 128, 128); }
+    drawMock(ch, act, fr);
+  }
+  requestAnimationFrame(frame);
+}
+function drawMock(ch, act, fr) {
+  const x = $('mock').getContext('2d'), C = cellPx(), size = +$('size').value, foot = +$('foot').value; x.clearRect(0, 0, 640, 230); x.fillStyle = '#10131c'; x.fillRect(0, 0, 640, 230);
+  const tile = (cx, cy, w, h) => { x.fillStyle = '#2a3d5c'; x.strokeStyle = '#00000088'; x.beginPath(); x.moveTo(cx, cy - h / 2); x.lineTo(cx + w / 2, cy); x.lineTo(cx, cy + h / 2); x.lineTo(cx - w / 2, cy); x.closePath(); x.fill(); x.stroke(); };
+  const spr = (cx, fy, d, k) => { tile(cx, fy - 4 * k, 76 * k, 38 * k); const sz = size * k; x.drawImage(stripOf(ch, act, d), fr * C, 0, C, C, cx - sz / 2, fy - foot * sz / C, sz, sz); };
+  [[90, 2], [200, 7], [310, 3], [420, 6]].forEach(([cx, d]) => spr(cx, 150, d, 1));
+  x.fillStyle = '#8d96b4'; x.font = '11px sans-serif'; x.fillText('전투판(1배) — 정면·NE·SW·뒷모습', 20, 20);
+  const k = 0.48; [[520, 2], [560, 4], [600, 0]].forEach(([cx, d]) => { tile(cx, 192, 28 * 1.75, 14 * 1.75); const sz = size * k * 1.75; x.drawImage(stripOf(ch, act, d), fr * C, 0, C, C, cx - sz / 2, 196 - foot * sz / C, sz, sz); });
+  x.fillText('미로(×1.75 확대)', 490, 20);
+}
+requestAnimationFrame(frame);
+
+/* ---------- 내보내기 ---------- */
+const toBlob = cv => new Promise(r => cv.toBlob(r, 'image/png'));
+async function writeFile(dir, path, data) { const parts = path.split('/'), name = parts.pop(); let h = dir; for (const p of parts) h = await h.getDirectoryHandle(p, { create: true });
+  const fh = await h.getFileHandle(name, { create: true }), w = await fh.createWritable(); await w.write(data); await w.close(); }
+async function readText(dir, path) { try { const parts = path.split('/'), name = parts.pop(); let h = dir; for (const p of parts) h = await h.getDirectoryHandle(p); return await (await h.getFileHandle(name)).getFile().then(f => f.text()); } catch (e) { return null; } }
+const DATA_RE = /\/\*DATA\*\/([\s\S]*?)\/\*END\*\//;
+$('export').onclick = async () => {
+  const todo = st.chars.filter(c => c.on); if (!todo.length) return; $('export').disabled = true; $('log').textContent = ''; st.busy = true; const t0 = performance.now();
+  const prefix = $('prefix').value.trim(), suffix = $('suffix').value.trim(); let data = {};
+  const old = await readText(st.outDir, 'anim/anims.js'); if (old) { const m = DATA_RE.exec(old); if (m) { try { data = JSON.parse(m[1]); } catch (e) { log('기존 anims.js 를 읽지 못해 새로 만든다.'); } } }
+  const used = new Set(); let done = 0;
+  for (const ch of todo) {
+    const key = prefix + ch.key + suffix; if (!ch.key || used.has(key)) { log(`건너뜀: 이름이 비었거나 겹침 (${key})`); continue; } used.add(key);
+    try {
+      await ensureSheets(ch); const C = cellPx(), n = colsN(), foot = ch.foot ?? detectFoot(ch) ?? Math.round(C * 0.8), fps = {}, nn = {};
+      for (const [act] of ACTS) { if (!ch.sheets[act]) continue; fps[act] = +$('fps_' + act).value; nn[act] = n;
+        await Promise.all([0, 1, 2, 3, 4, 5, 6, 7].map(async d => writeFile(st.outDir, `anim/${key}/${act}_${d}.png`, await toBlob(makeStrip(ch, ch.sheets[act], st.dirRows[d], n))))); // 방향 8개를 동시에 인코딩
+      }
+      if (!fps.idle) { log(`경고: ${key} 에 idle 이 없다 — 게임에서 쓰려면 idle 이 필요하다`); }
+      data[key] = { size: +$('size').value, foot, fps, n: nn, path: `assets/anim/${key}/{act}_{dir}.png` }; done++; log(`완료: ${key} (동작 ${Object.keys(fps).join(',')})`);
+    } catch (e) { log(`실패: ${key} — ${e.message}`); }
+  }
+  const js = `// 자동 생성: tools/anim_tool.html — 손으로 고치지 않는다 (다시 내보내면 같은 이름은 덮어쓰고 나머지는 유지)\nwindow.ASSET_MANIFEST = window.ASSET_MANIFEST || {};\nwindow.ASSET_MANIFEST.anims = Object.assign(window.ASSET_MANIFEST.anims || {}, /*DATA*/${JSON.stringify(data, null, 1)}/*END*/);\n`;
+  await writeFile(st.outDir, 'anim/anims.js', js); st.busy = false; log(`anims.js 갱신 (총 ${Object.keys(data).length}종, ${done}종 새로 씀, ${((performance.now() - t0) / 1000).toFixed(1)}초). 게임을 새로고침(캐시 번호 ?v= 올리기)하면 반영된다.`); saveProfile(); updateExportBtn();
+};
+
+loadProfile(); buildRing();
+</script>
+</body>
+</html>
