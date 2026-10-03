@@ -9,7 +9,7 @@ const SQUAD_PRIO = ['cheer', 'guardian', 'sniper', 'disrupt', 'battery'];
 function runBot(opts) {
   opts = Object.assign({ maxRuns: 400, verbose: false, craft: true, promo: true, squad: true, combo: true }, opts || {});
   const s = C.newSave(); s.policy.retreat = 25;
-  const st = { crafts: 0, promos: 0, squadRuns: 0, squadSum: 0, wipes: 0, earlyWipes: 0, earlyRuns: 0, cookRuns: 0 };
+  const st = { newTicks: 0, oldTicks: 0, crafts: 0, promos: 0, squadRuns: 0, squadSum: 0, wipes: 0, earlyWipes: 0, earlyRuns: 0, cookRuns: 0 };
   const crafted = new Set();
   let runs = 0;
 
@@ -86,21 +86,25 @@ function runBot(opts) {
     s.gold -= wage;
     const sp = C.supplyPlan(s); if (sp) { if (sp.buy > 0) C.buyFood(s, sp.buy); st.cookRuns++; } else if (s.food < 40) C.buyFood(s, Math.min(40 - Math.floor(s.food), Math.floor(s.gold / 6)));
     buyCons();
+    const prevMax = s.maxFloor; // 신규 층 판정: 이번 원정 이전 최고 층보다 깊은 층
     const e = C.createExpedition(s, Math.max(1, s.maxFloor - (runs % 3)));
     st.squadSum += e.squads.length; if (e.squads.length) st.squadRuns++;
-    let t = 0; while (!e.done && t < 30000) { C.stepExpedition(e, 0.1); e.events = []; t++; }
+    let t = 0; while (!e.done && t < 30000) { C.stepExpedition(e, 0.1); e.events = []; t++; if (e.floor > prevMax) st.newTicks++; else st.oldTicks++; }
     if (e.result === 'wipe') { st.wipes++; if (e.reached <= 10) st.earlyWipes++; }
     if (s.maxFloor <= 10) st.earlyRuns++;
     if (opts.verbose && (runs % 10 === 0 || s.cleared)) console.log('run', runs, 'result', e.result, 'floor', e.reached, 'max', s.maxFloor, 'gold', s.gold, 'food', Math.floor(s.food), 'squads', e.squads.map(q => q.type).join('/') || '-', 'lvs', s.units.filter(u => u.hired).map(u => u.lv).join(','));
   }
   const top = s.units.filter(u => u.hired).map(u => u.lv).sort((a, b) => b - a)[0];
-  return Object.assign({ runs, cleared: s.cleared, topLv: top, units: s.units.filter(u => u.hired).length, promoted: s.units.filter(u => C.CLASSES[u.cls].promo).length }, st);
+  // 예상 플레이 시간(시간): 출시 규칙(기본 4배속, 신규 층 2배속 제한) + 캠프 정비 시간(회차당 CAMP_SEC초)
+  const hours = (st.newTicks * 0.1 / 2 + st.oldTicks * 0.1 / 4 + runs * (opts.campSec || 120)) / 3600;
+  return Object.assign({ hours, runs, cleared: s.cleared, topLv: top, units: s.units.filter(u => u.hired).length, promoted: s.units.filter(u => C.CLASSES[u.cls].promo).length }, st);
 }
 
 const med = a => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
 function summarize(label, rs) {
+  const fh = med(rs.map(r => r.hours)).toFixed(1);
   const f = k => med(rs.map(r => r[k]));
-  console.log(`${label.padEnd(14)} 클리어 ${rs.filter(r => r.cleared).length}/${rs.length} · 회차 중앙 ${f('runs')} (최소 ${Math.min(...rs.map(r => r.runs))}~최대 ${Math.max(...rs.map(r => r.runs))}) · 제작 ${f('crafts')} · 전직 ${f('promoted')} · 분대 가동 ${f('squadRuns')}회 · 요리사 동행 ${f('cookRuns')}회 · 전멸 ${f('wipes')} · 고용 ${f('units')}명`);
+  console.log(`${label.padEnd(14)} 클리어 ${rs.filter(r => r.cleared).length}/${rs.length} · 회차 중앙 ${f('runs')} (최소 ${Math.min(...rs.map(r => r.runs))}~최대 ${Math.max(...rs.map(r => r.runs))}) · 예상 ${fh}시간 · 제작 ${f('crafts')} · 전직 ${f('promoted')} · 분대 가동 ${f('squadRuns')}회 · 요리사 동행 ${f('cookRuns')}회 · 전멸 ${f('wipes')} · 고용 ${f('units')}명`);
 }
 if (require.main === module) {
   const args = process.argv.slice(2), n = +args.find(a => /^\d+$/.test(a)) || 5;

@@ -4,8 +4,12 @@
   const SAVE_KEY = 'esteru_dungeon_save_v2', PREF_KEY = 'esteru_prefs_v1';
   const $ = id => document.getElementById(id);
   const cv = $('cv');
-  const SPEEDS = [1, 2, 4, 8];
-  const S = { save: null, exp: null, tab: 'form', sideTab: 'log', sel: null, dragId: null, detail: null, paused: false, speed: 1, floaters: [], hover: null, startFloor: 1, acc: 0, itemSel: null, itemOpen: false, autoPaused: false, time: 0, resultShown: false, lastFloor: 0, logShown: 0, prefs: { reduce: false, speed: 1, shake: 1, tutDone: false } };
+  // 배속: 출시 빌드는 최대 ×4. 개발용(주소에 ?dev, 한 번 켜면 저장)은 ×8까지. 처음 가는 층(이번 원정 이전 최고 층보다 깊은 층)은 ×2 제한.
+  let DEV = false; try { if (/[?&]dev\b/.test(location.search)) localStorage.setItem('esteru_dev', '1'); if (/[?&]nodev\b/.test(location.search)) localStorage.removeItem('esteru_dev'); DEV = localStorage.getItem('esteru_dev') === '1'; } catch (e) { /* 무시 */ }
+  const SPEEDS = DEV ? [1, 2, 4, 8] : [1, 2, 4], NEW_FLOOR_CAP = 2;
+  const newFloor = e => !!e && e.floor > e.prevMax;
+  const effSpeed = () => newFloor(S.exp) ? Math.min(S.speed, NEW_FLOOR_CAP) : S.speed;
+  const S = { save: null, exp: null, tab: 'form', sideTab: 'log', sel: null, dragId: null, detail: null, paused: false, speed: 1, floaters: [], hover: null, startFloor: 1, acc: 0, itemSel: null, itemOpen: false, autoPaused: false, time: 0, resultShown: false, lastFloor: 0, logShown: 0, prefs: { reduce: false, speed: 1, shake: 1, fullscreen: true, tutDone: false } };
   Render.init(S, cv);
 
   /* ---------- 저장 ---------- */
@@ -20,7 +24,7 @@
     return s;
   }
   function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S.save)); } catch (e) { /* 무시 */ } }
-  function loadPrefs() { try { Object.assign(S.prefs, JSON.parse(localStorage.getItem(PREF_KEY) || '{}')); } catch (e) { /* 무시 */ } document.body.classList.toggle('reduce', !!S.prefs.reduce); S.speed = S.prefs.speed || 1; }
+  function loadPrefs() { try { Object.assign(S.prefs, JSON.parse(localStorage.getItem(PREF_KEY) || '{}')); } catch (e) { /* 무시 */ } document.body.classList.toggle('reduce', !!S.prefs.reduce); S.speed = Math.min(S.prefs.speed || 1, SPEEDS[SPEEDS.length - 1]); }
   function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify(S.prefs)); } catch (e) { /* 무시 */ } }
   loadPrefs(); S.save = load(); S.startFloor = S.save.maxFloor;
 
@@ -214,7 +218,7 @@
 
   /* ---------- 원정 HUD ---------- */
   function renderToolbar() {
-    setHTML($('toolbar'), `<button data-act="pause" class="${S.paused ? 'on' : ''}" title="일시정지 / 재개 (Space)">${S.paused ? '▶ 재개' : '⏸ 정지'}</button><span class="sep"></span>${SPEEDS.map((n, i) => `<button data-act="speed" data-id="${n}" class="${S.speed === n ? 'on' : ''}" title="${n}배속 (${i + 1})">×${n}</button>`).join('')}<span class="sep"></span><button data-act="items" class="${S.itemOpen ? 'on' : ''}" title="아이템 (I) — 사용 시 자동 일시정지">🎒 아이템</button><button class="danger" data-act="retreat" title="지금 귀환">🏳 귀환</button>`);
+    setHTML($('toolbar'), `<button data-act="pause" class="${S.paused ? 'on' : ''}" title="일시정지 / 재개 (Space)">${S.paused ? '▶ 재개' : '⏸ 정지'}</button><span class="sep"></span>${SPEEDS.map((n, i) => `<button data-act="speed" data-id="${n}" class="${S.speed === n ? 'on' : ''}" title="${n}배속 (${i + 1})">×${n}</button>`).join('')}${newFloor(S.exp) && S.speed > NEW_FLOOR_CAP ? `<span class="cap" title="처음 가는 층은 ×${NEW_FLOOR_CAP}배속까지">🔒 신규 층 ×${NEW_FLOOR_CAP}</span>` : ''}${DEV ? '<span class="cap" title="개발 모드(?dev) — 출시 빌드는 ×4까지">DEV</span>' : ''}<span class="sep"></span><button data-act="items" class="${S.itemOpen ? 'on' : ''}" title="아이템 (I) — 사용 시 자동 일시정지">🎒 아이템</button><button class="danger" data-act="retreat" title="지금 귀환">🏳 귀환</button>`);
   }
   function renderItemPop() {
     const el = $('itemPop'); el.classList.toggle('hidden', !S.itemOpen || !S.exp); if (!S.itemOpen) return;
@@ -228,6 +232,7 @@
     const nCh = mp.chests.length, oCh = mp.chests.filter(c => c.open).length, nG = mp.groups.filter(g => g.alive).length;
     const mission = e.battle ? (e.battle.guardian ? '⚔ 수호자 전투' : '⚔ 전투 중') : (e.text || '').replace(/^\d+층 · /, '') || '탐사 중';
     setHTML($('hudTop'), `<div class="floor-plate">B${e.floor}F</div><div class="mission"><b>${esc(mission)}${S.paused ? ' · ⏸' : ''}</b><span class="sub">탐사 ${Math.round(seenF / totF * 100)}% · 상자 ${oCh}/${nCh} · 적 ${nG} · <span class="${S.save.food < 1 ? 'bad' : ''}" title="남은 식량">🍖 ${Math.floor(S.save.food)}</span>${e.bless > 0 ? ` · ✨축복 ${Math.min(3, e.bless)}회` : ''}${mp.groups.some(g => g.alive && g.golden && mp.seen[g.y][g.x]) ? ' · ✨황금 몹!' : ''}</span></div>`);
+    renderToolbar(); // 신규 층 진입/이탈에 따라 배속 제한 표시 갱신
     const lead = S.save.policy.leader;
     setHTML($('partyStrip'), e.party.map(u => {
       const st = C.stats(u), c = C.CLASSES[u.cls], p = pct(u.hp, st.hp), tgt = S.paused && S.itemSel && S.itemSel !== 'escape';
@@ -415,10 +420,11 @@
       case 'accept': { const q = s.quests.board.find(x => x.id === +id); if (q && s.quests.active.length < 3) { s.quests.board = s.quests.board.filter(x => x !== q); s.quests.active.push(q); save(); toast('의뢰를 수주했습니다', 'good'); renderTabs(); renderCampBody(); } return; }
       case 'abandon': s.quests.active = s.quests.active.filter(x => x.id !== +id); save(); renderTabs(); renderCampBody(); return;
       case 'sortie-open': sortieModal(); return;
+      case 'fullscreen': toggleFullscreen(); return;
       case 'help': tutorial(0); return;
       case 'settings': settingsModal(); return;
       case 'pause': togglePause(); return;
-      case 'speed': S.speed = +id; S.prefs.speed = S.speed; savePrefs(); renderToolbar(); return;
+      case 'speed': if (!SPEEDS.includes(+id)) return; S.speed = +id; S.prefs.speed = S.speed; savePrefs(); renderToolbar(); return;
       case 'items': openItems(!S.itemOpen); return;
       case 'selitem': if (S.itemSel === id && id === 'escape') { applyItem(null); return; } S.itemSel = S.itemSel === id ? null : id; renderItemPop(); updateHud(); return;
       case 'retreat': confirmDlg('🏳 지금 귀환할까요?', '획득한 골드와 장비는 모두 가져갑니다. 탐사는 여기서 종료됩니다.', '귀환', () => { C.manualRetreat(S.exp); S.paused = false; closeModal(); }); return;
@@ -468,6 +474,7 @@
     openModal(`<h2>⚙ 설정</h2>
       <h3>화면</h3><label class="check"><input type="checkbox" data-pref="reduce" ${S.prefs.reduce ? 'checked' : ''}> 애니메이션 줄이기</label>
       <div class="pol" style="margin-top:6px"><label>기본 배속</label><select data-pref="speed">${SPEEDS.map(n => `<option value="${n}" ${S.prefs.speed === n ? 'selected' : ''}>×${n}</option>`).join('')}</select></div>
+      <label class="check"><input type="checkbox" data-pref="fullscreen" ${S.prefs.fullscreen ? 'checked' : ''}> 시작 시 전체 화면 (첫 클릭/키 입력 때 적용 · 우상단 ⛶ 버튼, F11로도 전환)</label>
       <div class="pol" style="margin-top:6px"><label title="치명타 타일 흔들림·범위 마법 화면 흔들림의 세기">흔들림 강도</label><select data-pref="shake">${[[0, '끔'], [1, '보통'], [1.6, '강하게'], [2.4, '최대']].map(([v, t]) => `<option value="${v}" ${S.prefs.shake === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
       <h3>자동 장비</h3><label class="check"><input type="checkbox" data-opt="autoEquip" ${S.save.opts.autoEquip ? 'checked' : ''}> 귀환 시 획득 장비를 직업에 맞게 자동 장착</label>
       <label class="check"><input type="checkbox" data-opt="autoIdle" ${S.save.opts.autoIdle ? 'checked' : ''}> 대기 중(미편성) 용병도 포함</label>
@@ -476,9 +483,22 @@
       <h3>저장 데이터</h3><div class="row" style="justify-content:flex-start"><button class="btn" data-m="export">내보내기</button><button class="btn" data-m="import-ask">불러오기</button><button class="btn dng" data-m="reset-ask">초기화</button></div><div id="ioBox"></div>
       <div class="foot"><button class="btn" data-m="tut-open">튜토리얼 다시 보기</button><button class="btn pri" data-m="close">닫기</button></div>`);
   }
+  // 전체 화면: 브라우저 정책상 사용자 동작(첫 클릭/키 입력)이 있어야 하므로 "시작 시 전체 화면"은 첫 입력 때 적용한다.
+  function toggleFullscreen() {
+    try {
+      if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => { toast('브라우저가 전체 화면을 허용하지 않았습니다 (F11을 눌러 보세요)', 'bad'); });
+    } catch (e) { /* 지원하지 않는 환경 */ }
+  }
+  let fsTried = false;
+  function fsOnFirstInput() {
+    if (fsTried || !S.prefs.fullscreen) return; fsTried = true;
+    try { if (!document.fullscreenElement && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => { /* 거부되면 무시 */ }); } catch (e) { /* 무시 */ }
+  }
+  document.addEventListener('pointerdown', fsOnFirstInput, { once: true }); document.addEventListener('keydown', fsOnFirstInput, { once: true });
   function prefChange(t) {
     const k = t.dataset.pref;
-    if (k === 'shake') S.prefs.shake = +t.value;
+    if (k === 'fullscreen') S.prefs.fullscreen = t.checked;
+    else if (k === 'shake') S.prefs.shake = +t.value;
     else if (k === 'reduce') { S.prefs.reduce = t.checked; document.body.classList.toggle('reduce', t.checked); } else if (k === 'speed') { S.prefs.speed = +t.value; S.speed = +t.value; if (S.exp) renderToolbar(); }
     savePrefs();
   }
@@ -508,7 +528,7 @@
     if (/INPUT|SELECT|TEXTAREA/.test(tag) || !modalEl.classList.contains('hidden')) return;
     if (S.exp) {
       if (ev.code === 'Space') { ev.preventDefault(); togglePause(); }
-      else if (ev.key >= '1' && ev.key <= '4') { S.speed = SPEEDS[+ev.key - 1]; S.prefs.speed = S.speed; savePrefs(); renderToolbar(); }
+      else if (ev.key >= '1' && ev.key <= '4' && SPEEDS[+ev.key - 1]) { S.speed = SPEEDS[+ev.key - 1]; S.prefs.speed = S.speed; savePrefs(); renderToolbar(); }
       else if (ev.key === 'i' || ev.key === 'I') openItems(!S.itemOpen);
     } else if ((ev.key === 'Delete' || ev.key === 'Backspace') && S.sel && S.save.formation[S.sel]) { const u = S.save.units.find(z => z.id === S.sel); delete S.save.formation[S.sel]; S.sel = null; setHint(`<b>${esc(u.name)}</b> 배치 해제`); afterFormChange(); }
   });
@@ -524,7 +544,7 @@
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
     const e = S.exp;
     if (e && !S.paused && !e.done) {
-      S.acc += dt * S.speed; let n = 0;
+      S.acc += dt * effSpeed() / (C.TUNE.pace || 1); let n = 0;
       while (S.acc >= 0.1 && n++ < 80 && !e.done) { C.stepExpedition(e, 0.1); S.acc -= 0.1; consumeEvents(e); }
     }
     if (e) {

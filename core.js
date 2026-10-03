@@ -242,7 +242,8 @@ const Core = (function () {
   // 조정값 (시뮬레이터로 튜닝). 성장은 원작처럼 "레벨당 선형 증가" — HP는 완만, ATK/DEF는 기본값 대비 크게.
   // food: perStep=이동 1칸·1명당 소모, price=개당 가격, yield=[기본, 층당] 식용 몹 처치 시 식량(요리사 동행), start=새 게임 식량
   // fatigue: rest=휴식 용병 귀환 회복, work=출전 용병 귀환 회복, death=전투불능 시 감소, starve=식량 0 이동당 피로 감소
-  const TUNE = { food: { perStep: 0.012, price: 6, yield: [0.4, 0.03], start: 20 }, fatigue: { rest: 25, work: 5, death: 25, starve: 0.25, cook: 2 }, expScale: 1, growHp: 0.035, growAtk: 0.12, growDef: 0.30, eHp: 0.30, eAtk: 0.12, eDef: 0.15, eHp10: 0.18, eAtk10: 0.13 };
+  // pace: 게임 진행 속도의 기본 배율 역수(1=기본). 클수록 모든 배속에서 느려진다(플레이 시간 조정용)
+  const TUNE = { pace: 1, food: { perStep: 0.012, price: 6, yield: [0.4, 0.03], start: 20 }, fatigue: { rest: 25, work: 5, death: 25, starve: 0.25, cook: 2 }, expScale: 1, growHp: 0.035, growAtk: 0.12, growDef: 0.30, eHp: 0.30, eAtk: 0.12, eDef: 0.15, eHp10: 0.18, eAtk10: 0.13 };
   const needExp = lv => Math.max(1, Math.round((EXP_CUM[Math.min(lv + 1, 50)] - EXP_CUM[lv]) * TUNE.expScale));
   // 적 1마리 경험치: 원작 일반 적 EXP 2(1층) → 약 1700(후반) 의 지수 곡선
   const enemyExp = (f, boss) => Math.round(2 * Math.pow(850, (f - 1) / 49) * (boss ? 8 + 20 * f / 50 : 1));
@@ -641,7 +642,7 @@ const Core = (function () {
   function genZones(m, themes) {
     const tz = Array.from({ length: m.h }, () => Array(m.w).fill(null));
     themes.forEach((th, i) => {
-      for (let k = themes.length === 1 ? 4 : 3; k > 0; k--) {
+      for (let k = themes.length === 1 ? 8 : 6; k > 0; k--) {
         const cx = ri(2, m.w - 3), cy = ri(2, m.h - 3), R = ri(3, 5);
         for (let y = cy - R; y <= cy + R; y++) for (let x = cx - R; x <= cx + R; x++) {
           if (x < 0 || y < 0 || x >= m.w || y >= m.h || m.grid[y][x] === 0) continue;
@@ -902,7 +903,7 @@ const Core = (function () {
   }
 
   /* ---------- 미궁 생성 (쿼터뷰 벽돌 미로) ---------- */
-  const MW = 39, MH = 23, STEP = 0.14;
+  const MW = 55, MH = 33, STEP = 0.14; // 층 넓이: 기존 39×23 의 약 2배
   const T = { WALL: 0, COR: 1, ROOM: 2, DOOR: 3, LOCK: 4, STAIRS: 5, UP: 6, OPEN: 7 };
   const D4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
   const D8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
@@ -942,12 +943,12 @@ const Core = (function () {
   function tryGen(f) {
     const grid = Array.from({ length: MH }, () => Array(MW).fill(0)), rid = Array.from({ length: MH }, () => Array(MW).fill(-1));
     let rooms = [];
-    for (let i = 0; i < 80 && rooms.length < 9; i++) {
+    for (let i = 0; i < 170 && rooms.length < 18; i++) {
       const w = ri(4, 8), h = ri(3, 5), x = ri(2, MW - w - 3), y = ri(2, MH - h - 3);
       if (rooms.some(r => x < r.x + r.w + 3 && x + w + 3 > r.x && y < r.y + r.h + 3 && y + h + 3 > r.y)) continue;
       rooms.push({ x, y, w, h, cx: x + (w >> 1), cy: y + (h >> 1), deg: 0 });
     }
-    if (rooms.length < 6) return null;
+    if (rooms.length < 12) return null;
     rooms.sort((a, b) => a.cx - b.cx); rooms.forEach((r, i) => { r.id = i; });
     for (const r of rooms) for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) { grid[y][x] = T.ROOM; rid[y][x] = r.id; }
     const carve = (a, b) => {
@@ -958,7 +959,7 @@ const Core = (function () {
       a.deg++; b.deg++;
     };
     for (let i = 0; i < rooms.length - 1; i++) carve(rooms[i], rooms[i + 1]);
-    for (let k = 0; k < 2; k++) { const i = ri(0, rooms.length - 3); carve(rooms[i], rooms[i + 2]); }
+    for (let k = 0; k < 4; k++) { const i = ri(0, rooms.length - 3); carve(rooms[i], rooms[i + 2]); }
     const r0 = rooms[0], start = { x: r0.cx, y: r0.cy };
     const d0 = floodDist(grid, start.x, start.y, false);
     let sr = rooms[1]; for (const r of rooms) if (r.id !== 0 && d0[r.cy][r.cx] > d0[sr.cy][sr.cx]) sr = r;
@@ -967,7 +968,7 @@ const Core = (function () {
     // 금고방: 막다른 방의 입구를 잠근다 (도적이 있어야 열림)
     const entrances = r => { const out = []; for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) if (grid[y][x] === T.COR && D4.some(([dx, dy]) => inb(x + dx, y + dy) && rid[y + dy][x + dx] === r.id)) out.push([x, y]); return out; };
     const vaults = [];
-    const leaves = rooms.filter(r => r.deg === 1 && r.id !== 0 && r.id !== sr.id).sort(() => Math.random() - 0.5).slice(0, 2);
+    const leaves = rooms.filter(r => r.deg === 1 && r.id !== 0 && r.id !== sr.id).sort(() => Math.random() - 0.5).slice(0, 3);
     for (const r of leaves) {
       const en = entrances(r); if (!en.length) continue;
       en.forEach(([x, y]) => { grid[y][x] = T.LOCK; });
@@ -981,16 +982,16 @@ const Core = (function () {
     const dist = floodDist(grid, start.x, start.y, true);
     const randTile = (pred) => { for (let k = 0; k < 300; k++) { const x = ri(1, MW - 2), y = ri(1, MH - 2), t = grid[y][x]; if ((t === T.ROOM || t === T.COR) && !used.has(y * MW + x) && pred(x, y)) { used.add(y * MW + x); return { x, y }; } } return null; };
     const chests = [], traps = [], springs = [], groups = [];
-    const nCh = 3 + ri(0, 1) + (f >= 20 ? 1 : 0);
+    const nCh = 6 + ri(0, 2) + (f >= 20 ? 2 : 0);
     for (let i = 0; i < nCh; i++) { const p = randTile((x, y) => rid[y][x] >= 0 && rid[y][x] !== 0 && !vaults.some(v => v.id === rid[y][x])); if (p) chests.push({ x: p.x, y: p.y, big: false, open: false }); }
     for (const v of vaults) for (let i = 0; i < 2; i++) { const p = randTile((x, y) => rid[y][x] === v.id); if (p) chests.push({ x: p.x, y: p.y, big: i === 0, open: false }); }
-    const nTr = 4 + Math.floor(f / 8) + ri(0, 2);
+    const nTr = 8 + Math.floor(f / 4) + ri(0, 3);
     for (let i = 0; i < nTr; i++) { const p = randTile((x, y) => rid[y][x] !== 0 && !vaults.some(v => v.id === rid[y][x]) && dist[y][x] > 2); if (p) traps.push({ x: p.x, y: p.y, found: false, gone: false }); }
-    if (Math.random() < 0.45) { const p = randTile((x, y) => rid[y][x] > 0 && !vaults.some(v => v.id === rid[y][x])); if (p) springs.push({ x: p.x, y: p.y, used: false }); }
-    const bossFloor = f % 5 === 0, nG = 5 + Math.floor(f / 10) + ri(0, 2);
+    for (let k = 0; k < 2; k++) if (Math.random() < 0.45) { const p = randTile((x, y) => rid[y][x] > 0 && !vaults.some(v => v.id === rid[y][x])); if (p) springs.push({ x: p.x, y: p.y, used: false }); }
+    const bossFloor = f % 5 === 0, nG = 10 + Math.floor(f / 5) + ri(0, 3);
     if (bossFloor) { const g = genGroup(f, true); g.x = stairs.x; g.y = stairs.y; groups.push(g); }
     for (let i = 0; i < nG; i++) { const p = randTile((x, y) => dist[y][x] >= 6 && !groups.some(g => cheb(g, { x, y }) < 3)); if (p) { const g = genGroup(f, false); g.x = p.x; g.y = p.y; groups.push(g); } }
-    if (f >= 3) for (let k = 0; k < (f >= 25 && Math.random() < 0.5 ? 2 : 1); k++) if (Math.random() < 0.7) { const el = genElite(f); const p = randTile((x, y) => dist[y][x] >= 8 && !groups.some(g => cheb(g, { x, y }) < 3)); if (p) { el.x = p.x; el.y = p.y; groups.push(el); } }
+    if (f >= 3) for (let k = 0; k < (f >= 25 ? 3 : 2); k++) if (Math.random() < 0.7) { const el = genElite(f); const p = randTile((x, y) => dist[y][x] >= 8 && !groups.some(g => cheb(g, { x, y }) < 3)); if (p) { el.x = p.x; el.y = p.y; groups.push(el); } }
     if (f >= 3) chests.forEach(c => { if (!c.big && Math.random() < 0.12) c.mimic = true; });
     if (f >= 2 && Math.random() < 0.28) { const gg = genGolden(f); const p = gg && randTile((x, y) => dist[y][x] >= 6 && !groups.some(g => cheb(g, { x, y }) < 2)); if (p) { gg.x = p.x; gg.y = p.y; groups.push(gg); } }
     // 이동맵 고저차: 시작점에서 퍼져 나가며 0~3 단 (같은 방은 평탄, 통로/방 경계에서 가끔 ±1)
@@ -1037,7 +1038,7 @@ const Core = (function () {
     const combo = comboOf(party), squads = activeSquads(save); // 분대: 전투 지원(화면 밖)
     if (squads.some(q => q.type === 'cheer')) combo.cheer = 1.1;
     if (combo.skillUses) party.forEach(u => { for (const k in u.charges) u.charges[k] += combo.skillUses; }); // 후열 합주: 귀환 시 resetCharges 로 원복
-    const e = { combo, squads, squadMembers: squadUnits(save), comboFood: combo.foodMul, save, party, floor: startFloor, map: null, pos: null, trail: [], directive: null, path: [], phase: 'explore', moveT: 0.5, healT: 0, battle: null, log: [], events: [], loot: { gold: 0, items: [] }, kills: 0, done: false, result: null, chests: 0, reached: startFloor, text: '', startFloor };
+    const e = { prevMax: save.maxFloor, combo, squads, squadMembers: squadUnits(save), comboFood: combo.foodMul, save, party, floor: startFloor, map: null, pos: null, trail: [], directive: null, path: [], phase: 'explore', moveT: 0.5, healT: 0, battle: null, log: [], events: [], loot: { gold: 0, items: [] }, kills: 0, done: false, result: null, chests: 0, reached: startFloor, text: '', startFloor };
     save.maxFloor = Math.max(save.maxFloor, startFloor);
     setFloor(e, startFloor);
     return e;
