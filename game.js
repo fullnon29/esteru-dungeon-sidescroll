@@ -578,7 +578,7 @@
     }
   }
   function frame(now) {
-    const dt = Math.min(0.1, (now - last) / 1000); last = now;
+    const dt = Math.min(1, (now - last) / 1000); last = now; // 프레임이 느려도(앱 내 창·저사양) 실제 시간 기준으로 진행되도록 상한을 1초로(탭 복귀 시 폭주 방지)
     const e = S.exp;
     if (e && e.pending && !S.evOpen && !e.done) openEventModal(e);
     if (e && !S.paused && !e.done && !e.pending) {
