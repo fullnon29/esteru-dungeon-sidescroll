@@ -231,7 +231,7 @@
     for (let y = 0; y < mp.h; y++) for (let x = 0; x < mp.w; x++) if (mp.grid[y][x] !== 0) { totF++; if (mp.seen[y][x]) seenF++; }
     const nCh = mp.chests.length, oCh = mp.chests.filter(c => c.open).length, nG = mp.groups.filter(g => g.alive).length;
     const mission = e.battle ? (e.battle.guardian ? '⚔ 수호자 전투' : '⚔ 전투 중') : (e.text || '').replace(/^\d+층 · /, '') || '탐사 중';
-    setHTML($('hudTop'), `<div class="floor-plate">B${e.floor}F</div><div class="mission"><b>${esc(mission)}${S.paused ? ' · ⏸' : ''}</b><span class="sub">탐사 ${Math.round(seenF / totF * 100)}% · 상자 ${oCh}/${nCh} · 적 ${nG} · <span class="${S.save.food < 1 ? 'bad' : ''}" title="남은 식량">🍖 ${Math.floor(S.save.food)}</span>${e.bless > 0 ? ` · ✨축복 ${Math.min(3, e.bless)}회` : ''}${mp.groups.some(g => g.alive && g.golden && mp.seen[g.y][g.x]) ? ' · ✨황금 몹!' : ''}</span></div>`);
+    setHTML($('hudTop'), `<div class="floor-plate">B${e.floor}F</div><div class="mission"><b>${esc(mission)}${S.paused ? ' · ⏸' : ''}</b><span class="sub">탐사 ${Math.round(seenF / totF * 100)}% · 상자 ${oCh}/${nCh} · 적 ${nG} · <span class="${S.save.food < 1 ? 'bad' : ''}" title="남은 식량">🍖 ${Math.floor(S.save.food)}</span>${e.cq ? ` · 🤝 ${esc(e.cq.comp.name)} 의뢰 ${C.cqProgress(e)}/${e.cq.need}` : ''}${e.bless > 0 ? ` · ✨축복 ${Math.min(3, e.bless)}회` : ''}${mp.groups.some(g => g.alive && g.golden && mp.seen[g.y][g.x]) ? ' · ✨황금 몹!' : ''}</span></div>`);
     renderToolbar(); // 신규 층 진입/이탈에 따라 배속 제한 표시 갱신
     const lead = S.save.policy.leader;
     setHTML($('partyStrip'), e.party.map(u => {
@@ -314,12 +314,13 @@
       <div class="stat-grid"><div class="stat-box"><b>${e.reached}층</b><span>도달</span></div><div class="stat-box"><b>${e.kills}</b><span>처치</span></div><div class="stat-box"><b>${e.chests}</b><span>상자</span></div><div class="stat-box"><b>${e.result === 'wipe' ? Math.floor(e.loot.gold / 2) : e.loot.gold}G</b><span>획득 골드</span></div></div>
       ${e.result === 'wipe' ? '' : `<h3>획득 장비 (${items.length})</h3><div class="chips">${items.map(i => `<span class="chip">${itemName(i)}</span>`).join('') || '<span class="dim">없음</span>'}</div>`}
       ${e.result !== 'wipe' && (Object.keys(e.loot.mats || {}).length || (e.loot.bps || []).length || e.loot.promo) ? `<h3>획득 재료·도면</h3><div class="chips">${Object.entries(e.loot.mats || {}).map(([k, n]) => `<span class="chip">${esc(C.MATS[k])} ×${Math.round(n * 10) / 10}</span>`).join('')}${(e.loot.bps || []).map(id => `<span class="chip m">📐 ${esc(itemNameText(id))} 도면</span>`).join('')}${e.loot.promo ? `<span class="chip m">📜 전직서 ×${e.loot.promo}</span>` : ''}</div>` : ''}
+      ${e.joined && e.joined.length ? `<h3>🤝 새 특수 동료</h3><div class="chips">${e.joined.map(n => `<span class="chip m">${esc(n)}</span>`).join('')}</div>` : ''}
       <div class="dim" style="font-size:12.5px;margin-top:6px">😓 피로 회복: 쉰 용병 +25 · 출전 용병 +5${e.fatLog && e.fatLog.mul > 1 ? ` · 승려 동행 ×${e.fatLog.mul}` : ''}${e.fatLog && e.fatLog.bonus ? ` · 요리사 식사 +${e.fatLog.bonus}` : ''} · 남은 식량 🍖 ${Math.floor(S.save.food)}</div>
       ${e.autoLog && e.autoLog.length ? `<h3>자동 장착 내역 (${e.autoLog.length})</h3><div class="dim" style="font-size:12.5px;max-height:130px;overflow:auto">${e.autoLog.map(l => `<div>${esc(l)}</div>`).join('')}</div>` : ''}
       <div class="foot"><button class="btn pri" data-m="result-camp" data-autofocus>캠프로</button></div>`, { lock: true });
   }
   function endExpedition() {
-    S.exp = null; S.paused = false; S.itemOpen = false; S.itemSel = null; S.tab = 'form'; S.startFloor = S.save.maxFloor; S._ents = {};
+    S.exp = null; S.evOpen = false; bq.length = 0; S.paused = false; S.itemOpen = false; S.itemSel = null; S.tab = 'form'; S.startFloor = S.save.maxFloor; S._ents = {};
     closeModal(); save(); renderCamp(); setHint('캠프로 돌아왔습니다. 장비와 편성을 정비하세요.', 4000);
   }
   function togglePause(force) {
@@ -508,6 +509,10 @@
     const m = b.dataset.m, s = S.save;
     if (m === 'close') closeModal();
     else if (m === 'confirm') { const cb = confirmCb; confirmCb = null; closeModal(); cb && cb(); }
+    else if (m === 'mbuy') { const r = C.buyMerchant(S.exp, +b.dataset.i); if (r) toast(r, 'bad'); else { save(); renderStats(); } openEventModal(S.exp); }
+    else if (m === 'gpull') { const r = C.gachaPull(S.exp, +b.dataset.n); if (r && r.err) toast(r.err, 'bad'); else save(); renderStats(); openEventModal(S.exp); }
+    else if (m === 'cqyes') { C.acceptCompanion(S.exp); S.evOpen = false; closeModal(); save(); }
+    else if (m === 'evclose') { C.closeEvent(S.exp); S.evOpen = false; closeModal(); }
     else if (m === 'equip') { C.equip(s, s.units.find(u => u.id === +b.dataset.u), b.dataset.slot, b.dataset.item || null); closeModal(); save(); renderCampBody(); }
     else if (m === 'sortie-go') startSortie();
     else if (m === 'gotab') { closeModal(); S.tab = b.dataset.id; renderTabs(); renderCampBody(); }
@@ -537,13 +542,42 @@
   let last = performance.now(), uiT = 0, evTone = 0;
   function consumeEvents(e) {
     Render.procEvents(e);
-    for (const v of e.events) if (v.k === 'log' && (v.c === 'good' || v.c === 'bad' || v.c === 'warn')) toast(v.m, v.c);
+    const hasBanner = e.events.some(v => v.k === 'banner');
+    for (const v of e.events) {
+      if (v.k === 'banner') enqueueBanner(v);
+      else if (v.k === 'log' && (v.c === 'good' || v.c === 'bad' || v.c === 'warn') && !hasBanner) toast(v.m, v.c); // 배너가 뜬 틱의 같은 내용 토스트는 생략
+    }
     e.events = [];
+  }
+  /* ---------- 이벤트 배너(화면 중앙) · 이벤트 창(행상인/뽑기/의뢰) ---------- */
+  const bq = []; let bBusy = false;
+  function enqueueBanner(v) { if (bq.length >= 4) bq.shift(); bq.push(v); pumpBanner(); }
+  function pumpBanner() {
+    if (bBusy || !bq.length) return; const v = bq.shift(), el = $('eventBanner'); bBusy = true;
+    el.className = 'event-banner hidden'; el.innerHTML = `<span class="ic">${v.icon}</span><b>${esc(v.name)}</b>${v.sub ? `<small>${esc(v.sub)}</small>` : ''}`;
+    void el.offsetWidth; el.className = 'event-banner ' + (v.c || '');
+    setTimeout(() => { el.classList.add('hidden'); bBusy = false; pumpBanner(); }, v.c === 'bad' || v.name.includes('합류') ? 2300 : 1900);
+  }
+  function openEventModal(e) {
+    const p = e.pending; if (!p) return; S.evOpen = true; const s = S.save, gold = `<span class="gold">💰 ${s.gold.toLocaleString()}G</span>`;
+    if (p.type === 'merchant') {
+      openModal(`<h2>🧳 행상인</h2><div class="dim">${gold} · 떠돌이 행상인이 물건을 펼쳤습니다. 이 층에서 한 번만 만날 수 있습니다.</div>` + p.stock.map((it, i) => `<div class="itm"><span><b>${it.k === 'gear' ? itemName(it.id) : esc(C.itemLabel(it))}</b>${it.k === 'gear' ? `<div class="d">${C.SLOTS[C.ITEMS[it.id].slot]} · ${C.describe(C.ITEMS[it.id])}${C.ITEMS[it.id].classes ? ' · ' + C.ITEMS[it.id].classes.map(k => C.CLASSES[k].name).join('/') : ''}</div>` : ''}</span><button class="btn sm pri" data-m="mbuy" data-i="${i}" ${it.sold || s.gold < it.price ? 'disabled' : ''}>${it.sold ? '품절' : it.price + 'G'}</button></div>`).join('') + `<div class="foot"><button class="btn pri" data-m="evclose" data-autofocus>떠나기</button></div>`, { lock: true });
+    } else if (p.type === 'gacha') {
+      openModal(`<h2>🎰 뽑기방</h2><div class="dim">${gold} · 재료·소모품·장비·식량, 드물게 도면과 전직서가 나옵니다. 10회는 9회 가격에 정예급 장비 1개 보장.</div>
+        <div class="row" style="margin:10px 0"><button class="btn pri" data-m="gpull" data-n="1" ${s.gold < p.price ? 'disabled' : ''}>1회 ${p.price}G</button><button class="btn pri" data-m="gpull" data-n="10" ${s.gold < p.price * 9 ? 'disabled' : ''}>10회 ${p.price * 9}G</button></div>
+        <h3>최근 결과</h3><div class="chips">${p.log.length ? p.log.map(x => `<span class="chip" ${x.rar && x.rar !== 'N' ? `style="color:${C.RARITY[x.rar].color}"` : ''}>${esc(x.t)}</span>`).join('') : '<span class="dim">아직 뽑지 않았습니다</span>'}</div>
+        <div class="foot"><button class="btn" data-m="evclose" data-autofocus>떠나기</button></div>`, { lock: true });
+    } else if (p.type === 'companion') {
+      const c = p.comp;
+      openModal(`<h2>📜 ${esc(c.name)}의 의뢰</h2><p class="dim">${esc(c.intro)}</p><div class="itm"><span><b>조건</b><div class="d">${esc(p.quest)} (이번 원정 안에 달성)</div></span></div><div class="itm"><span><b>보상</b><div class="d">${esc(c.name)} — <span style="color:${C.RARITY[c.rar].color}">${C.RARITY[c.rar].name}</span> ${C.CLASSES[c.cls].name} 특수 동료 합류</div></span></div>
+        <div class="foot"><button class="btn" data-m="evclose">거절</button><button class="btn pri" data-m="cqyes" data-autofocus>수락</button></div>`, { lock: true });
+    }
   }
   function frame(now) {
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
     const e = S.exp;
-    if (e && !S.paused && !e.done) {
+    if (e && e.pending && !S.evOpen && !e.done) openEventModal(e);
+    if (e && !S.paused && !e.done && !e.pending) {
       S.acc += dt * effSpeed() / (C.TUNE.pace || 1); let n = 0;
       while (S.acc >= 0.1 && n++ < 80 && !e.done) { C.stepExpedition(e, 0.1); S.acc -= 0.1; consumeEvents(e); }
     }

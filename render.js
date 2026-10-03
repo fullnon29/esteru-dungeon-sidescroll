@@ -32,8 +32,9 @@ const Render = (function () {
   function procEvents(e) {
     S.areas = S.areas || []; S.tileShake = S.tileShake || {};
     for (const v of e.events) {
-      if (v.k === 'area') { S.areas.push({ cells: v.cells, col: v.col, age: 0 }); if (v.big && !reduced()) S.frameShake = { t: 0.35, d: 0.35, amp: 12 * shakeK() }; }
-      if (v.k === 'dmg' && v.crit && !reduced()) S.tileShake[v.x + ',' + v.y] = 0.3; // 치명타: 맞은 타일이 흔들림
+      if (v.k === 'area') { S.areas.push({ cells: v.cells, col: v.col, age: 0 }); if (v.big && !reduced()) S.frameShake = { t: 0.4, d: 0.4, amp: 16 * shakeK() }; }
+      if (v.k === 'dmg' && v.crit && !reduced()) S.tileShake[v.x + ',' + v.y] = 0.45; // 치명타: 맞은 타일이 크게 흔들리고 번쩍인다
+      if (v.k === 'dmg' && v.crit) S.floaters.push({ x: v.x, y: v.y, t: '치명타!', col: '#ffd24a', age: 0, big: true, crit: true, up: 44 }); // 머리 위 치명타 문구
       if (v.k === 'dmg') S.floaters.push({ x: v.x, y: v.y, t: (v.crit ? '💥' : '') + (v.poison ? '☠' : '') + v.v, col: v.side === 'p' ? '#ff8a8a' : '#ffffff', age: 0, big: v.crit });
       else if (v.k === 'miss') S.floaters.push({ x: v.x, y: v.y, t: 'MISS', col: '#9fb2ff', age: 0 });
       else if (v.k === 'heal') S.floaters.push({ x: v.x, y: v.y, t: '+' + v.v, col: '#7cf0a0', age: 0 });
@@ -63,12 +64,12 @@ const Render = (function () {
     return '#' + [f(16), f(8), f(0)].map(v => v.toString(16).padStart(2, '0')).join('');
   }
   function drawBoard(dt) {
-    const camp = !S.exp, bt = S.exp && S.exp.battle ? S.exp.battle : null, hg = bt ? bt.hgt : null, terr = bt ? bt.terr : null, HST = 14; // 고저차 1단 높이(2배)
+    const camp = !S.exp, bt = S.exp && S.exp.battle ? S.exp.battle : null, hg = bt ? bt.hgt : null, terr = bt ? bt.terr : null, HST = 26; // 전투판 고저차 1단 높이(기존 7 → 14 → 26)
     const elAt = (x, y) => hg ? hg[clamp(Math.round(y), 0, 8)][clamp(Math.round(x), 0, 8)] * HST : 0;
     // 흔들림: 화면(범위 마법) · 타일(치명타)
     ctx.save(); S.areas = S.areas || []; S.tileShake = S.tileShake || {};
     const fs = S.frameShake; if (fs && fs.t > 0) { const am = fs.amp * (fs.t / fs.d); ctx.translate((Math.random() - 0.5) * 2 * am, (Math.random() - 0.5) * 2 * am); fs.t -= dt; }
-    const jit = {}; for (const k in S.tileShake) { S.tileShake[k] -= dt; if (S.tileShake[k] <= 0) delete S.tileShake[k]; else { const am = 6 * shakeK() * (S.tileShake[k] / 0.3); jit[k] = [(Math.random() - 0.5) * 2 * am, (Math.random() - 0.5) * 2 * am]; } }
+    const jit = {}; for (const k in S.tileShake) { S.tileShake[k] -= dt; if (S.tileShake[k] <= 0) delete S.tileShake[k]; else { const r = S.tileShake[k] / 0.45, am = 15 * shakeK() * r; jit[k] = [Math.sin(S.time * 75) * am, Math.cos(S.time * 91) * am * 0.8 - am * 0.35, r]; } } // 감쇠 진동 + 번쩍임(r)
     const jOf = (x, y) => jit[x + ',' + y] || [0, 0];
     bgFill(camp ? 'camp' : 'arena', '#1a1d29', '#0b0d13');
     const floorNo = S.exp ? S.exp.floor : S.save.maxFloor;
@@ -87,6 +88,7 @@ const Render = (function () {
         else top = '#4d78b8';
       }
       const el = hg ? hg[gy][gx] * HST : 0, sy2 = sy - el;
+      if (jt[2]) { top = mix(top, '#ffffff', Math.min(0.75, jt[2] * 0.8)); outline = '#ffffff'; lw = 2.5; } // 치명타로 흔들리는 타일은 하얗게 번쩍인다
       if (th) { const pulse = th === 'volcano' ? 0.45 + 0.1 * Math.sin(S.time * 3 + gx + gy) : 0.5; top = mix(top, C.THEMES[th].col, pulse); outline = th === 'resonance' ? '#c9a6ff' : '#00000055'; lw = th === 'resonance' ? 1.5 : 1; }
       if (hg && hg[gy][gx] > 0) top = shade(top, 1 + hg[gy][gx] * 0.07);
       poly([[sx - TW / 2, sy2], [sx, sy2 + TH / 2], [sx, sy + TH / 2 + 9], [sx - TW / 2, sy + 9]], '#161922');
@@ -136,7 +138,7 @@ const Render = (function () {
     for (const f of S.floaters) {
       f.age += dt; const [sx, sy] = iso(f.x, f.y), a = 1 - f.age / (f.fx ? 0.5 : 1.0); if (a <= 0) continue;
       ctx.globalAlpha = Math.max(0, a); ctx.textAlign = 'center';
-      ctx.font = `${f.fx ? 26 : f.big ? 19 : 15}px ${EMOJI}`; ctx.lineWidth = 3; ctx.strokeStyle = '#000'; ctx.strokeText(f.t, sx, sy - 34 - f.age * 30 - (f.up || 0)); ctx.fillStyle = f.col; ctx.fillText(f.t, sx, sy - 34 - f.age * 30 - (f.up || 0));
+      ctx.font = `${f.crit ? '900 24' : f.fx ? 26 : f.big ? 19 : 15}px ${EMOJI}`; ctx.lineWidth = 3; ctx.strokeStyle = '#000'; ctx.strokeText(f.t, sx, sy - 34 - f.age * 30 - (f.up || 0)); ctx.fillStyle = f.col; ctx.fillText(f.t, sx, sy - 34 - f.age * 30 - (f.up || 0));
       ctx.globalAlpha = 1;
     }
     S.floaters = S.floaters.filter(f => f.age < 1.0);
@@ -192,6 +194,7 @@ const Render = (function () {
     const buckets = {}, put = (gx, gy, fn) => { const k = Math.round(gx + gy); (buckets[k] = buckets[k] || []).push(fn); };
     m.chests.forEach(c => { if (m.seen[c.y][c.x]) put(c.x, c.y, () => { const [sx, sy] = misoXYe(c.x, c.y); ctx.globalAlpha = c.open ? 0.4 : 1; if (!objImg(c.open ? 'chest_open' : (c.big ? 'chest_big' : 'chest'), sx, sy, 22)) emoji(c.big ? '🎁' : '📦', sx, sy - 8, 15); ctx.globalAlpha = 1; }); });
     m.traps.forEach(t => { if (t.found && !t.gone) put(t.x, t.y, () => { const [sx, sy] = misoXYe(t.x, t.y); if (!objImg('trap', sx, sy, 18)) emoji('⚠️', sx, sy - 6, 13); }); });
+    (m.events || []).forEach(v => { if (!v.used && m.seen[v.y][v.x]) put(v.x, v.y, () => { const [sx, sy] = misoXYe(v.x, v.y); mdiamond(sx, sy, '#ffd24a44', '#ffd24a', 1 + Math.sin(S.time * 4)); emoji(C.EVT[v.type].icon, sx, sy - 9, 17); }); });
     m.springs.forEach(sp => { if (m.seen[sp.y][sp.x]) put(sp.x, sp.y, () => { const [sx, sy] = misoXYe(sp.x, sp.y); ctx.globalAlpha = sp.used ? 0.4 : 1; if (!objImg('spring', sx, sy, 22)) emoji('⛲', sx, sy - 8, 15); ctx.globalAlpha = 1; }); });
     m.groups.forEach(g => { if (g.alive && m.seen[g.y][g.x]) put(g.x, g.y, () => {
       const [sx, sy] = misoXYe(g.x, g.y), r = g.boss ? 11 : 8;

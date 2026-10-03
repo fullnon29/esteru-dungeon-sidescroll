@@ -243,7 +243,7 @@ const Core = (function () {
   // food: perStep=이동 1칸·1명당 소모, price=개당 가격, yield=[기본, 층당] 식용 몹 처치 시 식량(요리사 동행), start=새 게임 식량
   // fatigue: rest=휴식 용병 귀환 회복, work=출전 용병 귀환 회복, death=전투불능 시 감소, starve=식량 0 이동당 피로 감소
   // pace: 게임 진행 속도의 기본 배율 역수(1=기본). 클수록 모든 배속에서 느려진다(플레이 시간 조정용)
-  const TUNE = { pace: 1, food: { perStep: 0.012, price: 6, yield: [0.4, 0.03], start: 20 }, fatigue: { rest: 25, work: 5, death: 25, starve: 0.25, cook: 2 }, expScale: 1, growHp: 0.035, growAtk: 0.12, growDef: 0.30, eHp: 0.30, eAtk: 0.12, eDef: 0.15, eHp10: 0.18, eAtk10: 0.13 };
+  const TUNE = { pace: 2, food: { perStep: 0.012, price: 6, yield: [0.4, 0.03], start: 20 }, fatigue: { rest: 25, work: 5, death: 25, starve: 0.25, cook: 2 }, expScale: 1, growHp: 0.035, growAtk: 0.12, growDef: 0.30, eHp: 0.30, eAtk: 0.12, eDef: 0.15, eHp10: 0.18, eAtk10: 0.13 };
   const needExp = lv => Math.max(1, Math.round((EXP_CUM[Math.min(lv + 1, 50)] - EXP_CUM[lv]) * TUNE.expScale));
   // 적 1마리 경험치: 원작 일반 적 EXP 2(1층) → 약 1700(후반) 의 지수 곡선
   const enemyExp = (f, boss) => Math.round(2 * Math.pow(850, (f - 1) / 49) * (boss ? 8 + 20 * f / 50 : 1));
@@ -264,7 +264,7 @@ const Core = (function () {
   const costOf = u => CLASSES[u.cls].cost + RARITY[rarOf(u)].costAdd;
   // 요리사 자동 보급: 요리사가 출전 파티에 있으면 최소 5층 분량(층당 약 200걸음)까지 식량을 자동 구매해 채운다.
   // 급료를 지불한 뒤 남은 골드 범위에서만 구매한다. 요리사가 없으면 null.
-  const SUPPLY_FLOORS = 5, STEPS_PER_FLOOR = 200;
+  const SUPPLY_FLOORS = 7, STEPS_PER_FLOOR = 300; // 요리사 자동 보급 목표: 7층 분량 (층이 넓어져 층당 약 300걸음 기준)
   function supplyPlan(s) {
     const party = s.units.filter(u => u.hired && s.formation[u.id] && canSortie(u));
     if (!party.some(u => baseCls(u) === 'cook')) return null;
@@ -325,7 +325,7 @@ const Core = (function () {
     byName('레온').equip.weapon = 'w_sword'; byName('실비아').equip.weapon = 'w_bow';
     byName('루나').equip.weapon = 'w_mace'; byName('핀').equip.weapon = 'w_dagger';
     const s = {
-      v: 3, opts: { autoEquip: true, autoIdle: false }, squads: [], mats: {}, bps: Object.fromEntries(START_BPS.map(id => [id, true])), promo: 0, food: TUNE.food.start, gold: 600, day: 1, maxFloor: 1, cleared: false, units,
+      v: 3, opts: { autoEquip: true, autoIdle: false }, squads: [], comp: {}, mats: {}, bps: Object.fromEntries(START_BPS.map(id => [id, true])), promo: 0, food: TUNE.food.start, gold: 600, day: 1, maxFloor: 1, cleared: false, units,
       gear: ['a_leather', 'a_leather', 's_buckler', 'r_power'], cons: { potion: 3, antidote: 1, escape: 1 },
       formation: {}, policy: { retreat: 25, skill: 'mid', explore: 'full', stance: 'attack', target: 'nearest', leader: 1, downRetreat: false },
       quests: { board: [], active: [], done: 0 }, qid: 1,
@@ -345,7 +345,7 @@ const Core = (function () {
       if (u.fatigue === undefined) u.fatigue = 100;
     }
     if (s.food === undefined) s.food = TUNE.food.start;
-    if (!s.squads) s.squads = [];
+    if (!s.squads) s.squads = []; if (!s.comp) s.comp = {};
     if (!s.mats) s.mats = {}; if (!s.bps) s.bps = Object.fromEntries(START_BPS.map(id => [id, true])); if (s.promo === undefined) s.promo = 0;
     ROSTER.forEach((r, i) => { if (!s.units.find(u => u.id === i + 1)) s.units.push(mkUnit(i, r, false)); });
     s.v = 3;
@@ -734,7 +734,7 @@ const Core = (function () {
     c.alive = false;
     if (c.side === 'e') {
       const e = b.exp, s = b.save;
-      e.loot.gold += c.gold; e.kills++;
+      e.loot.gold += c.gold; e.kills++; cqCheck(e);
       giveExp(b, c.exp); dropLoot(b, c);
       // 요리사 동행 시 식용 몹을 식량으로 (유독 몹은 해독 처리해 ×0.8)
       if (c.edible && c.edible !== 'none' && b.units.some(o => o.side === 'p' && o.alive && o.u && baseCls(o.u) === 'cook')) {
@@ -982,16 +982,16 @@ const Core = (function () {
     const dist = floodDist(grid, start.x, start.y, true);
     const randTile = (pred) => { for (let k = 0; k < 300; k++) { const x = ri(1, MW - 2), y = ri(1, MH - 2), t = grid[y][x]; if ((t === T.ROOM || t === T.COR) && !used.has(y * MW + x) && pred(x, y)) { used.add(y * MW + x); return { x, y }; } } return null; };
     const chests = [], traps = [], springs = [], groups = [];
-    const nCh = 6 + ri(0, 2) + (f >= 20 ? 2 : 0);
+    const nCh = 8 + ri(0, 3) + (f >= 20 ? 2 : 0);
     for (let i = 0; i < nCh; i++) { const p = randTile((x, y) => rid[y][x] >= 0 && rid[y][x] !== 0 && !vaults.some(v => v.id === rid[y][x])); if (p) chests.push({ x: p.x, y: p.y, big: false, open: false }); }
     for (const v of vaults) for (let i = 0; i < 2; i++) { const p = randTile((x, y) => rid[y][x] === v.id); if (p) chests.push({ x: p.x, y: p.y, big: i === 0, open: false }); }
     const nTr = 8 + Math.floor(f / 4) + ri(0, 3);
     for (let i = 0; i < nTr; i++) { const p = randTile((x, y) => rid[y][x] !== 0 && !vaults.some(v => v.id === rid[y][x]) && dist[y][x] > 2); if (p) traps.push({ x: p.x, y: p.y, found: false, gone: false }); }
     for (let k = 0; k < 2; k++) if (Math.random() < 0.45) { const p = randTile((x, y) => rid[y][x] > 0 && !vaults.some(v => v.id === rid[y][x])); if (p) springs.push({ x: p.x, y: p.y, used: false }); }
-    const bossFloor = f % 5 === 0, nG = 10 + Math.floor(f / 5) + ri(0, 3);
+    const bossFloor = f % 5 === 0, nG = 14 + Math.floor(f / 4) + ri(0, 3);
     if (bossFloor) { const g = genGroup(f, true); g.x = stairs.x; g.y = stairs.y; groups.push(g); }
     for (let i = 0; i < nG; i++) { const p = randTile((x, y) => dist[y][x] >= 6 && !groups.some(g => cheb(g, { x, y }) < 3)); if (p) { const g = genGroup(f, false); g.x = p.x; g.y = p.y; groups.push(g); } }
-    if (f >= 3) for (let k = 0; k < (f >= 25 ? 3 : 2); k++) if (Math.random() < 0.7) { const el = genElite(f); const p = randTile((x, y) => dist[y][x] >= 8 && !groups.some(g => cheb(g, { x, y }) < 3)); if (p) { el.x = p.x; el.y = p.y; groups.push(el); } }
+    if (f >= 3) for (let k = 0; k < (f >= 25 ? 4 : 3); k++) if (Math.random() < 0.7) { const el = genElite(f); const p = randTile((x, y) => dist[y][x] >= 8 && !groups.some(g => cheb(g, { x, y }) < 3)); if (p) { el.x = p.x; el.y = p.y; groups.push(el); } }
     if (f >= 3) chests.forEach(c => { if (!c.big && Math.random() < 0.12) c.mimic = true; });
     if (f >= 2 && Math.random() < 0.28) { const gg = genGolden(f); const p = gg && randTile((x, y) => dist[y][x] >= 6 && !groups.some(g => cheb(g, { x, y }) < 2)); if (p) { gg.x = p.x; gg.y = p.y; groups.push(gg); } }
     // 이동맵 고저차: 시작점에서 퍼져 나가며 0~3 단 (같은 방은 평탄, 통로/방 경계에서 가끔 ±1)
@@ -1027,7 +1027,7 @@ const Core = (function () {
   function setFloor(e, f) {
     const s = e.save; e.floor = f; e.map = genFloor(f); e.pos = { x: e.map.start.x, y: e.map.start.y }; e.trail = []; e.directive = null; e.path = []; e.hist = [];
     e.reached = Math.max(e.reached, f); s.maxFloor = Math.max(s.maxFloor, f);
-    e.map.themes = floorThemes(f); e.map.tz = genZones(e.map, e.map.themes); e.foodMul = 1; e.volcSteps = 0;
+    e.map.themes = floorThemes(f); e.map.tz = genZones(e.map, e.map.themes); e.foodMul = 1; e.volcSteps = 0; placeEvents(e);
     reveal(e); questEvent(s, 'reach', f, (m, c) => elog(e, m, c));
     elog(e, `⬇ ${f}층에 도착했다`, 'floor');
     if (e.map.themes.length) elog(e, `${e.map.themes.map(k => THEMES[k].icon + ' ' + THEMES[k].name).join(' + ')} 지형 — ${e.map.themes.map(k => THEMES[k].desc).join(' / ')}`, 'warn');
@@ -1047,6 +1047,7 @@ const Core = (function () {
     e.battle = createBattle(e, g); e.phase = 'battle';
     const names = e.battle.units.filter(c => c.side === 'e').map(c => c.name);
     elog(e, g.boss ? `⚔️ 수호자 출현! ${names[0]} 외 ${names.length - 1}` : `⚔️ 적과 조우: ${names.join(', ')}`, g.boss ? 'warn' : '');
+    if (g.boss) ban(e, '⚔️', '수호자 출현!', names[0], 'bad');
   }
   function openChest(e, big) {
     const f = e.floor, g = Math.round(rnd(0.8, 1.4) * (30 + f * 15) * (big ? 2 : 1));
@@ -1054,15 +1055,16 @@ const Core = (function () {
     let m = `📦 ${big ? '큰 ' : ''}보물상자! ${g}G`;
     if (Math.random() < (big ? 0.8 : 0.35)) { const id = dropItem(f, { party: e.party, luck: partyLuck(e.party) }); if (ITEMS[id].legend || ITEMS[id].gen) registerLegend(e.save, id); e.loot.items.push(id); m += ` + ${ITEMS[id].name}`; }
     if (Math.random() < 0.3) { const k = pick(['potion', 'potion', 'antidote', 'elixir']); e.save.cons[k] = (e.save.cons[k] || 0) + 1; m += ` + ${CONS[k].name}`; }
-    elog(e, m, 'good'); questEvent(e.save, 'chest', null, (mm, c) => elog(e, mm, c));
+    elog(e, m, 'good'); ban(e, big ? '🎁' : '📦', big ? '큰 보물상자!' : '보물상자', m.replace(/^📦 (큰 )?보물상자! /, ''), 'good'); questEvent(e.save, 'chest', null, (mm, c) => elog(e, mm, c)); cqCheck(e);
   }
   function triggerTrap(e, pre) {
     const t = e.party.filter(u => u.hp > 0).sort(() => Math.random() - 0.5).slice(0, 2);
     t.forEach(u => { const d = Math.max(1, Math.round(stats(u).hp * rnd(0.08, 0.15))); u.hp = Math.max(1, u.hp - d); if (Math.random() < 0.35) u.poison = true; });
-    elog(e, `⚠️ ${pre || ''}함정 발동! ${t.map(u => u.name).join(', ')} 피해${t.some(u => u.poison) ? ' (독)' : ''}`, 'bad');
+    elog(e, `⚠️ ${pre || ''}함정 발동! ${t.map(u => u.name).join(', ')} 피해${t.some(u => u.poison) ? ' (독)' : ''}`, 'bad'); ban(e, '⚠️', '함정 발동!', t.map(u => u.name).join(', ') + ' 피해', 'bad');
   }
   function finish(e, result) {
-    const s = e.save; e.done = true; e.result = result; e.phase = 'done';
+    const s = e.save; e.done = true; e.result = result; e.phase = 'done'; e.pending = null;
+    if (e.cq) { elog(e, `📜 ${e.cq.comp.name}의 의뢰에 실패했다 (원정 종료)`, 'warn'); e.cq = null; }
     if (result === 'wipe') { s.gold += Math.floor(e.loot.gold * 0.5); e.lost = true; }
     else {
       s.gold += e.loot.gold; e.loot.items.forEach(i => s.gear.push(i));
@@ -1112,10 +1114,12 @@ const Core = (function () {
       mon: (x, y) => m.groups.some(g => g.alive && m.seen[g.y][g.x] && cheb({ x, y }, g) <= 1),
       stairs: (x, y) => m.grid[y][x] === T.STAIRS,
       spring: (x, y) => m.springs.some(s => !s.used && s.x === x && s.y === y && m.seen[y][x]),
+      event: (x, y) => (m.events || []).some(v => !v.used && v.x === x && v.y === y && m.seen[y][x]),
     };
-    const T_ = { chest: '보물상자로 이동', front: '미탐색 구역 탐색', lock: '잠긴 문을 열러 이동', mon: '적을 찾아 이동', stairs: '계단으로 이동', spring: '치유의 샘으로 이동' };
+    const T_ = { chest: '보물상자로 이동', front: '미탐색 구역 탐색', lock: '잠긴 문을 열러 이동', mon: '적을 찾아 이동', stairs: '계단으로 이동', spring: '치유의 샘으로 이동', event: '이벤트 장소로 이동' };
     const get = k => { const p = bfsPath(e, F[k]); return p ? { path: p, why: T_[k] } : null; };
     if (pcts < 0.7) { const s = get('spring'); if (s) return s; }
+    if (pcts >= 0.4) { const v = get('event'); if (v) return v; } // 행상인·뽑기방·의뢰인 우선 방문
     if (pcts >= 0.5 && m.groups.some(g => g.alive && g.golden && m.seen[g.y][g.x])) { const p = bfsPath(e, (x, y) => m.groups.some(g => g.alive && g.golden && m.seen[g.y][g.x] && cheb({ x, y }, g) <= 1)); if (p) return { path: p, why: '✨ 황금 몹을 쫓는다!' }; }
     const mode = pol.explore;
     let order;
@@ -1148,24 +1152,139 @@ const Core = (function () {
     }
   }
   function descend(e) { e.floor++; for (const u of e.party) if (u.hp > 0) u.hp = Math.min(stats(u).hp, u.hp + Math.round(stats(u).hp * 0.05)); setFloor(e, e.floor); }
+  /* ---------- 이벤트: 행상인 · 뽑기방 · 특수 동료 의뢰 · 기습 (+ 모든 이벤트는 중앙 배너로 알림) ---------- */
+  const ban = (e, icon, name, sub, kind) => { e.events.push({ k: 'banner', icon, name, sub: sub || '', c: kind || '' }); };
+  const COMPANIONS = [
+    { name: '리벨', cls: 'warrior', rar: 'H', q: 'kills', need: 20, intro: '떠돌이 검사 리벨이 길동무를 찾고 있다.' },
+    { name: '아이린', cls: 'priest', rar: 'H', q: 'chests', need: 3, intro: '순례 중인 사제 아이린이 호위를 부탁한다.' },
+    { name: '엘다', cls: 'mage', rar: 'H', q: 'flawless', need: 3, intro: '실험에 지친 마술사 엘다가 파티를 시험한다.' },
+    { name: '진', cls: 'monk', rar: 'H', q: 'kills', need: 28, intro: '수행 중인 무투가 진이 대련 상대를 찾는다.' },
+    { name: '하루', cls: 'cook', rar: 'H', q: 'chests', need: 4, intro: '길 잃은 요리사 하루가 식재료를 구한다.' },
+    { name: '카를', cls: 'knight', rar: 'L', q: 'flawless', need: 5, intro: '몰락한 왕국의 기사 카를이 자격을 묻는다.' },
+    { name: '유리', cls: 'thief', rar: 'L', q: 'kills', need: 36, intro: '전설적인 도적 유리가 솜씨를 확인하려 한다.' },
+    { name: '로제', cls: 'elf', rar: 'L', q: 'chests', need: 6, intro: '숲의 궁수 로제가 보물을 찾아 달라고 한다.' },
+  ];
+  const QDESC = { kills: n => `이 원정 중 몬스터 ${n}마리 처치`, chests: n => `이 원정 중 보물상자 ${n}개 열기`, flawless: n => `전투불능 없이 ${n}회 승리` };
+  function randRoomTile(e) {
+    const m = e.map, cand = m.rooms.filter(r => r.id !== 0 && !m.vaults.includes(r.id));
+    const busy = (x, y) => m.chests.some(c => c.x === x && c.y === y) || m.traps.some(c => c.x === x && c.y === y) || m.springs.some(c => c.x === x && c.y === y) || m.groups.some(c => c.x === x && c.y === y) || (m.events || []).some(c => c.x === x && c.y === y) || (m.stairs.x === x && m.stairs.y === y);
+    for (let k = 0; k < 80 && cand.length; k++) { const r = pick(cand), x = ri(r.x, r.x + r.w - 1), y = ri(r.y, r.y + r.h - 1); if (!busy(x, y)) return { x, y }; }
+    return null;
+  }
+  function placeEvents(e) { // 층마다 확률적으로 이벤트 장소 배치 (행상인 / 뽑기방 / 특수 동료 의뢰인)
+    const f = e.floor, s = e.save, list = (e.map.events = []);
+    const add = type => { const p = randRoomTile(e); if (p) list.push({ type, x: p.x, y: p.y, used: false }); };
+    if (f >= 2 && Math.random() < 0.5) add('merchant');
+    if (f >= 3 && Math.random() < 0.4) add('gacha');
+    if (f >= 3 && Object.keys(s.comp || {}).length < COMPANIONS.length && !e.cq && Math.random() < 0.25) add('companion');
+  }
+  const EVT = { merchant: { icon: '🧳', name: '행상인' }, gacha: { icon: '🎰', name: '뽑기방' }, companion: { icon: '📜', name: '의뢰인' } };
+  function genStock(e) {
+    const f = e.floor, luck = partyLuck(e.party), st = [];
+    st.push({ k: 'cons', id: 'potion', n: 3, price: Math.round(CONS.potion.price * 3 * 0.9) });
+    st.push({ k: 'cons', id: 'elixir', n: 1, price: Math.round(CONS.elixir.price * 0.9) });
+    st.push({ k: 'food', n: 10, price: Math.round(TUNE.food.price * 10 * 0.8) });
+    const gid = dropItem(f, { luck, party: e.party, kind: 'elite' }); if (ITEMS[gid].legend || ITEMS[gid].gen) registerLegend(e.save, gid);
+    st.push({ k: 'gear', id: gid, price: Math.round(ITEMS[gid].price * 1.5) });
+    const fams = [...new Set(poolOf(f).map(x => x.fam))].filter(x => FAM_MAT[x]), fm = FAM_MAT[pick(fams)];
+    st.push({ k: 'mat', id: fm[1], n: 2, price: 150 + f * 12 });
+    st.push({ k: 'cons', id: 'revive', n: 1, price: CONS.revive.price });
+    st.forEach(x => { x.sold = false; });
+    return st;
+  }
+  function startEvent(e, v) {
+    const E = EVT[v.type];
+    if (v.type === 'merchant') { e.pending = { type: 'merchant', stock: genStock(e) }; ban(e, E.icon, '행상인 발견', '떠돌이 행상인이 물건을 펼쳤다', 'good'); elog(e, '🧳 행상인을 만났다 — 물건을 구경한다', 'good'); }
+    else if (v.type === 'gacha') { e.pending = { type: 'gacha', price: 120 + e.floor * 20, log: [] }; ban(e, E.icon, '뽑기방 발견', '수상한 뽑기 기계가 놓여 있다', 'good'); elog(e, '🎰 뽑기방을 발견했다', 'good'); }
+    else if (v.type === 'companion') {
+      const s = e.save, left = COMPANIONS.filter(c => !(s.comp && s.comp[c.name])); if (!left.length) return;
+      const c = pick(left); e.pending = { type: 'companion', comp: c, quest: QDESC[c.q](c.need) };
+      ban(e, E.icon, '특수 동료 의뢰', `${c.name} — ${c.intro}`, 'warn'); elog(e, `📜 ${c.name}의 의뢰: ${e.pending.quest}`, 'warn');
+    }
+  }
+  function buyMerchant(e, idx) {
+    const s = e.save, it = e.pending && e.pending.stock && e.pending.stock[idx]; if (!it || it.sold) return '이미 팔렸습니다';
+    if (s.gold < it.price) return '골드가 부족합니다';
+    s.gold -= it.price; it.sold = true;
+    if (it.k === 'cons') s.cons[it.id] = (s.cons[it.id] || 0) + it.n;
+    else if (it.k === 'food') s.food = Math.round((s.food + it.n) * 100) / 100;
+    else if (it.k === 'gear') s.gear.push(it.id);
+    else if (it.k === 'mat') addMats(s.mats, it.id, it.n);
+    elog(e, `🧳 ${itemLabel(it)} 구입 (−${it.price}G)`, 'good'); return null;
+  }
+  function itemLabel(it) { return it.k === 'cons' ? `${CONS[it.id].name} ×${it.n}` : it.k === 'food' ? `식량 ×${it.n}` : it.k === 'gear' ? ITEMS[it.id].name : `${MATS[it.id]} ×${it.n}`; }
+  // 뽑기: 결과는 즉시 저장에 반영(전멸해도 유지). 10연차는 9회 가격 + 정예급 장비 1개 보장.
+  function gachaOnce(e, forceGear) {
+    const s = e.save, f = e.floor, luck = partyLuck(e.party), b = Math.min(0.15, luck * 0.004), r = Math.random() - b * 0.3, fams = [...new Set(poolOf(f).map(x => x.fam))].filter(x => FAM_MAT[x]);
+    if (forceGear || (r >= 0.62 && r < 0.80)) { const id = dropItem(f, { luck, party: e.party, kind: forceGear ? 'elite' : null }); if (ITEMS[id].legend || ITEMS[id].gen) registerLegend(s, id); s.gear.push(id); return { t: ITEMS[id].name, rar: ITEMS[id].rarity || 'N' }; }
+    if (r < 0.40) { const m = FAM_MAT[pick(fams)][0], n = ri(1, 3); addMats(s.mats, m, n); return { t: `${MATS[m]} ×${n}` }; }
+    if (r < 0.62) { const k = pick(['potion', 'potion', 'antidote', 'elixir', 'ether']); s.cons[k] = (s.cons[k] || 0) + 1; return { t: `${CONS[k].name} ×1` }; }
+    if (r < 0.88) { const n = ri(3, 8); s.food = Math.round((s.food + n) * 100) / 100; return { t: `식량 ×${n}` }; }
+    if (r < 0.95) { const m = FAM_MAT[pick(fams)][1]; addMats(s.mats, m, 1); return { t: `${MATS[m]} ×1 (정예 재료)`, rar: 'U' }; }
+    if (r < 0.985) { const id = rollBlueprint(s, f, 'boss'); if (id) { s.bps[id] = true; return { t: `📐 ${ITEMS[id].name} 도면`, rar: 'H' }; } }
+    if (r >= 0.985 && Math.random() < 0.5) { s.promo = (s.promo || 0) + 1; return { t: '📜 전직서', rar: 'L' }; }
+    const g = 150 + f * 40; s.gold += g; return { t: `${g}G` };
+  }
+  function gachaPull(e, n) {
+    const p = e.pending, s = e.save; if (!p || p.type !== 'gacha') return null;
+    const cost = n === 10 ? p.price * 9 : p.price; if (s.gold < cost) return { err: '골드가 부족합니다' };
+    s.gold -= cost; const res = []; for (let i = 0; i < n; i++) res.push(gachaOnce(e, n === 10 && i === 9));
+    p.log = res.concat(p.log).slice(0, 10); elog(e, `🎰 뽑기 ${n}회 (−${cost}G): ${res.map(x => x.t).join(', ')}`, 'good'); return { res, cost };
+  }
+  function acceptCompanion(e) {
+    const p = e.pending; if (!p || p.type !== 'companion') return;
+    e.cq = { comp: p.comp, type: p.comp.q, need: p.comp.need, base: { kills: e.kills, chests: e.chests, flawless: e.flaw || 0 } };
+    elog(e, `📜 의뢰 수락: ${p.quest} → 달성 시 ${p.comp.name} 합류`, 'warn'); ban(e, '📜', '의뢰 수락', `${p.comp.name}: ${p.quest}`, 'warn'); e.pending = null;
+  }
+  const cqProgress = e => e.cq ? Math.min(e.cq.need, (e.cq.type === 'kills' ? e.kills : e.cq.type === 'chests' ? e.chests : (e.flaw || 0)) - e.cq.base[e.cq.type]) : 0;
+  function cqCheck(e) {
+    if (!e.cq || cqProgress(e) < e.cq.need) return;
+    const s = e.save, c = e.cq.comp, id = Math.max(...s.units.map(u => u.id)) + 1, u = mkUnit(id - 1, [c.name, c.cls, 1, c.rar], false);
+    u.id = id; u.special = true; u.hired = true;
+    if (c.rar === 'L') { const R = RARITY.L.luck; u.growMul = Math.round(rnd(1.3, 1.45) * 100) / 100; u.luck = ri(R[0] + 4, R[1]); u.rolled = true; }
+    u.hp = stats(u).hp; resetCharges(u); s.units.push(u); s.comp = s.comp || {}; s.comp[c.name] = true;
+    ban(e, '🤝', '특수 동료 합류!', `${c.name}(${CLASSES[c.cls].name}, ${RARITY[c.rar].name})이(가) 합류했다`, 'good'); elog(e, `🤝 ${c.name}이(가) 동료가 되었다! (용병 탭에서 편성)`, 'good'); e.cq = null; e.joined = (e.joined || []).concat(c.name);
+  }
+  function closeEvent(e) { e.pending = null; }
+  function resolveAuto(e) { // 봇/자동 처리: 행상인=회복약 보충, 뽑기=여유 있으면 1회, 의뢰=수락
+    const p = e.pending, s = e.save; if (!p) return;
+    if (p.type === 'merchant') { p.stock.forEach((it, i) => { if (it.k === 'cons' && it.id === 'potion' && (s.cons.potion || 0) < 5 && s.gold > it.price * 20) buyMerchant(e, i); }); closeEvent(e); }
+    else if (p.type === 'gacha') { if (s.gold > p.price * 30) gachaPull(e, 1); closeEvent(e); }
+    else if (p.type === 'companion') acceptCompanion(e);
+  }
+  // 기습: 은신한 적이 덮쳐 무작위 대원의 남은 HP를 10% 깎고 전투가 강제로 시작된다. 도적이 있으면 50% 확률로 간파.
+  function ambush(e) {
+    const m = e.map, live = e.party.filter(u => u.hp > 0); if (!live.length) return false;
+    const g = genGroup(e.floor, false); g.ambush = true; g.name = '기습'; g.announced = true;
+    const nb = D8.map(([dx, dy]) => [e.pos.x + dx, e.pos.y + dy]).filter(([x, y]) => inb(x, y) && m.grid[y][x] !== T.WALL && m.grid[y][x] !== T.LOCK && !m.groups.some(o => o.alive && o.x === x && o.y === y));
+    const q = nb.length ? pick(nb) : [e.pos.x, e.pos.y]; g.x = q[0]; g.y = q[1]; m.groups.push(g);
+    if (hasThief(e) && Math.random() < 0.5) { ban(e, '🗡️', '기습 간파!', '도적이 은신한 적을 먼저 알아챘다', 'good'); elog(e, '🗡️ 도적이 매복을 간파했다! 피해 없이 전투 개시', 'good'); }
+    else {
+      const hit = live.slice().sort(() => Math.random() - 0.5).slice(0, Math.min(2, live.length));
+      hit.forEach(u => { u.hp = Math.max(1, u.hp - Math.max(1, Math.round(u.hp * 0.1))); });
+      ban(e, '💥', '기습!', `은신한 적의 습격 — ${hit.map(u => u.name).join(', ')} 남은 HP −10%`, 'bad'); elog(e, `💥 기습! ${hit.map(u => u.name).join(', ')}의 남은 HP가 10% 줄었다`, 'bad');
+    }
+    startBattle(e, g); return true;
+  }
   function arrive(e) {
     const m = e.map, { x, y } = e.pos, t = m.grid[y][x];
     reveal(e);
-    for (const g of m.groups) if (g.golden && g.alive && !g.announced && m.seen[g.y][g.x]) { g.announced = true; elog(e, `✨ ${g.name} 발견! 제한 시간 안에 잡으면 큰 보상!`, 'good'); }
+    for (const g of m.groups) if (g.golden && g.alive && !g.announced && m.seen[g.y][g.x]) { g.announced = true; elog(e, `✨ ${g.name} 발견! 제한 시간 안에 잡으면 큰 보상!`, 'good'); ban(e, '✨', '황금 몹 출현!', `${g.name} — 제한 시간 안에 잡아라`, 'good'); }
     if (t === T.DOOR) m.grid[y][x] = T.OPEN;
-    if (t === T.LOCK) { m.grid[y][x] = T.OPEN; elog(e, '🔓 도적이 잠긴 문을 열었다!', 'good'); }
-    for (const g of m.groups) if (g.elite && g.alive && !g.announced && m.seen[g.y][g.x]) { g.announced = true; elog(e, '☠️ 정예 몹이 배회하고 있다! 강하지만 전리품이 좋다', 'warn'); }
+    if (t === T.LOCK) { m.grid[y][x] = T.OPEN; elog(e, '🔓 도적이 잠긴 문을 열었다!', 'good'); ban(e, '🔓', '금고방 개방', '도적이 잠긴 문을 열었다', 'good'); }
+    for (const g of m.groups) if (g.elite && g.alive && !g.announced && m.seen[g.y][g.x]) { g.announced = true; elog(e, '☠️ 정예 몹이 배회하고 있다! 강하지만 전리품이 좋다', 'warn'); ban(e, '☠️', '정예 몹 발견', '강하지만 전리품이 좋다', 'warn'); }
     const c = m.chests.find(c => !c.open && c.x === x && c.y === y);
     if (c) {
       if (c.mimic) {
         c.mimic = false; const g = { tpls: ['mimic'], boss: false, alive: true, special: true, icon: '📦', name: '미믹', x, y, chest: c, announced: true }; m.groups.push(g);
-        elog(e, hasThief(e) ? '🔎 도적이 눈치챘지만 이미 늦었다! 상자는 미믹이었다!' : '📦 상자가 이빨을 드러냈다! 미믹이다!', 'warn'); startBattle(e, g); return;
+        elog(e, hasThief(e) ? '🔎 도적이 눈치챘지만 이미 늦었다! 상자는 미믹이었다!' : '📦 상자가 이빨을 드러냈다! 미믹이다!', 'warn'); ban(e, '📦', '미믹 출현!', '상자가 이빨을 드러냈다', 'bad'); startBattle(e, g); return;
       }
       c.open = true; openChest(e, c.big);
     }
     const tr = m.traps.find(t2 => !t2.gone && t2.x === x && t2.y === y); if (tr) { tr.gone = true; triggerTrap(e, ''); }
     const sp = m.springs.find(s => !s.used && s.x === x && s.y === y);
-    if (sp && e.party.some(u => u.hp > 0 && u.hp < stats(u).hp * 0.85)) { sp.used = true; e.party.forEach(u => { if (u.hp > 0) u.hp = Math.min(stats(u).hp, u.hp + Math.round(stats(u).hp * 0.4)); }); elog(e, '⛲ 치유의 샘! 파티의 HP가 회복되었다', 'good'); }
+    if (sp && e.party.some(u => u.hp > 0 && u.hp < stats(u).hp * 0.85)) { sp.used = true; e.party.forEach(u => { if (u.hp > 0) u.hp = Math.min(stats(u).hp, u.hp + Math.round(stats(u).hp * 0.4)); }); elog(e, '⛲ 치유의 샘! 파티의 HP가 회복되었다', 'good'); ban(e, '⛲', '치유의 샘', '파티의 HP가 회복되었다', 'good'); }
+    const evt = m.events && m.events.find(v => !v.used && v.x === x && v.y === y); if (evt) { evt.used = true; startEvent(e, evt); }
     if (t === T.STAIRS) descend(e);
   }
   // 정예 몹 배회 / 추격 (3걸음마다 한 칸, 추격 몹은 2걸음마다)
@@ -1203,11 +1322,11 @@ const Core = (function () {
     e.spawned = e.spawned || {};
     if (e.floor >= 5 && e.fallFloor === e.floor && !e.spawned['s' + e.floor] && Math.random() < 0.04) {
       const g = { tpls: ['spirit', 'spirit'], boss: false, alive: true, special: true, wander: true, chase: true, icon: '👻', name: '원혼', announced: true, x: 0, y: 0 };
-      if (spawnNear(e, g, 4, 7)) { e.spawned['s' + e.floor] = 1; elog(e, '👻 쓰러진 동료의 원혼이 나타났다!', 'warn'); }
+      if (spawnNear(e, g, 4, 7)) { e.spawned['s' + e.floor] = 1; elog(e, '👻 쓰러진 동료의 원혼이 나타났다!', 'warn'); ban(e, '👻', '원혼 출현', '쓰러진 동료의 원혼이 추격한다', 'bad'); }
     }
     if (e.floor >= 6 && e.loot.gold >= 260 * e.floor && !e.spawned['b' + e.floor] && Math.random() < 0.015) {
       const g = { tpls: ['bandit', 'bandit', 'bandit'], boss: false, alive: true, special: true, wander: true, chase: true, icon: '🗡️', name: '도적단', announced: true, x: 0, y: 0 };
-      if (spawnNear(e, g, 5, 8)) { e.spawned['b' + e.floor] = 1; elog(e, '🗡️ 노획물을 노리는 도적단이 나타났다!', 'warn'); }
+      if (spawnNear(e, g, 5, 8)) { e.spawned['b' + e.floor] = 1; elog(e, '🗡️ 노획물을 노리는 도적단이 나타났다!', 'warn'); ban(e, '🗡️', '도적단 습격', '노획물을 노리는 도적단이 나타났다', 'bad'); }
     }
   }
   // 이동 1칸마다 식량 소모(2-B). 식량이 0이면 피로 가속 하락 → 피로 0 이면 HP 서서히 감소
@@ -1249,6 +1368,7 @@ const Core = (function () {
     const g = m.groups.find(g => g.alive && cheb(e.pos, g) <= 1); if (g) { startBattle(e, g); return; }
     e.healT += STEP; if (e.healT > 2) { e.healT = 0; healWalk(e); }
     moveWanderers(e); checkSpecials(e);
+    if (e.floor >= 2 && Math.random() < 0.0009 && ambush(e)) return; // 기습 이벤트(걸음마다 낮은 확률)
     const tg = pickTarget(e);
     if (!tg) { m.seen.forEach(r => r.fill(true)); e.text = '길을 찾는 중…'; return; }
     e.path = tg.path; e.text = `${e.floor}층 · ${tg.why}`;
@@ -1266,6 +1386,7 @@ const Core = (function () {
   }
   function stepExpedition(e, dt) {
     if (e.done) return;
+    if (e.pending) { if (e.autoResolve) resolveAuto(e); else return; } // 이벤트 창이 열려 있는 동안 진행 정지
     if (e.phase === 'explore') {
       e.moveT += dt; let n = 0;
       while (e.moveT >= STEP && e.phase === 'explore' && !e.done && n++ < 6) { e.moveT -= STEP; stepMove(e); }
@@ -1286,7 +1407,8 @@ const Core = (function () {
         b.group.alive = false; elog(e, '🏆 승리!', 'good');
         if (b.foodGain) elog(e, `🍳 요리사가 몹을 손질했다 (식량 +${Math.round(b.foodGain * 10) / 10})`, 'good');
         if (b.group.chest) { b.group.chest.open = true; openChest(e, true); }
-        if (b.fallen === 0) questEvent(e.save, 'flawless', null, (m, c) => elog(e, m, c));
+        if (b.fallen === 0) { questEvent(e.save, 'flawless', null, (m, c) => elog(e, m, c)); e.flaw = (e.flaw || 0) + 1; }
+        cqCheck(e);
         e.phase = 'explore'; e.moveT = -0.4; e.battle = null;
         if (b.group.boss && e.floor >= MAXF) { elog(e, '👑 흑왕을 쓰러뜨렸다! 50층 미궁 완전 정복!', 'good'); finish(e, 'clear'); return; }
         if (e.party.every(u => u.hp <= 0)) finish(e, 'wipe');
@@ -1363,6 +1485,6 @@ const Core = (function () {
     return p.join(' ');
   }
 
-  return { supplyPlan, SQUADS, squadSlots, squadCap, squadUsed, squadErr, activeSquads, squadUnits, inSquad, setSquad, assignSquad, sortieWage, PROMO_PRICE, buyPromo, MATS, matKind, FAM_MAT, craftBases, recipeOf, canCraft, craft, terrainHave, PROMO, PROMO_LV, canPromote, promote, comboOf, baseCls, THEMES, floorThemes, fatOf, fatMul, canSortie, buyFood, RARITY, RAR_ORDER, CRAFT_ENABLED, canUse, canLead, costOf, hireCost, hireUnit, migrateSave, partyLuck, rarOf, GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, MW, MH, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
+  return { COMPANIONS, QDESC, EVT, cqProgress, buyMerchant, itemLabel, gachaPull, acceptCompanion, closeEvent, supplyPlan, SQUADS, squadSlots, squadCap, squadUsed, squadErr, activeSquads, squadUnits, inSquad, setSquad, assignSquad, sortieWage, PROMO_PRICE, buyPromo, MATS, matKind, FAM_MAT, craftBases, recipeOf, canCraft, craft, terrainHave, PROMO, PROMO_LV, canPromote, promote, comboOf, baseCls, THEMES, floorThemes, fatOf, fatMul, canSortie, buyFood, RARITY, RAR_ORDER, CRAFT_ENABLED, canUse, canLead, costOf, hireCost, hireUnit, migrateSave, partyLuck, rarOf, GRID, FRONT_Y, BACK_Y, MAXF, MAXLV, CLASSES, ROW_TXT, SKILLS, SLOTS, ITEMS, CONS, ENEMIES, BOSSES, famsOf, needExp, TUNE, EXP_CUM, GOLDEN, SPECIALS, skillsOf, maxCharges, resetCharges, ensureCharges, stats, newSave, setDirective, genFloor, MW, MH, T, restoreLegends, costCap, usedCost, zoneOk, unitAt, place, autoFormation, genQuests, questEvent, createExpedition, stepExpedition, manualRetreat, useConsumable, equip, autoEquip, describe, wageOf, dropItem, registerLegend };
 })();
 if (typeof module !== 'undefined') module.exports = Core; else window.Core = Core;

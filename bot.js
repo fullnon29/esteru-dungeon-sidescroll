@@ -88,6 +88,7 @@ function runBot(opts) {
     buyCons();
     const prevMax = s.maxFloor; // 신규 층 판정: 이번 원정 이전 최고 층보다 깊은 층
     const e = C.createExpedition(s, Math.max(1, s.maxFloor - (runs % 3)));
+    e.autoResolve = true; // 이벤트(행상인·뽑기·의뢰)는 봇이 자동 처리
     st.squadSum += e.squads.length; if (e.squads.length) st.squadRuns++;
     let t = 0; while (!e.done && t < 30000) { C.stepExpedition(e, 0.1); e.events = []; t++; if (e.floor > prevMax) st.newTicks++; else st.oldTicks++; }
     if (e.result === 'wipe') { st.wipes++; if (e.reached <= 10) st.earlyWipes++; }
@@ -96,7 +97,7 @@ function runBot(opts) {
   }
   const top = s.units.filter(u => u.hired).map(u => u.lv).sort((a, b) => b - a)[0];
   // 예상 플레이 시간(시간): 출시 규칙(기본 4배속, 신규 층 2배속 제한) + 캠프 정비 시간(회차당 CAMP_SEC초)
-  const hours = (st.newTicks * 0.1 / 2 + st.oldTicks * 0.1 / 4 + runs * (opts.campSec || 120)) / 3600;
+  const pace = C.TUNE.pace || 1, hours = ((st.newTicks * 0.1 / 2 + st.oldTicks * 0.1 / 4) * pace + runs * (opts.campSec || 120)) / 3600;
   return Object.assign({ hours, runs, cleared: s.cleared, topLv: top, units: s.units.filter(u => u.hired).length, promoted: s.units.filter(u => C.CLASSES[u.cls].promo).length }, st);
 }
 
