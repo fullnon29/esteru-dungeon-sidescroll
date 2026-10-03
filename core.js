@@ -240,7 +240,7 @@ const Core = (function () {
   ENEMIES.concat(GOLDEN, SPECIALS).forEach(t => { t.edible = EDIBLE[t.id] || 'none'; });
   { const BE = { 5: 'harmless', 15: 'poison', 20: 'poison', 40: 'harmless', 45: 'harmless' }; for (const f in BOSSES) BOSSES[f].edible = BE[f] || 'none'; BOSSES[40].premium = BOSSES[45].premium = true; }
   // 몬스터 특수 능력 (Phase 5): split 분열 / steal 도둑질 / weaken 쇠약 / revive 부활 / pierce 방어 관통 / drain 흡혈 / enrage 격노 / thorns 가시
-  const MAX_RANGE = 4; // 아군 기본 공격 사거리 상한(근접 1 · 원거리도 최대 4)
+  const MAX_RANGE = 3; // 아군 기본 공격 사거리 상한(근접 1 · 원거리 최대 3). 이후 스킬·장비로 균형을 추가할 예정
   const ABIL = { slime: ['split'], goblin: ['steal'], bat: ['drain'], spider: ['weaken'], skel: ['revive'], orc: ['enrage'], golem: ['thorns'], vamp: ['drain'], demon: ['pierce'], succ: ['drain'], dragon: ['enrage'], dknight: ['pierce', 'enrage'], lich: ['revive'], bandit: ['steal'], mimic: ['steal'] };
   const ABIL_ICON = { split: '🧬', steal: '🪙', weaken: '🕸️', revive: '💀', pierce: '🗡️', drain: '🩸', enrage: '💢', thorns: '🌵' };
   const ABIL_DESC = { split: '피격 시 분열', steal: '골드를 훔침', weaken: '공격력을 깎음', revive: '한 번 되살아남', pierce: '방어 50% 무시', drain: '피해의 30% 흡혈', enrage: 'HP 40%↓ 격노', thorns: '근접 공격 반사' };
@@ -259,7 +259,7 @@ const Core = (function () {
   // fatigue: rest=휴식 용병 귀환 회복, work=출전 용병 귀환 회복, death=전투불능 시 감소, starve=식량 0 이동당 피로 감소
   // pace: 게임 진행 속도의 기본 배율 역수(1=기본). 클수록 모든 배속에서 느려진다(플레이 시간 조정용)
   // goldMul: 탐사(몬스터·상자·몬스터 하우스)로 얻는 골드 배율. 전리품 판매(상점·행상인)로 보충한다
-  const TUNE = { goldMul: 0.4, pace: 5, food: { perStep: 0.012, price: 6, yield: [0.4, 0.03], start: 20 }, fatigue: { rest: 25, work: 5, death: 25, starve: 0.25, cook: 2 }, expScale: 4, growHp: 0.035, growAtk: 0.12, growDef: 0.30, eHp: 0.30, eAtk: 0.12, eDef: 0.15, eHp10: 0.18, eAtk10: 0.13 };
+  const TUNE = { goldMul: 0.4, pace: 6, food: { perStep: 0.012, price: 6, yield: [0.4, 0.03], start: 20 }, fatigue: { rest: 25, work: 5, death: 25, starve: 0.25, cook: 2 }, expScale: 4, growHp: 0.035, growAtk: 0.12, growDef: 0.30, eHp: 0.30, eAtk: 0.12, eDef: 0.15, eHp10: 0.18, eAtk10: 0.13 };
   const needExp = lv => Math.max(1, Math.round((EXP_CUM[Math.min(lv + 1, 50)] - EXP_CUM[lv]) * TUNE.expScale));
   // 적 1마리 경험치: 원작 일반 적 EXP 2(1층) → 약 1700(후반) 의 지수 곡선
   const enemyExp = (f, boss) => Math.round(2 * Math.pow(850, (f - 1) / 49) * (boss ? 8 + 20 * f / 50 : 1));

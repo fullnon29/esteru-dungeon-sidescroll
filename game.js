@@ -25,7 +25,7 @@
     return s;
   }
   function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S.save)); } catch (e) { /* 무시 */ } }
-  function loadPrefs() { try { Object.assign(S.prefs, JSON.parse(localStorage.getItem(PREF_KEY) || '{}')); } catch (e) { /* 무시 */ } document.body.classList.toggle('reduce', !!S.prefs.reduce); S.speed = Math.min(S.prefs.speed || 1, SPEEDS[SPEEDS.length - 1]); if ([1, 2, 3, 5, 7, 9].includes(S.prefs.pace)) C.TUNE.pace = S.prefs.pace; }
+  function loadPrefs() { try { Object.assign(S.prefs, JSON.parse(localStorage.getItem(PREF_KEY) || '{}')); } catch (e) { /* 무시 */ } document.body.classList.toggle('reduce', !!S.prefs.reduce); S.speed = Math.min(S.prefs.speed || 1, SPEEDS[SPEEDS.length - 1]); if ([1, 2, 4, 6, 7, 9].includes(S.prefs.pace)) C.TUNE.pace = S.prefs.pace; }
   function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify(S.prefs)); } catch (e) { /* 무시 */ } }
   loadPrefs(); S.save = load(); S.startFloor = C.defaultStart(S.save);
 
@@ -526,7 +526,7 @@
     openModal(`<h2>⚙ 설정</h2>
       <h3>화면</h3><label class="check"><input type="checkbox" data-pref="reduce" ${S.prefs.reduce ? 'checked' : ''}> 애니메이션 줄이기</label>
       <div class="pol" style="margin-top:6px"><label>기본 배속</label><select data-pref="speed">${SPEEDS.map(n => `<option value="${n}" ${S.prefs.speed === n ? 'selected' : ''}>×${n}</option>`).join('')}</select></div>
-      <div class="pol" style="margin-top:6px"><label title="모든 배속에 곱해지는 기본 진행 속도. 5=총 플레이 약 45시간 기준(기본), 9=느림, 1=원래 속도(테스트용 가장 빠름)">진행 속도</label><select data-pref="pace">${[[9, '느림'], [7, '조금 느림'], [5, '기본 (약 45시간 기준)'], [3, '빠름'], [2, '더 빠름'], [1, '매우 빠름 (원래 속도)']].map(([v, t]) => `<option value="${v}" ${C.TUNE.pace === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+      <div class="pol" style="margin-top:6px"><label title="모든 배속에 곱해지는 기본 진행 속도. 6=총 플레이 약 45시간 기준(기본), 9=느림, 1=원래 속도(테스트용 가장 빠름)">진행 속도</label><select data-pref="pace">${[[9, '느림'], [7, '조금 느림'], [6, '기본 (약 45시간 기준)'], [4, '빠름'], [2, '더 빠름'], [1, '매우 빠름 (원래 속도)']].map(([v, t]) => `<option value="${v}" ${C.TUNE.pace === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
       <div class="pol" style="margin-top:6px"><label title="전투 중 누가 누구를 노리는지 선으로 표시: 적→대원 주황(도발 시 빨강), 대원→적 파랑, 치유 초록">표적선</label><select data-pref="lines">${[['all', '모두 표시'], ['enemy', '적의 표적만'], ['off', '끄기']].map(([v, t]) => `<option value="${v}" ${(S.prefs.lines || 'all') === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
       <div class="pol" style="margin-top:6px"><label title="우상단 ⏺ 버튼으로 게임 캔버스를 녹화해 webm 으로 저장합니다(1분 약 4MB / 11MB)">녹화 화질</label><select data-pref="recq">${Object.entries(RECQ).map(([k, q]) => `<option value="${k}" ${(S.prefs.recq || 'low') === k ? 'selected' : ''}>${q.name} (${q.fps}fps · ${Math.round(q.bps / 1000)}kbps)</option>`).join('')}</select></div>
       <label class="check"><input type="checkbox" data-pref="fullscreen" ${S.prefs.fullscreen ? 'checked' : ''}> 시작 시 전체 화면 (첫 클릭/키 입력 때 적용 · 우상단 ⛶ 버튼, F11로도 전환)</label>
