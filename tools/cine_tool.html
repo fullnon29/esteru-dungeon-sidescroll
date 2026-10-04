@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>오의 연출 편집기</title>
+<style>
+  :root { --bg:#14161d; --panel:#1d2130; --line:#2f3550; --txt:#e4e8f5; --dim:#8d96b4; --acc:#6aa8ff; --ok:#6fd08c; --bad:#ef6b6b; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:14px/1.5 "Malgun Gothic",system-ui,sans-serif; }
+  header { padding:12px 20px; border-bottom:1px solid var(--line); display:flex; gap:14px; align-items:baseline; flex-wrap:wrap; }
+  h1 { margin:0; font-size:18px; } header small { color:var(--dim); }
+  main { display:grid; grid-template-columns:minmax(0,520px) minmax(0,1fr); gap:16px; padding:14px 20px; align-items:start; }
+  main > div { min-width:0; }
+  @media (max-width:1100px) { main { grid-template-columns:minmax(0,1fr); } }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px 14px; margin-bottom:14px; }
+  h2 { margin:0 0 8px; font-size:14px; color:var(--acc); display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  button, select, input { background:#252b40; color:var(--txt); border:1px solid var(--line); border-radius:5px; padding:3px 7px; font:inherit; }
+  button { cursor:pointer; } button:hover { border-color:var(--acc); } button.primary { background:#2f5fb0; border-color:#4a7fd8; } button.sm { padding:1px 7px; font-size:12px; }
+  input[type=number] { width:60px; } input[type=text] { width:100%; } input[type=color] { padding:0; width:30px; height:24px; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:4px 0; } .row > label { display:flex; gap:5px; align-items:center; }
+  .dim { color:var(--dim); font-size:12px; } .ok { color:var(--ok); } .bad { color:var(--bad); }
+  .step { border:1px solid var(--line); border-left-width:5px; border-radius:6px; padding:5px 8px; margin-bottom:6px; background:#191d2b; }
+  .step .row { margin:2px 0; } .step label { font-size:12px; color:var(--dim); } .step input[type=number] { width:56px; } .step input[type=text] { width:120px; }
+  canvas { border:1px solid var(--line); border-radius:4px; max-width:100%; }
+  #log { height:90px; overflow:auto; font:12px/1.5 Consolas,monospace; background:#0d0f16; border:1px solid var(--line); border-radius:5px; padding:6px; white-space:pre-wrap; }
+</style>
+</head>
+<body>
+<header><h1>오의 연출 편집기</h1><small>스킬 id 마다 연출(암전·줌·이펙트·번쩍임·히트스톱·배너)을 시간표로 짜고, 게임과 같은 엔진(cine.js)으로 미리 보고 → assets/cine/cine_manifest.js 로 내보낸다</small></header>
+<main>
+<div>
+  <section>
+    <h2>① 연출 <span><select id="cSel"></select><button class="sm" id="cNew">새 연출</button><button class="sm" id="cDup">복제</button><button class="sm" id="cDel">삭제</button></span></h2>
+    <div class="row"><label>스킬 id(키) <input type="text" id="c_key" style="width:110px"></label><label>이름(배너 {skill} 미리보기용) <input type="text" id="c_name" style="width:110px"></label></div>
+    <div class="row"><label>전체 길이(초) <input type="number" id="c_dur" step="0.05" min="0.3" max="6"></label><label>일격 시점(초) <input type="number" id="c_hit" step="0.05" min="0" max="6"></label></div>
+    <div class="dim">일격 시점 = 피해 숫자·피격 모션·번쩍임이 나오는 순간. 스킬 id 는 게임의 스킬 id(예: kenki, sacred, renkan, pierce, meteor, sanctuary, assassinate). 연출이 있는 스킬은 기본 동작·이펙트 대신 이 연출이 재생된다.</div>
+  </section>
+  <section>
+    <h2>② 스텝 <span><select id="addType"></select><button class="sm" id="addStep">추가</button><button class="sm" id="sortSteps">시간순 정렬</button></span></h2>
+    <div id="steps"></div>
+  </section>
+  <section>
+    <h2>③ 내보내기</h2>
+    <div class="row"><button id="pickOut">프로젝트 폴더 선택…</button><span id="outInfo" class="dim">미선택 — ZIP·JSON 저장 가능</span></div>
+    <div class="row"><button id="exportDir" class="primary" disabled>폴더에 내보내기</button><button id="exportZip">ZIP</button><button id="exportJson">JSON 저장</button><button id="importJson">JSON 불러오기</button></div>
+    <div class="dim"><code>assets/cine/cine_manifest.js</code>(<code>window.CINE_MANIFEST</code>) — 같은 스킬 id 는 덮어쓰고 나머지는 유지한다. 폴더를 고르면 기존 연출도 불러온다. 게임에 쓰려면 <code>cine.js</code> 와 이 파일이 <code>index.html</code> 에 로드돼 있어야 한다.</div>
+    <div id="log"></div>
+  </section>
+</div>
+<div>
+  <section>
+    <h2>미리보기 <span class="row" style="margin:0"><button class="sm" id="play">▶ 재생</button><button class="sm" id="rewind">⏮</button><label class="dim"><input type="checkbox" id="loop" checked> 반복</label><label class="dim">속도 <select id="spd"><option>0.25</option><option>0.5</option><option selected>1</option></select></label><span class="dim" id="tinfo"></span></span></h2>
+    <canvas id="stage" width="640" height="360" style="width:100%;background:#0f121b"></canvas>
+    <div class="dim" style="margin:6px 0 2px">타임라인 — 클릭/드래그로 이동 · 노란 선 = 일격 · 빨간 선 = 현재</div>
+    <canvas id="tl" width="900" height="170" style="width:100%;background:#10131c;cursor:ew-resize"></canvas>
+    <div class="dim">미리보기의 이펙트는 <code>assets/fx/</code> 의 시트를 쓴다(이 파일을 프로젝트의 <code>tools/</code> 에서 서버로 열었을 때). 시전자(왼쪽)·목표(오른쪽)는 임시 인형이다.</div>
+  </section>
+</div>
+</main>
+<script src="../cine.js"></script>
+<script src="../assets/fx/fx_manifest.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const log = m => { const l = $('log'); l.textContent += m + '\n'; l.scrollTop = l.scrollHeight; };
+const safe = s => String(s).replace(/[^\w\-@]+/g, '_').replace(/^_+|_+$/g, '');
+
+/* ===================== 스텝 정의 ===================== */
+const COLORS = { dim: '#6a7fa8', zoom: '#6fd08c', timescale: '#b58cff', flash: '#ffe27a', shake: '#ff9a5a', fx: '#4fb8ff', anim: '#ef6b6b', freeze: '#d0d0d0', banner: '#ffc83a' };
+const NAMES = { dim: '암전', zoom: '줌', timescale: '슬로모션', flash: '화면 번쩍임', shake: '화면 흔들림', fx: '이펙트', anim: '시전자 동작', freeze: '히트스톱', banner: '스킬 이름 배너' };
+const ACTS = ['atk', 'heavy', 'sweep', 'combo', 'shoot', 'guard', 'taunt', 'cast', 'dodge'];
+// 필드: [키, 이름, 종류, 옵션/최소, 최대, 간격, 기본]
+const FIELDS = {
+  dim: [['to', '어둡기', 'n', 0, 1, 0.05, 0.5], ['dur', '걸리는 시간', 'n', 0.05, 3, 0.05, 0.25]],
+  zoom: [['to', '배율', 'n', 1, 2.5, 0.05, 1.3], ['dur', '걸리는 시간', 'n', 0.05, 3, 0.05, 0.3], ['focus', '초점', 's', ['target', 'caster', 'mid'], 0, 0, 'target']],
+  timescale: [['to', '속도', 'n', 0.05, 1, 0.05, 0.4], ['dur', '걸리는 시간', 'n', 0.05, 3, 0.05, 0.15]],
+  flash: [['alpha', '세기', 'n', 0, 1, 0.05, 0.6], ['dur', '지속', 'n', 0.05, 2, 0.05, 0.15], ['color', '색', 'c', 0, 0, 0, '#ffffff']],
+  shake: [['amp', '세기(px)', 'n', 1, 30, 1, 8], ['dur', '지속', 'n', 0.05, 2, 0.05, 0.3]],
+  fx: [['name', '이펙트', 'fx', 0, 0, 0, 'slash'], ['at', '위치', 's', ['target', 'caster'], 0, 0, 'target'], ['ox', '가로 오프셋', 'o', -128, 128, 1, undefined], ['oy', '세로 오프셋', 'o', -192, 128, 1, undefined], ['scale', '크기', 'o', 0.25, 3, 0.05, undefined]],
+  anim: [['act', '동작', 's', ACTS, 0, 0, 'heavy'], ['dur', '미리보기 길이', 'n', 0.1, 2, 0.05, 0.4]],
+  freeze: [['dur', '정지 시간', 'n', 0.03, 0.25, 0.01, 0.1]],
+  banner: [['text', '문구', 't', 0, 0, 0, '{skill}'], ['dur', '지속', 'n', 0.2, 4, 0.1, 1.2]],
+};
+const newStep = (type, t = 0) => { const s = { t, type }; for (const f of FIELDS[type]) if (f[6] !== undefined) s[f[0]] = f[6]; return s; };
+const DEF = () => ({ name: '새 오의', dur: 1.5, hit: 0.6, steps: [newStep('dim', 0), newStep('banner', 0), newStep('fx', 0.4), newStep('flash', 0.6), newStep('shake', 0.6), newStep('dim', 0.95)].map(s => s.type === 'dim' && s.t > 0 ? Object.assign(s, { to: 0 }) : s) });
+
+/* ===================== 상태 ===================== */
+const st = { cine: {}, key: '', t: 0, playing: true, hold: 0, outDir: null, imgs: {}, last: performance.now() };
+function loadFxImages() { const fm = window.FX_MANIFEST || {}; for (const n in fm) { if (st.imgs[n]) continue; const im = new Image(); im.onload = () => { st.imgs[n].ok = true; }; im.src = '../' + fm[n].path; st.imgs[n] = { im, m: fm[n], ok: false }; } }
+const fxInfo = name => { const f = st.imgs[name]; return f ? { fps: f.m.fps, n: f.m.n } : null; };
+const cur = () => st.cine[st.key];
+
+/* ===================== 스텝 편집 UI ===================== */
+function renderSelect() { const s = $('cSel'); s.innerHTML = ''; for (const k in st.cine) { const o = document.createElement('option'); o.value = k; o.textContent = `${k} — ${st.cine[k].name || ''}`; s.appendChild(o); } s.value = st.key; }
+function renderMeta() { const c = cur(); if (!c) return; $('c_key').value = st.key; $('c_name').value = c.name || ''; $('c_dur').value = c.dur; $('c_hit').value = c.hit; }
+function renderSteps() {
+  const box = $('steps'); box.innerHTML = ''; const c = cur(); if (!c) return;
+  c.steps.forEach((s, i) => { const d = document.createElement('div'); d.className = 'step'; d.style.borderLeftColor = COLORS[s.type];
+    const fx = Object.keys(window.FX_MANIFEST || {});
+    let html = `<div class="row"><b style="color:${COLORS[s.type]}">${NAMES[s.type]}</b><label>시작 <input type="number" data-k="t" value="${s.t}" step="0.05" min="0" max="8"></label><span style="flex:1"></span><button class="sm" data-a="cp">복제</button><button class="sm" data-a="del">✕</button></div><div class="row">`;
+    for (const [k, nm, kind, a, b, stp] of FIELDS[s.type]) { const v = s[k];
+      if (kind === 'n') html += `<label>${nm} <input type="number" data-k="${k}" value="${v}" min="${a}" max="${b}" step="${stp}"></label>`;
+      else if (kind === 'o') html += `<label>${nm} <input type="number" data-k="${k}" data-opt="1" value="${v === undefined ? '' : v}" placeholder="기본" min="${a}" max="${b}" step="${stp}"></label>`;
+      else if (kind === 'c') html += `<label>${nm} <input type="color" data-k="${k}" value="${v || '#ffffff'}"></label>`;
+      else if (kind === 't') html += `<label>${nm} <input type="text" data-k="${k}" value="${v || ''}"></label>`;
+      else if (kind === 's') html += `<label>${nm} <select data-k="${k}">${a.map(o => `<option ${o === v ? 'selected' : ''}>${o}</option>`).join('')}</select></label>`;
+      else if (kind === 'fx') html += `<label>${nm} <select data-k="${k}">${(fx.includes(v) ? fx : fx.concat(v ? [v] : [])).map(o => `<option ${o === v ? 'selected' : ''}>${o}</option>`).join('')}</select></label>`; }
+    d.innerHTML = html + '</div>';
+    d.querySelectorAll('[data-k]').forEach(el => { const f = () => { const k = el.dataset.k; let v = el.type === 'number' ? (el.value === '' && el.dataset.opt ? undefined : +el.value) : el.value; if (v === undefined) delete s[k]; else s[k] = v; if (k === 't') { /* 타임라인만 갱신 */ } }; el.oninput = el.onchange = f; });
+    d.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { if (b.dataset.a === 'del') c.steps.splice(i, 1); else c.steps.splice(i + 1, 0, JSON.parse(JSON.stringify(s))); renderSteps(); });
+    box.appendChild(d); });
+}
+for (const k in NAMES) { const o = document.createElement('option'); o.value = k; o.textContent = NAMES[k]; $('addType').appendChild(o); }
+$('addStep').onclick = () => { const c = cur(); if (!c) return; c.steps.push(newStep($('addType').value, +(st.t).toFixed(2))); renderSteps(); };
+$('sortSteps').onclick = () => { const c = cur(); if (c) { c.steps.sort((a, b) => a.t - b.t); renderSteps(); } };
+$('cSel').onchange = () => { st.key = $('cSel').value; st.t = 0; renderMeta(); renderSteps(); };
+$('cNew').onclick = () => { let k = 'skill' + (Object.keys(st.cine).length + 1); while (st.cine[k]) k += '_'; st.cine[k] = DEF(); st.key = k; renderSelect(); renderMeta(); renderSteps(); };
+$('cDup').onclick = () => { const c = cur(); if (!c) return; let k = st.key + '_copy'; while (st.cine[k]) k += '_'; st.cine[k] = JSON.parse(JSON.stringify(c)); st.key = k; renderSelect(); renderMeta(); renderSteps(); };
+$('cDel').onclick = () => { if (Object.keys(st.cine).length < 2) return; if (!confirm(`"${st.key}" 연출을 삭제할까?`)) return; delete st.cine[st.key]; st.key = Object.keys(st.cine)[0]; renderSelect(); renderMeta(); renderSteps(); };
+$('c_key').onchange = () => { const nk = safe($('c_key').value); if (!nk || nk === st.key || st.cine[nk]) { $('c_key').value = st.key; return; } st.cine[nk] = st.cine[st.key]; delete st.cine[st.key]; st.key = nk; renderSelect(); };
+$('c_name').oninput = () => { cur().name = $('c_name').value; };
+$('c_dur').oninput = () => { cur().dur = clamp(+$('c_dur').value || 1, 0.3, 6); };
+$('c_hit').oninput = () => { cur().hit = clamp(+$('c_hit').value || 0, 0, 6); };
+
+/* ===================== 미리보기 ===================== */
+const dummy = (() => { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); x.fillStyle = '#8a6a44'; x.fillRect(38, 52, 11, 34); x.fillRect(79, 52, 11, 34); x.fillStyle = '#c9a36a'; x.fillRect(48, 48, 32, 40); x.fillStyle = '#e8c9a0'; x.beginPath(); x.arc(64, 34, 14, 0, 7); x.fill(); x.fillStyle = '#5a4630'; x.fillRect(50, 88, 12, 14); x.fillRect(66, 88, 12, 14); return c; })();
+const tinted = (src, col) => { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); x.drawImage(src, 0, 0); x.globalCompositeOperation = 'source-atop'; x.fillStyle = col; x.fillRect(0, 0, 128, 128); return c; };
+const CASTER = tinted(dummy, 'rgba(80,140,255,.35)'), TARGET = tinted(dummy, 'rgba(255,90,90,.35)'), WHITE = tinted(dummy, 'rgba(255,255,255,.9)');
+const POS = { caster: [190, 250], target: [450, 250] }; // 발 위치
+function drawStage(c, t) {
+  const cv = $('stage'), x = cv.getContext('2d'), W = cv.width, H = cv.height, cs = Cine.sample(c, t, fxInfo); x.clearRect(0, 0, W, H); x.save();
+  if (cs.shake > 0) { const r = Math.sin(t * 91) * cs.shake, r2 = Math.cos(t * 73) * cs.shake; x.translate(r, r2 * 0.6); }
+  const chest = k => [POS[k][0], POS[k][1] - 40], foc = cs.focus === 'caster' ? chest('caster') : cs.focus === 'mid' ? [(chest('caster')[0] + chest('target')[0]) / 2, chest('target')[1]] : chest('target');
+  if (cs.zoom !== 1) { x.translate(foc[0], foc[1]); x.scale(cs.zoom, cs.zoom); x.translate(-foc[0], -foc[1]); }
+  // 바닥(타일): 쿼터뷰 마름모 격자
+  for (let gy = 0; gy < 8; gy++) for (let gx = 0; gx < 8; gx++) { const sx = W / 2 + (gx - gy) * 38, sy = 150 + (gx + gy) * 19; x.fillStyle = (gx + gy) % 2 ? '#26334f' : '#2a3a5a'; x.beginPath(); x.moveTo(sx, sy - 19); x.lineTo(sx + 38, sy); x.lineTo(sx, sy + 19); x.lineTo(sx - 38, sy); x.closePath(); x.fill(); }
+  if (cs.dim > 0) { x.fillStyle = `rgba(0,0,0,${cs.dim})`; x.fillRect(-W, -H, W * 3, H * 3); } // 유닛 아래에서 타일만 어둡게
+  const u = (img, k, dx) => { x.drawImage(img, POS[k][0] - 64 + dx, POS[k][1] - 102, 128, 128); };
+  u(CASTER, 'caster', cs.lunge * 70); const since = t - c.hit; u(since >= 0 && since < 0.1 ? WHITE : TARGET, 'target', 0);
+  x.save(); x.imageSmoothingEnabled = false;
+  for (const f of cs.fx) { const im = st.imgs[f.name]; if (!im || !im.ok) continue; const m = im.m, p = POS[f.at === 'caster' ? 'caster' : 'target'], sz = m.cell * (f.scale !== undefined ? f.scale : (m.scale || 1)), ox = f.ox !== undefined ? f.ox : (m.ox || 0), oy = f.oy !== undefined ? f.oy : (m.oy === undefined ? -34 : m.oy), lx = f.at === 'caster' ? cs.lunge * 70 : 0;
+    x.drawImage(im.im, f.fr * m.cell, 0, m.cell, m.cell, p[0] + lx + ox - sz / 2, p[1] + oy - sz / 2, sz, sz); }
+  x.restore(); x.restore();
+  for (const f of cs.flash) { x.fillStyle = f.color; x.globalAlpha = clamp(f.a, 0, 1); x.fillRect(0, 0, W, H); } x.globalAlpha = 1;
+  if (cs.banner) { const b = cs.banner, p = b.p, a = p < 0.15 ? p / 0.15 : p > 0.8 ? (1 - p) / 0.2 : 1, slide = Math.pow(1 - Math.min(1, p / 0.2), 2) * 120, text = (b.text || '{skill}').replace('{skill}', c.name || ''); x.save(); x.globalAlpha = clamp(a, 0, 1); x.fillStyle = 'rgba(0,0,0,.55)'; x.fillRect(0, H * 0.14, W, 52); x.font = '900 32px "Malgun Gothic",sans-serif'; x.textAlign = 'center'; x.lineWidth = 5; x.strokeStyle = '#000'; x.strokeText(text, W / 2 - slide, H * 0.14 + 38); x.fillStyle = '#ffe27a'; x.fillText(text, W / 2 - slide, H * 0.14 + 38); x.restore(); }
+  $('tinfo').textContent = `${t.toFixed(2)} / ${c.dur.toFixed(2)}초${cs.ts < 0.99 ? ` · 슬로모션 ×${cs.ts.toFixed(2)}` : ''}${st.hold > 0 ? ' · 히트스톱' : ''}`;
+}
+function drawTimeline(c, t) {
+  const cv = $('tl'), x = cv.getContext('2d'), W = cv.width, H = cv.height, L = 70, R = W - 12, T = Math.max(c.dur, 0.5), px = s => L + (R - L) * s / T, types = Object.keys(NAMES), lh = (H - 22) / types.length; x.clearRect(0, 0, W, H);
+  x.font = '11px sans-serif'; x.textBaseline = 'middle';
+  for (let s = 0; s <= T + 0.001; s += 0.25) { x.strokeStyle = s % 0.5 === 0 ? 'rgba(255,255,255,.14)' : 'rgba(255,255,255,.06)'; x.beginPath(); x.moveTo(px(s), 14); x.lineTo(px(s), H); x.stroke(); if (s % 0.5 === 0) { x.fillStyle = '#8d96b4'; x.textAlign = 'center'; x.fillText(s.toFixed(1), px(s), 7); } }
+  types.forEach((ty, i) => { const y = 16 + i * lh; x.fillStyle = COLORS[ty]; x.textAlign = 'left'; x.fillText(NAMES[ty], 4, y + lh / 2);
+    c.steps.filter(s => s.type === ty).forEach(s => { let d = s.dur || 0.1; if (ty === 'fx') { const f = fxInfo(s.name); d = f ? f.n / f.fps : 0.4; } x.fillStyle = COLORS[ty]; x.globalAlpha = 0.85; x.fillRect(px(s.t), y + 2, Math.max(4, px(s.t + d) - px(s.t)), lh - 4); x.globalAlpha = 1; }); });
+  x.strokeStyle = '#ffd24a'; x.lineWidth = 2; x.beginPath(); x.moveTo(px(c.hit), 12); x.lineTo(px(c.hit), H); x.stroke(); x.strokeStyle = '#ff5a5a'; x.beginPath(); x.moveTo(px(t), 12); x.lineTo(px(t), H); x.stroke(); x.lineWidth = 1;
+  cv._px = { L, R, T };
+}
+let drag = false; const scrub = e => { const cv = $('tl'), r = cv.getBoundingClientRect(), p = cv._px, xx = (e.clientX - r.left) * cv.width / r.width; st.t = clamp((xx - p.L) / (p.R - p.L) * p.T, 0, cur().dur); st.hold = 0; };
+$('tl').onmousedown = e => { drag = true; st.playing = false; $('play').textContent = '▶ 재생'; scrub(e); }; window.addEventListener('mousemove', e => { if (drag) scrub(e); }); window.addEventListener('mouseup', () => { drag = false; });
+$('play').onclick = () => { st.playing = !st.playing; $('play').textContent = st.playing ? '⏸ 정지' : '▶ 재생'; };
+$('rewind').onclick = () => { st.t = 0; st.hold = 0; };
+function tick(now) {
+  const dt = Math.min(0.1, (now - st.last) / 1000); st.last = now; const c = cur();
+  if (c) { if (st.playing) { if (st.hold > 0) st.hold -= dt; else { const t0 = st.t; st.t += dt * +$('spd').value; for (const s of Cine.events(c, t0, st.t)) if (s.type === 'freeze') st.hold = Math.max(st.hold, (s.dur || 0.1) / +$('spd').value); if (st.t >= c.dur) { if ($('loop').checked) { st.t = 0; } else { st.t = c.dur; st.playing = false; $('play').textContent = '▶ 재생'; } } } }
+    drawStage(c, st.t); drawTimeline(c, st.t); }
+  requestAnimationFrame(tick);
+}
+
+/* ===================== 불러오기·내보내기 ===================== */
+const DATA_RE = /\/\*DATA\*\/([\s\S]*?)\/\*END\*\//;
+const parseManifest = txt => { const m = DATA_RE.exec(txt); if (!m) throw new Error('cine_manifest.js 형식이 아니다'); return JSON.parse(m[1]); };
+const manText = data => `// 오의(필살기) 연출 데이터 — 스킬 id 를 키로 한다. 편집: tools/cine_tool.html (규격은 cine.js 머리 주석). 같은 이름은 덮어쓰고 나머지는 유지한다\nwindow.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/${JSON.stringify(data, null, 1)}/*END*/);\n`;
+function clean(c) { const o = JSON.parse(JSON.stringify(c)); o.steps.sort((a, b) => a.t - b.t); return o; }
+const allClean = () => Object.fromEntries(Object.entries(st.cine).map(([k, c]) => [k, clean(c)]));
+async function writeFile(dir, path, data) { const parts = path.split('/'), name = parts.pop(); let h = dir; for (const q of parts) h = await h.getDirectoryHandle(q, { create: true }); const fh = await h.getFileHandle(name, { create: true }), w = await fh.createWritable(); await w.write(data); await w.close(); }
+async function readText(dir, path) { try { const parts = path.split('/'), name = parts.pop(); let h = dir; for (const q of parts) h = await h.getDirectoryHandle(q); return await (await h.getFileHandle(name)).getFile().then(f => f.text()); } catch (e) { return null; } }
+$('pickOut').onclick = async () => { if (!window.showDirectoryPicker) { log('이 브라우저는 폴더 쓰기를 지원하지 않는다. ZIP/JSON 저장을 쓴다.'); return; } try { st.outDir = await showDirectoryPicker({ mode: 'readwrite' }); $('outInfo').textContent = st.outDir.name; $('exportDir').disabled = false;
+  const t = await readText(st.outDir, 'assets/cine/cine_manifest.js'); if (t) { const old = parseManifest(t); let n = 0; for (const k in old) if (!st.cine[k]) { st.cine[k] = old[k]; n++; } else { st.cine[k] = old[k]; n++; } st.key = Object.keys(st.cine)[0]; renderSelect(); renderMeta(); renderSteps(); log(`폴더의 기존 연출 ${n}개를 불러왔다.`); } } catch (e) { log('폴더 선택/읽기 실패: ' + e.message); } };
+$('exportDir').onclick = async () => { try { let data = {}; const t = await readText(st.outDir, 'assets/cine/cine_manifest.js'); if (t) try { data = parseManifest(t); } catch (e) { } Object.assign(data, allClean()); await writeFile(st.outDir, 'assets/cine/cine_manifest.js', manText(data)); log(`저장: assets/cine/cine_manifest.js (연출 ${Object.keys(data).length}개). 게임의 ?v= 캐시 번호를 올려 새로고침한다.`); } catch (e) { log('실패: ' + e.message); } };
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })(), crc32 = u => { let c = 0xFFFFFFFF; for (let i = 0; i < u.length; i++) c = CRC[(c ^ u[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+function makeZip(files) { const enc = new TextEncoder(), parts = [], cen = []; let off = 0; for (const f of files) { const nm = enc.encode(f.path), d = enc.encode(f.text), crc = crc32(d), h = new DataView(new ArrayBuffer(30)); h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(12, 0x21, true); h.setUint32(14, crc, true); h.setUint32(18, d.length, true); h.setUint32(22, d.length, true); h.setUint16(26, nm.length, true); parts.push(new Uint8Array(h.buffer), nm, d); const c = new DataView(new ArrayBuffer(46)); c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(14, 0x21, true); c.setUint32(16, crc, true); c.setUint32(20, d.length, true); c.setUint32(24, d.length, true); c.setUint16(28, nm.length, true); c.setUint32(42, off, true); cen.push(new Uint8Array(c.buffer), nm); off += 30 + nm.length + d.length; }
+  const cs = cen.reduce((a, b) => a + b.length, 0), e = new DataView(new ArrayBuffer(22)); e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, cs, true); e.setUint32(16, off, true); return new Blob([...parts, ...cen, new Uint8Array(e.buffer)], { type: 'application/zip' }); }
+const download = (blob, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); };
+$('exportZip').onclick = () => { download(makeZip([{ path: 'assets/cine/cine_manifest.js', text: manText(allClean()) }]), 'cine_export.zip'); log('ZIP 저장 (이 편집기의 연출 전체가 담긴다 — 기존 파일과는 직접 합치거나 폴더 내보내기를 쓴다)'); };
+$('exportJson').onclick = () => download(new Blob([JSON.stringify(allClean(), null, 1)], { type: 'application/json' }), 'cine_recipes.json');
+$('importJson').onclick = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = '.json,.js'; i.onchange = async () => { try { const t = await i.files[0].text(), o = /\.js$/i.test(i.files[0].name) ? parseManifest(t) : JSON.parse(t); for (const k in o) st.cine[safe(k)] = o[k]; st.key = Object.keys(st.cine)[0]; renderSelect(); renderMeta(); renderSteps(); log('불러왔다.'); } catch (e) { log('불러오기 실패: ' + e.message); } }; i.click(); };
+
+/* ===================== 시작 ===================== */
+loadFxImages();
+fetch('../assets/cine/cine_manifest.js').then(r => r.ok ? r.text() : Promise.reject()).then(t => { st.cine = parseManifest(t); }).catch(() => { st.cine = { new_skill: DEF() }; }).then(() => { st.key = Object.keys(st.cine)[0]; renderSelect(); renderMeta(); renderSteps(); requestAnimationFrame(tick); });
+window.__cine = { st, drawStage, parseManifest, manText, allClean, makeZip, FIELDS, newStep, DEF };
+</script>
+</body>
+</html>

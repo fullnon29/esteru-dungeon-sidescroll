@@ -54,6 +54,12 @@ slime(슬라임), goblin(고블린), gobarch(고블린 궁수), bat(큰박쥐), 
 - 내보내기: `assets/fx/{name}.png`(가로 스트립) + `{name}.recipe.json`(다시 편집용) + `assets/fx/fx_manifest.js`(`window.FX_MANIFEST`, 같은 이름은 덮어쓰고 나머지는 유지). `ASSET_MANIFEST` 와 분리한 `FX_MANIFEST` 를 `assets.js`(`Assets.fx(이름)`)가 읽는다.
 - **게임 연동(`render.js`)**: 전투 중 스킬/기본 공격 이벤트가 나면 타겟 칸 위에 이펙트 시트를 재생한다. 이름 대응은 `render.js` 의 `FX_BY`(스킬 id → 이펙트 이름: power→heavy, cleave/flurry/kenki/assassinate→slash, volley/renkan/pierce→hit, fire/meteor→fire, ice→ice, thunder→lightning, heal/bless/antidote→heal, holy/sacred/sanctuary/guard→buff, taunt→shockwave, 기본 공격→hit)이고, 해당 이름의 시트가 없으면 기존 이모지 표시로 돌아간다. 이펙트의 **타격 프레임이 공격 모션의 타격 순간과 만나도록** 미리 시작하고, 타격 프레임에서 **화면 흔들림**(레시피 `shake`, 설정의 흔들림 배율·감소 모드 반영)과 **히트스톱**(`hitStop`, 스킬만, 최대 0.09초, 배속이 빠르면 짧아짐)을 적용한다. 피해를 입는 개체는 레시피의 `flashFrames`(프레임÷fps, 배속 반영)만큼 **흰색으로 번쩍**인다(애니메이션 시트·정지 이미지·이모지 토큰 모두 / 독 피해·시트 없는 스킬·흔들림 감소 설정에서는 없음). 이펙트가 놓이는 위치는 이펙트마다 정한다: 매니페스트의 `ox`·`oy`(타겟의 **발 위치 기준 게임 px**, 기본 `ox=0`·`oy=-34`=발 위 34px)와 `scale`(크기 배율)을 쓰고, 값이 없는 예전 시트는 기존 위치 그대로 그려진다. 프리셋 기본값은 가슴 높이 이펙트 −30~−40, 바닥 이펙트(충격파·버프)는 −6. 이펙트 생성기의 "가로/세로 오프셋·크기 배율"과 타겟 미리보기(발 = 점선 십자)로 맞춘다. 새 이펙트를 만들면 `index.html` 의 `?v=` 값을 올린다.
 
+## 오의(필살기) 연출
+- 전직 고유 스킬 등에 **시간표 연출**을 붙인다: `cine.js`(엔진, 게임·편집기 공용) + `assets/cine/cine_manifest.js`(`window.CINE_MANIFEST[스킬 id]`) + 편집기 `tools/cine_tool.html`(`http://localhost:8123/tools/cine_tool.html`).
+- 연출 = `{ dur, hit, steps: [{ t, type, … }] }`. 스텝: **dim**(타일만 암전, 유닛은 밝게) · **zoom**(초점 target/caster/mid) · **timescale**(슬로모션) · **flash**(화면 번쩍임) · **shake** · **fx**(이펙트 시트, 위치 target/caster, ox/oy/scale 덮어쓰기 가능) · **anim**(시전자 동작) · **freeze**(히트스톱) · **banner**(스킬 이름, `{skill}`). 새 연출은 코드 수정 없이 데이터만 추가하면 된다.
+- 게임 동작(`render.js`): 스킬 이벤트의 `sid` 에 연출이 있으면 기본 동작·이펙트·이름 표시 대신 연출을 재생한다. 피해 숫자·피격·번쩍임은 **일격 시점(`hit`)** 에 나온다(연출 시계 기준이라 슬로모션과 무관). 배속이 빠르면 연출도 빨라지고, 흔들림 감소 설정에서는 연출을 건너뛴다. 연출 중 다른 연출은 시작하지 않는다.
+- 기본 데이터: kenki(검기 난무)·sacred(성스러운 일격)·renkan(연환권)·pierce(관통 사격)·meteor(메테오)·sanctuary(성역)·assassinate(암살). 쓰는 이펙트는 `assets/fx` 의 이름(slash, heavy, hit, fire, lightning, buff, heal, shockwave …).
+
 ## 적용 예
 ```js
 portraits: { warrior: 'assets/portraits/warrior.png', '레온': 'assets/portraits/leon.png' },

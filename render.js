@@ -84,7 +84,8 @@ const Render = (function () {
   const pickAct = (a, chain) => chain.find(k => a.img[k]) || null;
   const animK = () => Math.min(3, Math.max(1, ((S && S.speed) || 1) / 1.5)); // 배속이 빠르면 모션·타격 타이밍도 함께 당긴다
   const hitDelay = (a, act) => { const n = animN(a, act), h = a.m.hit && a.m.hit[act] !== undefined ? a.m.hit[act] : Math.round(n * 0.4); return h / animFps(a, act) / animK(); }; // 타격 순간(프레임)까지의 초
-  function later(sec, fn) { if (sec <= 0.02) fn(); else (S.later = S.later || []).push({ t: sec, fn }); }
+  let cineLaterOn = false; // 오의 연출이 시작된 이벤트 묶음 동안: 늦춘 처리(피해 표시 등)를 슬로모션과 무관한 연출 시계로 돌린다
+  function later(sec, fn) { if (cineLaterOn && S.cine) { S.cine.later.push({ t: sec, fn }); return; } if (sec <= 0.02) fn(); else (S.later = S.later || []).push({ t: sec, fn }); }
   /* ---------- 이펙트(FX) 시트 재생: tools/fx_tool.html 로 만든 assets/fx/*.png (규격은 assets/README.md) ---------- */
   // 스킬 id → 이펙트 이름. 해당 이름의 시트가 없으면 이펙트 없이 기존 표시(이모지)를 쓴다. 기본 공격은 'hit'.
   const FX_BY = { power: 'heavy', cleave: 'slash', flurry: 'slash', kenki: 'slash', assassinate: 'slash', volley: 'hit', renkan: 'hit', pierce: 'hit', fire: 'fire', meteor: 'fire', ice: 'ice', thunder: 'lightning', heal: 'heal', bless: 'heal', antidote: 'heal', holy: 'buff', sacred: 'buff', sanctuary: 'buff', guard: 'buff', taunt: 'shockwave' };
@@ -93,20 +94,41 @@ const Render = (function () {
     const f = Assets.fx(name); if (!f) return false; const hitSec = (f.m.hit || 0) / f.m.fps / animK();
     later(Math.max(0, delay - hitSec), () => { (S.fxs = S.fxs || []).push({ f, gx: v.x, gy: v.y, t: 0, hit: false, big }); }); return f; // 재생을 시작했으면 그 이펙트(없으면 false)
   }
+  /* ---------- 오의(필살기) 연출: cine.js 엔진 + assets/cine/cine_manifest.js(스킬 id → 연출). 편집은 tools/cine_tool.html ---------- */
+  const startCine = (def, v) => { S.cine = { def, t: 0, prev: -1, later: [], who: v.from, tx: v.x, ty: v.y, name: v.n || '', cs: null, ts: 1 }; return true; };
+  const cineInfo = name => { const f = Assets.fx(name); return f ? { fps: f.m.fps, n: f.m.n } : null; };
+  function cineTick(dtc) { // 연출 시계를 진행하고, 한 번만 일어나는 스텝(동작·히트스톱)과 늦춘 처리를 실행. 배속이 빠르면 연출도 빨라진다
+    const c = S.cine; if (!c) return; const k = animK(), t0 = c.prev; c.t += dtc * k;
+    for (const st of Cine.events(c.def, t0, c.t)) {
+      if (st.type === 'freeze') { if (!reduced()) S.freeze = Math.min(0.25, (st.dur || 0.1) / k); }
+      else if (st.type === 'anim' && c.who) { const a = animEnt(c.who); if (a && a.img[st.act]) animPlay(c.who, st.act, true, dirOf(c.tx - c.who.x, c.ty - c.who.y)); }
+    }
+    c.prev = c.t; const due = c.later.filter(it => c.t >= it.t); c.later = c.later.filter(it => c.t < it.t); due.forEach(it => it.fn());
+    c.cs = Cine.sample(c.def, c.t, cineInfo); c.ts = c.cs.ts;
+    if (c.cs.shake > 0 && !reduced()) S.frameShake = { t: 0.05, d: 0.05, amp: c.cs.shake * shakeK() };
+    if (c.t >= c.def.dur) { c.later.forEach(it => it.fn()); S.cine = null; }
+  }
+  function cineOverlay() { // 화면 전체 번쩍임·스킬 이름 배너(확대와 무관하게 화면에 고정)
+    const c = S.cine; if (!c || !c.cs) return; const cs = c.cs;
+    for (const f of cs.flash) { ctx.fillStyle = f.color; ctx.globalAlpha = Math.max(0, Math.min(1, f.a)); ctx.fillRect(0, 0, W, H); } ctx.globalAlpha = 1;
+    if (cs.banner) { const b = cs.banner, p = b.p, a = p < 0.15 ? p / 0.15 : p > 0.8 ? (1 - p) / 0.2 : 1, slide = Math.pow(1 - Math.min(1, p / 0.2), 2) * 120, text = (b.text || '{skill}').replace('{skill}', c.name || '');
+      ctx.save(); ctx.globalAlpha = Math.max(0, a); ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, H * 0.14, W, 52); ctx.font = '900 32px "Malgun Gothic",sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 5; ctx.strokeStyle = '#000'; ctx.strokeText(text, W / 2 - slide, H * 0.14 + 38); ctx.fillStyle = '#ffe27a'; ctx.fillText(text, W / 2 - slide, H * 0.14 + 38); ctx.restore(); }
+  }
   function procEvents(e) {
-    S.areas = S.areas || []; S.tileShake = S.tileShake || {}; const bt = e.battle; let delay = 0, flashSec = 0; // flashSec: 직전 이펙트가 정한 피격 번쩍임 시간(초). delay: 직전 행동의 타격 순간. 피해·치유 표시·피격 모션은 이만큼 늦춰 휘두르는 모션과 맞춘다
+    S.areas = S.areas || []; S.tileShake = S.tileShake || {}; const bt = e.battle; cineLaterOn = false; let delay = 0, flashSec = 0; // flashSec: 직전 이펙트가 정한 피격 번쩍임 시간(초). delay: 직전 행동의 타격 순간. 피해·치유 표시·피격 모션은 이만큼 늦춰 휘두르는 모션과 맞춘다
     const unitAt = v => bt && bt.units.find(c => c.alive && Math.round(c.x) === Math.round(v.x) && Math.round(c.y) === Math.round(v.y));
     for (const v of e.events) {
       if (v.k === 'learn') { S.learnFx = S.learnFx || []; S.learnFx.push({ x: v.x, y: v.y, age: 0 }); }
       if (v.k === 'fx' && v.from) {
         const a = animEnt(v.from), face = dirOf(v.x - v.from.x, v.y - v.from.y), chain = v.t === 'atk' ? ['atk'] : (SKILL_ANIM[v.sid] || ['cast', 'atk']), act = a && pickAct(a, chain);
-        if (act) { animPlay(v.from, act, true, face); delay = hitDelay(a, act); } else delay = 0;
+        const cd = v.sid && typeof Cine !== 'undefined' && window.CINE_MANIFEST && window.CINE_MANIFEST[v.sid], cineOn = !!(cd && !S.cine && !reduced() && startCine(cd, v)); // 오의 연출이 있고 지금 다른 연출이 없으면 연출로 대체(기본 동작·이펙트·이름 표시는 건너뜀)
+        if (cineOn) { cineLaterOn = true; delay = cd.hit; } else if (act) { animPlay(v.from, act, true, face); delay = hitDelay(a, act); } else delay = 0;
         S.lastDelay = delay;
-        if (v.n) S.floaters.push({ x: v.from.x, y: v.from.y, t: v.n, col: '#ffd86b', age: 0, up: 28, big: true });
+        if (v.n && !cineOn) S.floaters.push({ x: v.from.x, y: v.from.y, t: v.n, col: '#ffd86b', age: 0, up: 28, big: true });
         if (v.t === 'atk' && !a) { const [ax, ay] = iso(v.from.x, v.from.y), [bx, by] = iso(v.x, v.y), d = Math.hypot(bx - ax, by - ay) || 1; v.from.lx = (bx - ax) / d * 12; v.from.ly = (by - ay) / d * 12; v.from.lt = 0.18; } // 애니메이션 없는 개체만 앞으로 밀리는 연출
-        const fxn = fxName(v), fxOk = fxn && fxPlay(fxn, v, delay, v.t !== 'atk'); // 이펙트 시트가 있으면 그걸로, 없으면 아래 이모지 표시
+        const fxn = cineOn ? null : fxName(v), fxOk = fxn && fxPlay(fxn, v, delay, v.t !== 'atk'); // 이펙트 시트가 있으면 그걸로, 없으면 아래 이모지 표시
         flashSec = fxOk ? (fxOk.m.flashFrames || 0) / fxOk.m.fps / animK() : 0;
-        if (!fxOk && (v.t === 'fire' || v.t === 'skill' || v.t === 'heal')) later(delay, () => S.floaters.push({ x: v.x, y: v.y, t: v.t === 'fire' ? '🔥' : v.t === 'heal' ? '✨' : '⚡', col: '#fff', age: 0, fx: true }));
+        if (!cineOn && !fxOk && (v.t === 'fire' || v.t === 'skill' || v.t === 'heal')) later(delay, () => S.floaters.push({ x: v.x, y: v.y, t: v.t === 'fire' ? '🔥' : v.t === 'heal' ? '✨' : '⚡', col: '#fff', age: 0, fx: true }));
       }
       if (v.k === 'area') later(delay, () => { S.areas.push({ cells: v.cells, col: v.col, age: 0 }); if (v.big && !reduced()) S.frameShake = { t: 0.4, d: 0.4, amp: 16 * shakeK() }; });
       if (v.k === 'dmg') v.fl = flashSec; // 이 피해 앞의 이펙트가 정한 번쩍임(이벤트에 실어 늦춘 처리에서 쓴다)
@@ -121,6 +143,7 @@ const Render = (function () {
       else if (v.k === 'miss') later(delay, () => { const tg = unitAt(v), a = tg && animEnt(tg), act = a && pickAct(a, ['dodge']); if (act) animPlay(tg, act, true); S.floaters.push({ x: v.x, y: v.y, t: 'MISS', col: '#9fb2ff', age: 0 }); });
       else if (v.k === 'heal') later(delay, () => S.floaters.push({ x: v.x, y: v.y, t: '+' + v.v, col: '#7cf0a0', age: 0 }));
     }
+    cineLaterOn = false;
   }
   /* ---------- 캠프 편성판 / 전투 무대 ---------- */
   function boardEntities() {
@@ -144,8 +167,14 @@ const Render = (function () {
     const elAt = (x, y) => hg ? hg[clamp(Math.round(y), 0, 8)][clamp(Math.round(x), 0, 8)] * HST : 0;
     // 흔들림: 화면(범위 마법) · 타일(치명타)
     if (S.later && S.later.length) { const q = S.later; S.later = []; for (const it of q) { it.t -= dt; if (it.t <= 0) it.fn(); else S.later.push(it); } } // 타격 순간에 맞춰 늦춘 표시들
+    if (S.cine) cineTick(S.cineDt || 0);
     ctx.save(); S.areas = S.areas || []; S.tileShake = S.tileShake || {};
     const fs = S.frameShake; if (fs && fs.t > 0) { const am = fs.amp * (fs.t / fs.d); ctx.translate((Math.random() - 0.5) * 2 * am, (Math.random() - 0.5) * 2 * am); fs.t -= dt; }
+    const cineAt = (gx, gy) => { const [ax, ay] = iso(gx, gy); return [ax, ay - elAt(gx, gy) - 30]; }; // 연출 초점: 칸 위 가슴 높이
+    if (S.cine && S.cine.cs && S.cine.cs.zoom !== 1) { // 오의 연출 확대: 초점(목표/시전자/가운데)을 중심으로
+      const c = S.cine, w = c.who ? cineAt(c.who.x, c.who.y) : cineAt(c.tx, c.ty), t = cineAt(c.tx, c.ty), foc = c.cs.focus === 'caster' ? w : c.cs.focus === 'mid' ? [(w[0] + t[0]) / 2, (w[1] + t[1]) / 2] : t;
+      ctx.translate(foc[0], foc[1]); ctx.scale(c.cs.zoom, c.cs.zoom); ctx.translate(-foc[0], -foc[1]);
+    }
     const jit = {}; for (const k in S.tileShake) { S.tileShake[k] -= dt; if (S.tileShake[k] <= 0) delete S.tileShake[k]; else { const r = S.tileShake[k] / 0.45, am = 15 * shakeK() * r; jit[k] = [Math.sin(S.time * 75) * am, Math.cos(S.time * 91) * am * 0.8 - am * 0.35, r]; } } // 감쇠 진동 + 번쩍임(r)
     const jOf = (x, y) => jit[x + ',' + y] || [0, 0];
     bgFill(camp ? 'camp' : 'arena', '#1a1d29', '#0b0d13');
@@ -211,6 +240,7 @@ const Render = (function () {
       }
       ctx.restore();
     }
+    if (S.cine && S.cine.cs && S.cine.cs.dim > 0) { ctx.fillStyle = 'rgba(0,0,0,' + S.cine.cs.dim + ')'; ctx.fillRect(-W, -H, W * 3, H * 3); } // 오의 연출 암전: 타일만 어두워지고 유닛은 밝게 남는다
     for (const c of ents) {
       let [sx, sy] = iso(c.dx, c.dy); sy -= elAt(c.dx, c.dy); const r = 17 * (c.size || 1);
       { const j = jOf(Math.round(c.dx), Math.round(c.dy)); sx += j[0]; sy += j[1]; }
@@ -269,6 +299,12 @@ const Render = (function () {
         ctx.drawImage(x.f.img, fr * m.cell, 0, m.cell, m.cell, sx + ox - sz / 2, sy - elAt(x.gx, x.gy) + oy - sz / 2, sz, sz); }
       S.fxs = S.fxs.filter(x => !x.done); ctx.restore();
     }
+    if (S.cine && S.cine.cs && S.cine.cs.fx.length) { // 오의 연출 이펙트: 시각에서 바로 계산한 프레임을 그린다
+      ctx.save(); ctx.imageSmoothingEnabled = false; const cn = S.cine;
+      for (const x of cn.cs.fx) { const f = Assets.fx(x.name); if (!f) continue; const m = f.m, gx = x.at === 'caster' && cn.who ? cn.who.x : cn.tx, gy = x.at === 'caster' && cn.who ? cn.who.y : cn.ty, [sx, sy] = iso(gx, gy), sz = m.cell * (x.scale !== undefined ? x.scale : (m.scale || 1)), ox = x.ox !== undefined ? x.ox : (m.ox || 0), oy = x.oy !== undefined ? x.oy : (m.oy === undefined ? -34 : m.oy);
+        ctx.drawImage(f.img, x.fr * m.cell, 0, m.cell, m.cell, sx + ox - sz / 2, sy - elAt(gx, gy) + oy - sz / 2, sz, sz); }
+      ctx.restore();
+    }
     for (const f of S.floaters) {
       f.age += dt; const [sx, sy] = iso(f.x, f.y), a = 1 - f.age / (f.fx ? 0.5 : 1.0); if (a <= 0) continue;
       ctx.globalAlpha = Math.max(0, a); ctx.textAlign = 'center';
@@ -278,6 +314,7 @@ const Render = (function () {
     S.floaters = S.floaters.filter(f => f.age < 1.0);
     vignette(0.45);
     ctx.restore();
+    cineOverlay();
   }
 
   /* ---------- 주점 (Phase 6): 후보 5~7명이 무대에 서 있고, 클릭해서 데려온다 ---------- */
@@ -463,6 +500,8 @@ const Render = (function () {
   }
   function draw(dt) {
     if (S.freeze > 0) { S.freeze -= dt; dt = 0; } // 히트스톱: 타격 순간 화면 연출만 잠깐 멈춘다(전투 계산은 그대로)
+    if (S.cine && ((S.exp && !S.exp.battle) || (!S.exp && S.tab === 'tavern'))) { S.cine.later.forEach(it => it.fn()); S.cine = null; } // 전투 화면이 아니게 되면(전투 종료·화면 전환) 연출을 마무리해 다음 전투에 남지 않게 한다
+    S.cineDt = dt; if (S.cine && S.cine.ts !== 1) dt *= S.cine.ts; // 오의 연출 시계는 히트스톱만 받고, 슬로모션은 나머지 화면 연출에만 건다
     S.time += dt;
     ctx.clearRect(0, 0, W, H);
     if (S.exp && !S.exp.battle) { drawMaze(dt); vignette(0.25); } else if (!S.exp && S.tab === 'tavern') drawTavern(dt); else drawBoard(dt);
