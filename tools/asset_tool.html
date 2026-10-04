@@ -10,8 +10,9 @@
   body { margin:0; background:var(--bg); color:var(--txt); font:14px/1.5 "Malgun Gothic",system-ui,sans-serif; }
   header { padding:12px 20px; border-bottom:1px solid var(--line); display:flex; gap:14px; align-items:baseline; flex-wrap:wrap; }
   h1 { margin:0; font-size:18px; } header small { color:var(--dim); }
-  main { display:grid; grid-template-columns:420px 1fr; gap:16px; padding:14px 20px; align-items:start; }
-  @media (max-width:1100px) { main { grid-template-columns:1fr; } }
+  main { display:grid; grid-template-columns:minmax(0,460px) minmax(0,1fr); gap:16px; padding:14px 20px; align-items:start; }
+  main > div { min-width:0; }
+  @media (max-width:1100px) { main { grid-template-columns:minmax(0,1fr); } }
   section { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px 14px; margin-bottom:14px; }
   h2 { margin:0 0 8px; font-size:14px; color:var(--acc); display:flex; justify-content:space-between; align-items:center; }
   button, select, input, textarea { background:#252b40; color:var(--txt); border:1px solid var(--line); border-radius:5px; padding:4px 8px; font:inherit; }
@@ -23,7 +24,9 @@
   .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:4px 0; }
   .row > label { display:flex; gap:5px; align-items:center; }
   .dim { color:var(--dim); font-size:12px; } .ok { color:var(--ok); } .bad { color:var(--bad); } .warn { color:var(--warn); }
-  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:4px 10px; } .grid2 label { display:flex; flex-direction:column; font-size:12px; color:var(--dim); gap:2px; }
+  .grid2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px 10px; } .grid2 label { display:flex; flex-direction:column; font-size:12px; color:var(--dim); gap:2px; min-width:0; }
+  .grid2 label > input, .grid2 label > select { width:100%; min-width:0; }
+  .grid2 label > .row { flex-wrap:nowrap; } .grid2 label > .row input { flex:1; width:0; min-width:0; }
   .grid2 label input, .grid2 label select { color:var(--txt); font-size:14px; }
   #sheets > div { display:flex; gap:6px; align-items:center; padding:4px 6px; border:1px solid var(--line); border-radius:5px; margin-bottom:4px; cursor:pointer; }
   #sheets > div.sel { background:#27304d; border-color:var(--acc); } #sheets > div canvas { width:34px; height:34px; background:#10131c; }
@@ -70,6 +73,8 @@
   <section>
     <h2>② 시트 가져오기 <span class="dim" id="sheetCount">0장</span></h2>
     <div class="drop" id="drop">이미지를 끌어다 놓거나 <button id="pickImg" class="primary">파일 선택…</button><div class="dim">PNG / WebP / JPG 여러 장 가능. AI가 만든 격자 시트, 구입한 시트 모두 가능.</div></div>
+    <div class="row" style="margin-top:8px"><button id="pickFrames" title="프레임 PNG 여러 장 또는 ZIP">프레임·ZIP 가져오기</button><button id="pickFramesDir">폴더 가져오기</button><label class="dim">캐릭터 이름 <input type="text" id="fi_name" style="width:110px" placeholder="(자동)"></label><label class="dim"><input type="checkbox" id="fi_native" checked> 원본 배치 그대로</label></div>
+    <div class="dim">PixelLab 등 <b>프레임별 PNG</b>(경로에 동작·방향·프레임 번호가 있는 것)나 ZIP. 방향(south, south-east…)과 동작 폴더를 자동 인식해 동작마다 시트 하나로 조립한다. 도트는 "원본 배치 그대로" + 프로필 변환 방식 "최근접"을 권장.</div>
     <div id="sheets" style="margin-top:8px"></div>
     <div class="row"><button id="delSheet">선택 시트 제거</button><button id="mergeBtn" title="체크한 시트를 목록 순서대로(아래→위) 겹쳐 새 시트로 만든다. 같은 크기여야 한다">체크한 시트 합치기</button></div>
     <div class="dim">합치기: 몸·무기·갑옷처럼 같은 격자의 레이어 시트를 겹쳐 조합 시트를 만든다. 이름 예: <code>knight@sword-plate</code></div>
@@ -178,8 +183,8 @@ let idc = 1;
 function newJob(name, canvas) {
   const p = P(), hasAct = parseActions(p.actions).length > 0;
   const j = { id: idc++, name: safeKey(name) || 'asset', src: canvas, kind: hasAct ? 'anim' : 'still', act: (parseActions(p.actions)[0] || {}).k || 'idle', group: (parseGroups(p.groups)[0] || {}).g || '',
-    cols: 4, rows: 4, margin: 0, gutter: 0, bgMode: 'auto', bgColor: [255, 0, 255], tol: 45, aCut: 128, keepPct: 1, fringe: 2, scaleMul: 1, uniform: false, rowDir: null, keys: [], raw: null, out: null,
-    outline: { mode: 'none', color: '#000000', color2: '#555555', w: 1 }, shadow: { mode: 'none', opacity: 0.35, w: 0.8 }, frames: 0, staticIdle: false, variants: [], layerTint: { hue: 0, sat: 0, lig: 0, range: false, h0: 0, hw: 30, smin: 15 }, pick: false };
+    cols: 4, rows: 4, margin: 0, gutter: 0, bgMode: 'auto', bgColor: [255, 0, 255], tol: 45, aCut: 128, keepPct: 1, fringe: 2, hueKey: true, hueTol: 28, scaleMul: 1, uniform: false, rowDir: null, keys: [], raw: null, out: null,
+    outline: { mode: 'none', color: '#000000', color2: '#555555', w: 1 }, shadow: { mode: 'none', opacity: 0.35, w: 0.8 }, frames: 0, staticIdle: false, variants: [], layerTint: { hue: 0, sat: 0, lig: 0, range: false, h0: 0, hw: 30, smin: 15 }, pick: false, native: false };
   autoBg(j); return j;
 }
 function autoBg(j) { // 이미 투명하면 none, 아니면 테두리의 가장 흔한 색을 배경으로
@@ -197,7 +202,10 @@ function autoBg(j) { // 이미 투명하면 none, 아니면 테두리의 가장 
 function removeBg(img, w, h, j) {
   if (j.bgMode === 'none') return; const d = img.data, bg = j.bgColor, tol = j.tol, t2 = tol * tol;
   const near = (i, t) => { const a = d[i] - bg[0], b = d[i + 1] - bg[1], c = d[i + 2] - bg[2]; return a * a + b * b + c * c <= t; };
-  if (j.bgMode === 'global') { for (let i = 0; i < w * h; i++) if (near(i * 4, t2)) d[i * 4 + 3] = 0; }
+  if (j.bgMode === 'global') {
+    const bh = rgb2hsl(bg[0], bg[1], bg[2]), hue = j.hueKey && bh[1] > 0.5; // 채도 높은 크로마키색이면 색조도 본다: 배경색이 번진 어두운 그림자(보라 등)까지 지운다
+    for (let i = 0; i < w * h; i++) { if (near(i * 4, t2)) { d[i * 4 + 3] = 0; continue; }
+      if (hue && d[i * 4 + 3]) { const [hh, s, l] = rgb2hsl(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]); let dh = Math.abs(hh - bh[0]) % 360; if (dh > 180) dh = 360 - dh; if (dh <= j.hueTol && s >= 0.35 && l > 0.04 && l < 0.96) d[i * 4 + 3] = 0; } } }
   else { const stack = new Int32Array(w * h), seen = new Uint8Array(w * h); let sp = 0; const push = p => { if (!seen[p] && d[p * 4 + 3] > 0 && near(p * 4, t2)) { seen[p] = 1; stack[sp++] = p; } };
     for (let x = 0; x < w; x++) { push(x); push((h - 1) * w + x); } for (let y = 0; y < h; y++) { push(y * w); push(y * w + w - 1); }
     while (sp) { const p = stack[--sp]; d[p * 4 + 3] = 0; const x = p % w, y = (p / w) | 0; if (x > 0) push(p - 1); if (x < w - 1) push(p + 1); if (y > 0) push(p - w); if (y < h - 1) push(p + w); } }
@@ -212,14 +220,15 @@ function removeBg(img, w, h, j) {
   for (const [p, r, g, b] of set) { d[p * 4] = r; d[p * 4 + 1] = g; d[p * 4 + 2] = b; }
 }
 function keepComponents(d, w, h, aCut, keepPct) { // 작은 부스러기 제거, 그림 영역(bbox)과 발 x 좌표 반환
-  const N = w * h, lab = new Int32Array(N), areas = [0], stack = new Int32Array(N); let nl = 0;
-  for (let i = 0; i < N; i++) { if (lab[i] || d[i * 4 + 3] <= aCut) continue; nl++; let sp = 0, area = 0; stack[sp++] = i; lab[i] = nl;
-    while (sp) { const p = stack[--sp]; area++; const x = p % w, y = (p / w) | 0;
+  const N = w * h, lab = new Int32Array(N), areas = [0], edge = [false], stack = new Int32Array(N); let nl = 0;
+  for (let i = 0; i < N; i++) { if (lab[i] || d[i * 4 + 3] <= aCut) continue; nl++; let sp = 0, area = 0, touch = false; stack[sp++] = i; lab[i] = nl;
+    while (sp) { const p = stack[--sp]; area++; const x = p % w, y = (p / w) | 0; if (x === 0 || y === 0 || x === w - 1 || y === h - 1) touch = true;
       for (let dy = -1; dy <= 1; dy++) { const yy = y + dy; if (yy < 0 || yy >= h) continue; for (let dx = -1; dx <= 1; dx++) { const xx = x + dx; if (xx < 0 || xx >= w) continue; const q = yy * w + xx; if (!lab[q] && d[q * 4 + 3] > aCut) { lab[q] = nl; stack[sp++] = q; } } } }
-    areas[nl] = area; }
+    areas[nl] = area; edge[nl] = touch; }
   if (!nl) return null; const mx = Math.max(...areas.slice(1)); let x0 = w, y0 = h, x1 = -1, y1 = -1;
   for (let i = 0; i < N; i++) { const l = lab[i]; if (!l) { if (d[i * 4 + 3] <= aCut) d[i * 4 + 3] = 0; continue; }
-    if (areas[l] < mx * keepPct / 100) { d[i * 4 + 3] = 0; lab[i] = 0; continue; }
+    // 작은 조각은 지운다. 칸 가장자리에 걸린 조각(옆 칸에서 넘어온 그림 일부)은 조금 더 큰 것(주 그림의 15%)까지 지운다
+    if (areas[l] < mx * keepPct / 100 || (edge[l] && areas[l] < mx * 0.15)) { d[i * 4 + 3] = 0; lab[i] = 0; continue; }
     const x = i % w, y = (i / w) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
   if (x1 < 0) return null;
   const bh = y1 - y0 + 1, fy = Math.max(y0, y1 - Math.ceil(bh * 0.1)); let sx = 0, sn = 0;
@@ -308,11 +317,12 @@ function buildAnim(j) {
   const p = P(), n = p.dirs, mir = parseMirror(p.mirror, n); j.out = null; if (!j.raw) return;
   let used = 0; j.raw.forEach((row, r) => { if (j.rowDir[r] < 0) return; row.forEach((c, ci) => { if (!c.empty) used = Math.max(used, ci + 1); }); }); if (!used) return;
   const sel = j.staticIdle ? [0] : (j.frames > 0 && j.frames < used) ? Array.from({ length: j.frames }, (_, i) => Math.floor(i * used / j.frames)) : Array.from({ length: used }, (_, i) => i); // 사용할 원본 프레임 번호
-  const s = charScale(j.name) * j.scaleMul, ax = p.anchorX * p.cellW, ay = p.anchorY * p.cellH, items = [], idx = [];
+  const nat = !!j.native; // 원본 배치 그대로: 배율 1, 칸 안 위치 유지(도트 원본 보존). 발 위치는 원본 그림에서 읽어 매니페스트에 기록
+  const s = (nat ? 1 : charScale(j.name)) * j.scaleMul, ax = p.anchorX * p.cellW, ay = p.anchorY * p.cellH, items = [], idx = [];
   const dirs = Array(n).fill(null);
   j.raw.forEach((row, r) => { const d = j.rowDir[r]; if (d < 0 || d >= n || dirs[d]) return; dirs[d] = [];
     for (let f = 0; f < sel.length; f++) { const c = row[sel[f]];
-      const e = renderCanvas(p.cellW, p.cellH, p, (x, ps) => { if (!c || c.empty) return; const dx = ax - c.bb.footX * s, dy = ay - c.bb.y1 * s;
+      const e = renderCanvas(p.cellW, p.cellH, p, (x, ps) => { if (!c || c.empty) return; const dx = nat ? (p.cellW - c.cv.width * s) / 2 : ax - c.bb.footX * s, dy = nat ? p.cellH - c.cv.height * s : ay - c.bb.y1 * s;
         if (p.resample !== 'nearest' && s < 0.5) { const sc = scaledCanvas(c.cv, s); x.drawImage(sc, dx, dy); } else x.drawImage(c.cv, dx, dy, c.cv.width * s, c.cv.height * s); });
       items.push(e); idx.push([d, f]); } });
   const fin = finalize(items, p, j.aCut, j); idx.forEach(([d, f], i) => { dirs[d][f] = fin[i]; });
@@ -325,8 +335,10 @@ function buildAnim(j) {
   if (j.shadow.mode !== 'none') { const so = new Map(), cache = new Map(); const sh = cv => { let r = so.get(cv); if (!r) { r = shadowOnly(cv, p, j.shadow); so.set(cv, r); } return r; };
     if (j.shadow.mode === 'baked') for (let d = 0; d < n; d++) dirs[d] = dirs[d].map(cv => { let r = cache.get(cv); if (!r) { r = under(sh(cv), cv); cache.set(cv, r); } return r; });
     else shadow = dirs.map(a => a.map(sh)); }
-  j.out = { n: sel.length, srcN: used, dirs, scale: s, shadow };
+  const foot = nat ? Math.round(charY1(j.name) * s + (p.cellH - j.raw[0][0].cv.height * s)) : null;
+  j.out = { n: sel.length, srcN: used, dirs, scale: s, shadow, foot };
 }
+function charY1(name) { let m = 0; for (const q of st.jobs) if (q.kind === 'anim' && q.name === name && q.raw) q.raw.forEach(r => r.forEach(c => { if (!c.empty) m = Math.max(m, c.bb.y1); })); return m; } // 같은 캐릭터의 가장 낮은 발 위치(원본 좌표)
 
 /* ---- 정지 에셋 빌드 ---- */
 function buildStills(j) {
@@ -352,7 +364,58 @@ let tmr = 0; function schedule(reanalyze) { clearTimeout(tmr); tmr = setTimeout(
 function onProfileChange(f) { for (const j of st.jobs) { if (f === 'dirs' || f === 'all') { j.rowDir = null; defaultRowDir(j); } } if (['all', 'actions', 'groups'].includes(f)) for (const j of st.jobs) { const a = parseActions(P().actions), g = parseGroups(P().groups); if (!a.find(x => x.k === j.act) && a[0]) j.act = a[0].k; if (!g.find(x => x.g === j.group) && g[0]) j.group = g[0].g; } schedule(false); renderJob(); }
 
 /* ===================== UI: 시트 목록 · 설정 ===================== */
+/* ---- 프레임 가져오기 (PixelLab 등: 동작/방향/프레임이 파일 경로에 있는 PNG, 또는 그 ZIP) ---- */
+const COMPASS_RE = /(south[-_ ]?east|south[-_ ]?west|north[-_ ]?east|north[-_ ]?west|south|north|east|west)/, C_LONG = { southeast: 'SE', southwest: 'SW', northeast: 'NE', northwest: 'NW', south: 'S', north: 'N', east: 'E', west: 'W' }, C_ABBR = { se: 'SE', sw: 'SW', ne: 'NE', nw: 'NW', n: 'N', s: 'S', e: 'E', w: 'W' }, C_WORD = { front: 'S', down: 'S', back: 'N', up: 'N', left: 'W', right: 'E' };
+const C_NAMES = { E: ['e', 'east', 'right'], SE: ['se'], S: ['s', 'south', 'front', 'down'], SW: ['sw'], W: ['w', 'west', 'left'], NW: ['nw'], N: ['n', 'north', 'back', 'up'], NE: ['ne'] };
+function compassIn(str) { const m = COMPASS_RE.exec(str); if (m) return C_LONG[m[1].replace(/[-_ ]/g, '')]; for (const t of str.split(/[^a-z0-9]+/)) if (C_ABBR[t] || C_WORD[t]) return C_ABBR[t] || C_WORD[t]; return null; }
+function parseFrameName(path) {
+  const segs = path.toLowerCase().replace(/\\/g, '/').split('/').filter(Boolean), file = segs.pop().replace(/\.[^.]+$/, ''); let dir = compassIn(file);
+  if (!dir) for (let i = segs.length - 1; i >= 0; i--) { const d = compassIn(segs[i]); if (d) { dir = d; break; } }
+  const nums = file.match(/\d+/g), frame = nums ? parseInt(nums[nums.length - 1], 10) : 0, GENERIC = /^(animations?|frames?|rotations?|sprites?|characters?|images?|png|export|output|assets?)$/; let act = null;
+  for (let i = segs.length - 1; i >= 0; i--) { const s = segs[i]; if (GENERIC.test(s) || /^\d+$/.test(s) || (compassIn(s) && !s.replace(COMPASS_RE, '').split(/[^a-z]+/).filter(t => t && !C_ABBR[t] && !C_WORD[t]).length)) continue; if (i === 0 && segs.length > 1) continue; act = s; break; } // 맨 위 폴더는 캐릭터 이름으로 본다
+  if (!act) { const left = file.replace(COMPASS_RE, '').split(/[^a-z]+/).filter(t => t && !C_ABBR[t] && !C_WORD[t] && !/^(frames?|img|image|sprite|png)$/.test(t)).join(' '); act = left || (segs.some(s => /rotation/.test(s)) ? 'rotation' : 'idle'); }
+  return { dir, frame, act };
+}
+const ACT_ALIAS = [['idle', /idle|breath|stance|stand/], ['walk', /walk/], ['hurt', /hurt|damage|hit|flinch/], ['die', /die|death|dead/], ['cast', /cast|spell|magic/], ['dodge', /dodge|roll|evade/], ['guard', /guard|block/], ['shoot', /shoot|bow|arrow/], ['taunt', /taunt|roar/], ['heavy', /heavy|smash/], ['sweep', /sweep|spin|cleave/], ['combo', /combo|flurry/], ['atk', /attack|slash|punch|strike|fight|swing/]];
+function mapAct(raw, p) { const keys = parseActions(p.actions).map(a => a.k); if (keys.includes(raw)) return raw; for (const [k, re] of ACT_ALIAS) if (keys.includes(k) && re.test(raw)) return k; return safe(raw) || 'idle'; }
+function dirIndexMap(p) { const m = {}, dn = dirNames(p); dn.forEach((n, i) => { const t = n.toLowerCase().replace(/\(.*\)/, '').trim(); for (const c in C_NAMES) if (C_NAMES[c].includes(t) && m[c] === undefined) m[c] = i; }); return m; }
+async function readZip(buf) { // 표준 ZIP(저장/deflate) 읽기. 외부 라이브러리 없이 DecompressionStream 사용
+  const u = new Uint8Array(buf), dv = new DataView(buf), dec = new TextDecoder(); let e = u.length - 22; while (e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--; if (e < 0) throw new Error('ZIP 형식이 아니다');
+  const n = dv.getUint16(e + 10, true); let off = dv.getUint32(e + 16, true); const out = [];
+  for (let i = 0; i < n; i++) { if (dv.getUint32(off, true) !== 0x02014b50) break; const method = dv.getUint16(off + 10, true), csz = dv.getUint32(off + 20, true), nl = dv.getUint16(off + 28, true), xl = dv.getUint16(off + 30, true), cl = dv.getUint16(off + 32, true), lh = dv.getUint32(off + 42, true), name = dec.decode(u.subarray(off + 46, off + 46 + nl)); off += 46 + nl + xl + cl;
+    if (name.endsWith('/')) continue; const ds = lh + 30 + dv.getUint16(lh + 26, true) + dv.getUint16(lh + 28, true), raw = u.subarray(ds, ds + csz); let data;
+    if (method === 0) data = raw; else if (method === 8) data = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer()); else continue; out.push({ path: name, blob: new Blob([data]) }); }
+  return out;
+}
+async function importFrames(entries, nameHint) {
+  const p = P(), recs = []; for (const e of entries) if (/\.png$/i.test(e.path)) recs.push(Object.assign(parseFrameName(e.path), { e })); if (!recs.length) { log('PNG 프레임을 찾지 못했다.'); return; }
+  const dm = dirIndexMap(p), name = safeKey($('fi_name').value.trim() || nameHint || 'char') || 'char', acts = new Map(); let skippedDir = 0;
+  for (const r of recs) { const c = r.dir || (p.dirs === 1 ? 'S' : 'S'), di = p.dirs === 1 ? 0 : dm[c]; if (di === undefined) { skippedDir++; continue; } let a = mapAct(r.act, p); (acts.get(a) || acts.set(a, new Map()).get(a)); const A = acts.get(a); (A.get(di) || A.set(di, []).get(di)).push(r); }
+  if (acts.has('rotation')) { if (acts.has('idle')) acts.delete('rotation'); else { acts.set('idle', acts.get('rotation')); acts.delete('rotation'); } } // 정지 회전 이미지는 대기 동작이 없을 때만 대기로 쓴다
+  let made = 0; const known = new Set(parseActions(p.actions).map(a => a.k));
+  for (const [act, dirs] of acts) {
+    const rowsIdx = [...dirs.keys()].sort((a, b) => a - b); let cw = 1, ch = 1, nf = 1; const decoded = new Map();
+    for (const di of rowsIdx) { const list = dirs.get(di).sort((a, b) => a.frame - b.frame); nf = Math.max(nf, list.length); for (const r of list) { const bm = await createImageBitmap(r.e.blob); decoded.set(r, bm); cw = Math.max(cw, bm.width); ch = Math.max(ch, bm.height); } }
+    const cv = mk(cw * nf, ch * rowsIdx.length), x = cv.getContext('2d'); x.imageSmoothingEnabled = false;
+    rowsIdx.forEach((di, ri) => dirs.get(di).forEach((r, fi) => { const bm = decoded.get(r); x.drawImage(bm, fi * cw + Math.floor((cw - bm.width) / 2), ri * ch + (ch - bm.height)); })); // 칸 안에서 아래·가운데 맞춤(크기가 다르면)
+    const j = newJob(name, cv); j.bgMode = 'none'; j.kind = 'anim'; j.act = act; j.cols = nf; j.rows = rowsIdx.length; j.rowDir = rowsIdx.slice(); j.native = $('fi_native').checked; j.fringe = 0;
+    st.jobs.push(j); st.sel = st.jobs.length - 1; analyze(j); made++; log(`가져옴: ${name} / ${act}${known.has(act) ? '' : ' (프로필에 없는 동작 — 동작 목록에 추가하세요)'} · 방향 ${rowsIdx.length} · 프레임 ${nf} · 칸 ${cw}×${ch}`);
+  }
+  if (skippedDir) log(`방향을 알 수 없어 건너뜀: ${skippedDir}장 (프로필 방향 이름: ${dirNames(p).join(', ')})`);
+  if (made) { rebuildAll(); renderAll(); renderJob(); log(`프레임 가져오기 완료: 동작 ${made}개. ${p.resample === 'smooth' ? '※ 도트 원본이면 프로필 "크기 변환"을 최근접으로 바꾸세요.' : ''}`); }
+}
+async function importFromFiles(files) {
+  try { const entries = []; let hint = '';
+    for (const f of files) { if (/\.zip$/i.test(f.name)) { entries.push(...await readZip(await f.arrayBuffer())); hint = hint || f.name.replace(/\.zip$/i, ''); } else entries.push({ path: f.webkitRelativePath || f.name, blob: f }); }
+    const roots = new Set(entries.map(e => e.path.split('/')[0])); if (entries.length && entries.every(e => e.path.includes('/')) && roots.size === 1) hint = [...roots][0]; // 모두 같은 최상위 폴더 안이면 그 이름이 캐릭터 이름
+    const md = entries.find(e => /(^|\/)metadata\.json$/i.test(e.path)); // PixelLab metadata.json 의 캐릭터 이름을 우선 쓴다
+    if (md) try { const m = JSON.parse(await md.blob.text()), nm = m.states && m.states[0] && m.states[0].character && m.states[0].character.name; if (nm) hint = nm; } catch (e) { }
+    await importFrames(entries, hint); } catch (e) { log('프레임 가져오기 실패: ' + e.message); }
+}
+$('pickFrames').onclick = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = '.png,.zip'; i.multiple = true; i.onchange = () => importFromFiles([...i.files]); i.click(); };
+$('pickFramesDir').onclick = () => { const i = document.createElement('input'); i.type = 'file'; i.webkitdirectory = true; i.onchange = () => importFromFiles([...i.files]); i.click(); };
 function addFiles(files) {
+  const zips = [...files].filter(f => /\.zip$/i.test(f.name)); if (zips.length) { importFromFiles(zips); files = [...files].filter(f => !/\.zip$/i.test(f.name)); }
   let n = 0; for (const f of files) { if (!/^image\//.test(f.type)) continue; n++;
     createImageBitmap(f).then(bmp => { const cv = mk(bmp.width, bmp.height); cv.getContext('2d').drawImage(bmp, 0, 0); const j = newJob(f.name.replace(/\.[^.]+$/, ''), cv); st.jobs.push(j); st.sel = st.jobs.length - 1; guessGrid(j, true); analyze(j); rebuildAll(); renderAll(); renderJob(); log(`가져옴: ${f.name} (${cv.width}×${cv.height}) → 격자 ${j.cols}×${j.rows}, 배경 ${j.bgMode}`); }).catch(e => log('이미지를 읽지 못함: ' + f.name)); }
   if (!n) log('이미지 파일이 아니다.');
@@ -382,6 +445,7 @@ function renderJob() {
   <div class="row chips">${['1×1', '2×2', '3×3', '4×4', '5×5', '6×6', '8×8', '15×8'].map(g => `<button data-g="${g}">${g}</button>`).join('')}<span class="dim">칸 ≈ ${Math.round(gridRect(j, 0, 0).w)}×${Math.round(gridRect(j, 0, 0).h)}px</span></div>
   <div class="row"><label>배경 제거 <select id="j_bgMode"><option value="auto">다시 자동 판정</option><option value="global" ${j.bgMode === 'global' ? 'selected' : ''}>색 전체 지움 (크로마키)</option><option value="flood" ${j.bgMode === 'flood' ? 'selected' : ''}>가장자리부터 지움</option><option value="none" ${j.bgMode === 'none' ? 'selected' : ''}>안 함 (이미 투명)</option></select></label><label>배경색 <input type="color" id="j_bgColor" value="${hex}"></label></div>
   <div class="row"><label>허용 오차 <input type="range" id="j_tol" min="0" max="160" value="${j.tol}"><span id="j_tolv">${j.tol}</span></label><label>알파 기준 <input type="range" id="j_aCut" min="1" max="254" value="${j.aCut}"><span id="j_aCv">${j.aCut}</span></label><label>부스러기 제거 % <input type="number" id="j_keepPct" min="0" max="50" step="0.5" value="${j.keepPct}"></label><label>가장자리 정리(겹) <input type="number" id="j_fringe" min="0" max="6" value="${j.fringe}"></label></div>
+  <div class="row"><label><input type="checkbox" id="j_hueKey" ${j.hueKey ? 'checked' : ''}> 색조로도 지움 (배경색이 번진 그림자 제거 · 크로마키 전용)</label><label>색조 허용 ± <input type="number" id="j_hueTol" min="5" max="90" value="${j.hueTol}">°</label></div>
   ${j.kind === 'anim' ? `<div class="dim">행 → 방향 연결 (원본에서 그 줄이 보는 방향). 비는 방향은 좌우반전 짝이나 가까운 방향으로 채운다.</div><div class="row">${j.rowDir.map((d, r) => `<label>${r + 1}행 <select data-row="${r}"><option value="-1" ${d < 0 ? 'selected' : ''}>건너뜀</option>${dn.map((n, i) => `<option value="${i}" ${d === i ? 'selected' : ''}>${i}:${n}</option>`).join('')}</select></label>`).join('')}</div>` :
     `<div class="row"><label><input type="checkbox" id="j_uniform" ${j.uniform ? 'checked' : ''}> 세트 전체 같은 배율</label><button id="j_autoKeys">이름 자동 채우기</button></div><div class="dim">결과 미리보기의 칸마다 키(이름)를 적으면 그 칸만 내보낸다. 비우면 건너뜀.</div>`}`;
   const bindNum = (id, f, re, fix) => { const el = $(id); if (!el) return; el.oninput = el.onchange = () => { j[f] = +el.value; if (fix) fix(); if (f === 'tol') $('j_tolv').textContent = j.tol; if (f === 'aCut') $('j_aCv').textContent = j.aCut; schedule(re); }; };
@@ -390,7 +454,8 @@ function renderJob() {
   if ($('j_act')) $('j_act').onchange = () => { j.act = $('j_act').value; const a = acts.find(x => x.k === j.act); if (a) $('prevFps').value = a.fps; renderSheets(); schedule(false); };
   if ($('j_group')) $('j_group').onchange = () => { j.group = $('j_group').value; renderSheets(); schedule(false); };
   bindNum('j_scaleMul', 'scaleMul', false); bindNum('j_cols', 'cols', true, () => { j.rowDir = null; j.keys = []; }); bindNum('j_rows', 'rows', true, () => { j.rowDir = null; j.keys = []; }); bindNum('j_margin', 'margin', true); bindNum('j_gutter', 'gutter', true);
-  bindNum('j_tol', 'tol', true); bindNum('j_aCut', 'aCut', true); bindNum('j_keepPct', 'keepPct', true); bindNum('j_fringe', 'fringe', true);
+  bindNum('j_tol', 'tol', true); bindNum('j_aCut', 'aCut', true); bindNum('j_keepPct', 'keepPct', true); bindNum('j_fringe', 'fringe', true); bindNum('j_hueTol', 'hueTol', true);
+  $('j_hueKey').onchange = () => { j.hueKey = $('j_hueKey').checked; schedule(true); };
   box.querySelectorAll('.chips button').forEach(b => b.onclick = () => { const [c, r] = b.dataset.g.split('×').map(Number); j.cols = c; j.rows = r; j.rowDir = null; j.keys = []; renderJob(); schedule(true); });
   $('j_bgMode').onchange = () => { const v = $('j_bgMode').value; if (v === 'auto') autoBg(j); else j.bgMode = v; renderJob(); schedule(true); };
   $('j_bgColor').oninput = () => { const h = $('j_bgColor').value; j.bgColor = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)); if (j.bgMode === 'none') j.bgMode = 'flood'; schedule(true); };
@@ -401,7 +466,7 @@ function renderJob() {
 }
 
 /* ---- 후처리 · 색 변종 · 프리셋 · 합치기 ---- */
-const PRESET_KEY = 'asset_tool_presets_v1', PRF = ['cols', 'rows', 'margin', 'gutter', 'bgMode', 'bgColor', 'tol', 'aCut', 'keepPct', 'fringe', 'scaleMul', 'uniform', 'outline', 'shadow', 'frames', 'staticIdle', 'variants', 'layerTint'];
+const PRESET_KEY = 'asset_tool_presets_v1', PRF = ['cols', 'rows', 'margin', 'gutter', 'bgMode', 'bgColor', 'tol', 'aCut', 'keepPct', 'fringe', 'hueKey', 'hueTol', 'scaleMul', 'uniform', 'native', 'outline', 'shadow', 'frames', 'staticIdle', 'variants', 'layerTint'];
 const loadPresets = () => { try { return JSON.parse(localStorage.getItem(PRESET_KEY) || '{}'); } catch (e) { return {}; } };
 function renderJobExtras(j, box) {
   const anim = j.kind === 'anim', ol = j.outline, sh = j.shadow, lt = j.layerTint, presets = loadPresets(), num = (id, v, a = '') => `<input type="number" id="${id}" value="${v}" ${a}>`;
@@ -414,6 +479,7 @@ function renderJobExtras(j, box) {
     ${anim ? `<div class="row"><label>그림자 <select id="x_shMode">${[['none', '없음'], ['baked', '스프라이트에 합침'], ['separate', '별도 시트(이름_shadow)']].map(([v, t]) => `<option value="${v}" ${sh.mode === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
       <label>불투명도 ${num('x_shO', sh.opacity, 'min="0.05" max="1" step="0.05"')}</label><label>폭 비율 ${num('x_shW', sh.w, 'min="0.2" max="2" step="0.05"')}</label></div>
     <div class="row"><label>프레임 수 줄이기 (0=그대로) ${num('x_frames', j.frames, 'min="0" max="64"')}</label><label><input type="checkbox" id="x_static" ${j.staticIdle ? 'checked' : ''}> 정지(첫 프레임만 — 대기 모션 없는 도트풍)</label></div>
+    <div class="row"><label><input type="checkbox" id="x_native" ${j.native ? 'checked' : ''}> 원본 배치 그대로 (배율 1, 칸 안 위치 유지 — 이미 규격 크기인 도트 원본용)</label></div>
     <div class="dim">프레임을 줄이면 재생 시간이 같도록 fps와 타격 프레임이 매니페스트에 비례해서 기록된다.</div>` : ''}
   </details>
   <details ${j.variants.length ? 'open' : ''}><summary>색 변종 (${j.variants.length}개) — 같은 시트를 색만 바꿔 다른 이름으로 내보냄</summary>
@@ -434,7 +500,7 @@ function renderJobExtras(j, box) {
   const on = (id, fn) => { const el = $(id); if (!el) return; el.onchange = el.oninput = () => { fn(el); schedule(false); }; };
   on('x_olMode', e => { ol.mode = e.value; }); on('x_olC', e => { ol.color = e.value; }); on('x_olC2', e => { ol.color2 = e.value; }); on('x_olW', e => { ol.w = clamp(+e.value || 1, 1, 8); });
   on('x_shMode', e => { sh.mode = e.value; }); on('x_shO', e => { sh.opacity = clamp(+e.value || 0.35, 0.05, 1); }); on('x_shW', e => { sh.w = clamp(+e.value || 0.8, 0.2, 2); });
-  on('x_frames', e => { j.frames = Math.max(0, +e.value | 0); }); on('x_static', e => { j.staticIdle = e.checked; });
+  on('x_frames', e => { j.frames = Math.max(0, +e.value | 0); }); on('x_static', e => { j.staticIdle = e.checked; }); on('x_native', e => { j.native = e.checked; });
   on('x_ltH', e => { lt.hue = +e.value; }); on('x_ltS', e => { lt.sat = +e.value; }); on('x_ltL', e => { lt.lig = +e.value; });
   // 변종 목록
   const vb = $('x_vars'); j.variants.forEach((v, i) => { const r = document.createElement('div'); r.className = 'row';
@@ -469,11 +535,12 @@ function renderVarPrev() { // 변종 미리보기: 첫 프레임
 /* ---- 격자 자동 감지 ---- */
 function guessGrid(j, quiet) {
   const c = j.src, W = c.width, H = c.height, im = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W, H); removeBg(im, W, H, j); const d = im.data;
-  const col = new Uint8Array(W), row = new Uint8Array(H); for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (d[(y * W + x) * 4 + 3] > j.aCut) { col[x] = 1; row[y] = 1; }
+  const col = new Uint32Array(W), row = new Uint32Array(H); for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (d[(y * W + x) * 4 + 3] > j.aCut) { col[x]++; row[y]++; }
   // 경계선이 그림을 가르지 않고 모든(대부분) 칸에 그림이 있는 가장 큰 칸 수를 고른다. 떨어진 무기·벌린 다리 때문에 생기는 빈 줄에 속지 않는다.
-  const pick = (a, max) => { let best = 1, found = false; const len = a.length, pre = new Int32Array(len + 1); for (let i = 0; i < len; i++) pre[i + 1] = pre[i] + a[i];
-    for (let n = 2; n <= max; n++) { let bad = false, empty = 0; for (let i = 1; i < n && !bad; i++) { const x = Math.round(len * i / n); if (pre[Math.min(len, x + 2)] - pre[Math.max(0, x - 2)] > 0) bad = true; }
-      if (bad) continue; for (let i = 0; i < n; i++) { const x0 = Math.round(len * i / n), x1 = Math.round(len * (i + 1) / n); if (pre[x1] - pre[x0] === 0) empty++; }
+  // 경계 근처에 그림 픽셀이 조금(전체의 0.06% 이하) 걸치는 것은 부스러기·넘친 무기로 보고 허용한다
+  const pick = (a, max) => { let best = 1, found = false; const len = a.length, pre = new Float64Array(len + 1); for (let i = 0; i < len; i++) pre[i + 1] = pre[i] + a[i]; const tot = pre[len];
+    for (let n = 2; n <= max; n++) { let bad = false, empty = 0; for (let i = 1; i < n && !bad; i++) { const x = Math.round(len * i / n); if (pre[Math.min(len, x + 2)] - pre[Math.max(0, x - 2)] > tot * 0.0006) bad = true; }
+      if (bad) continue; for (let i = 0; i < n; i++) { const x0 = Math.round(len * i / n), x1 = Math.round(len * (i + 1) / n); if (pre[x1] - pre[x0] < tot * 0.003) empty++; }
       if (empty <= n * 0.3) { best = n; found = true; } }
     return { n: best, found }; };
   const pc = pick(col, 32), pr = pick(row, 32); let cols = pc.n, rows = pr.n, ok = pc.found || pr.found;
@@ -554,6 +621,7 @@ function collect() { // → { files:[{path,blob}], anims:{name:entry}, stills:{g
     for (const j of list) { if (seen.has(j.act)) { res.warns.push(`${name}/${j.act} 가 겹쳐 앞의 것만 쓴다`); continue; } seen.add(j.act); const a = acts.find(x => x.k === j.act) || { fps: 10, hit: null };
       const fm = j.out.srcN ? j.out.n / j.out.srcN : 1; // 프레임을 줄이면 재생 시간이 같도록 fps·타격 프레임도 비례해서 줄인다
       entry.actions[j.act] = { fps: fm === 1 ? a.fps : Math.max(1, Math.round(a.fps * fm)), n: j.out.n, hit: a.hit === null || fm === 1 ? a.hit : Math.min(j.out.n - 1, Math.round(a.hit * fm)), job: j }; }
+    const nf = list.find(q => q.out.foot); if (nf) entry.anchor[1] = nf.out.foot; // 원본 배치 모드는 원본에서 읽은 발 위치를 기록한다
     res.anims[name] = entry;
     if (p.layout === 'atlas') {
       const order = acts.map(a => a.k).filter(k => entry.actions[k]), maxN = Math.max(...order.map(k => entry.actions[k].n)), cv = mk(maxN * p.cellW, order.length * p.dirs * p.cellH), x = cv.getContext('2d');
@@ -612,7 +680,7 @@ $('exportZip').onclick = () => doExport(false).catch(e => log('실패: ' + e.mes
 
 /* ===================== 시작 ===================== */
 loadProfiles(); fillProfileUI(); renderAll(); requestAnimationFrame(frame);
-window.__tool = { st, P, analyze, rebuildAll, collect, buildManifests, guessGrid, newJob, renderAll, renderJob, makeZip }; // 테스트용
+window.__tool = { st, P, importFrames, importFromFiles, readZip, parseFrameName, analyze, rebuildAll, collect, buildManifests, guessGrid, newJob, renderAll, renderJob, makeZip }; // 테스트용
 </script>
 </body>
 </html>
