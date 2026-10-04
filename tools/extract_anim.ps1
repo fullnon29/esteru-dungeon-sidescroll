@@ -29,7 +29,8 @@ public static class StripCut {
 $rows = [int[]]($Dirs -split '[,\s]+')   # powershell -File 로 실행하면 6,1 이 "6 1" 문자열로 오므로 쉼표·공백으로 쪼갠다
 if (-not $Out) { $Out = Join-Path (Split-Path $PSScriptRoot -Parent) "assets\anim\$Name" }
 New-Item -ItemType Directory -Force $Out | Out-Null
-$sheets = [ordered]@{ idle = 'Idle'; walk = 'Walk'; atk = 'Melee'; cast = 'CastSpell'; hurt = 'TakeDamage'; die = 'Die' }
+# 동작 이름 -> 시트 파일명(SmallScaleInt Knight 기준). atk 기본 공격 · heavy 강타 · sweep 회전/범위 근접 · combo 연타 · guard 방어 · taunt 도발 · cast 마법 · dodge 회피
+$sheets = [ordered]@{ idle = 'Idle'; walk = 'Walk'; atk = 'Melee2'; heavy = 'Special1'; sweep = 'Melee'; combo = 'Pummel'; guard = 'ShieldBlockStart'; taunt = 'Special2'; cast = 'CastSpell'; hurt = 'TakeDamage'; die = 'Die'; dodge = 'Rolling' }
 $foot = 0
 foreach ($k in $sheets.Keys) { foreach ($row in $rows) {
   $f = [StripCut]::Cut((Join-Path $Src ($sheets[$k] + '.png')), $row, (Join-Path $Out "${k}_$row.png"))

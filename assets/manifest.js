@@ -41,5 +41,5 @@ window.ASSET_MANIFEST = {
 // 방향 {dir} 은 0~7 (시계 방향, 0=오른쪽(E) 1=오른쪽 아래 2=정면(S) 3=왼쪽 아래 4=왼쪽 5=왼쪽 위 6=뒷모습(N) 7=오른쪽 위). 스트립은 tools/extract_anim.ps1 로 만든다.
 // 선언이 없거나 못 불러오면 정지 이미지/이모지로 대체된다.
 window.ASSET_MANIFEST.anims = {
-  knight: { size: 128, foot: 102, fps: { idle: 10, walk: 14, atk: 18, cast: 16, hurt: 15, die: 12 }, path: 'assets/anim/knight/{act}_{dir}.png' },
+  knight: { size: 128, foot: 102, fps: { idle: 10, walk: 14, atk: 18, heavy: 16, sweep: 18, combo: 18, guard: 14, taunt: 12, cast: 16, hurt: 15, die: 12, dodge: 20 }, hit: { atk: 8, heavy: 9, sweep: 6, combo: 5, cast: 6 }, path: 'assets/anim/knight/{act}_{dir}.png' },
 };

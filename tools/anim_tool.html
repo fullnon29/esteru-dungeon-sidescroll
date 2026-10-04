@@ -49,7 +49,7 @@
   <section>
     <h2>③ 시트 규격·동작 파일</h2>
     <div class="row">칸 <input type="number" id="cell" value="128" min="16"> px · 열 <input type="number" id="cols" value="15" min="1"> · 행 <input type="number" id="rows" value="8" min="1"></div>
-    <table id="acts"><tr><th>동작</th><th>파일명(확장자 제외)</th><th>fps</th></tr></table>
+    <table id="acts"><tr><th>동작</th><th>파일명(확장자 제외)</th><th>fps</th><th>타격</th></tr></table>
     <div class="row"><label>확대 <select id="up"><option value="1">없음(원본 크기)</option><option value="2n">2배 · 픽셀 그대로</option><option value="2s">2배 · 부드럽게(Scale2x)</option></select></label><span class="dim">64px 시트를 128px 규격으로 맞출 때. 안 쓰고 64px 그대로 두면 게임이 도트 그대로 확대해 그린다(크기 값을 키우면 됨).</span></div>
     <div class="row"><label>그림자 제거 <select id="shadowMode"><option value="auto">자동(폴더 이름)</option><option value="cut">알파&lt;255 지움</option><option value="none">안 함</option></select></label></div>
   </section>
@@ -85,23 +85,24 @@
 'use strict';
 const COMPASS = ['오른쪽(E)', '오른쪽 아래(SE)', '정면(S)', '왼쪽 아래(SW)', '왼쪽(W)', '왼쪽 위(NW)', '뒷모습(N)', '오른쪽 위(NE)']; // 게임의 방향 번호 0~7 (시계 방향)
 const DEFAULT_ROWS = [0, 1, 2, 3, 4, 5, 6, 7];   // 방향 번호 → 시트 행 (초기값은 SmallScaleInt 시트에서 확인한 대응)
-const ACTS = [['idle', 'Idle', 10], ['walk', 'Walk', 14], ['atk', 'Melee', 18], ['cast', 'CastSpell', 16], ['hurt', 'TakeDamage', 15], ['die', 'Die', 12]];
+// [동작, 시트 파일명, fps, 타격 프레임(비우면 40%)]. 동작: atk 기본 공격 · heavy 강타 · sweep 회전/범위 · combo 연타 · shoot 원거리 · guard 방어 · taunt 도발 · cast 마법 · hurt 피격 · dodge 회피 · die 사망. 파일명은 SmallScaleInt Knight 기준이며 팩마다 바꿔 쓴다.
+const ACTS = [['idle', 'Idle', 10, ''], ['walk', 'Walk', 14, ''], ['atk', 'Melee2', 18, 8], ['heavy', 'Special1', 16, 9], ['sweep', 'Melee', 18, 6], ['combo', 'Pummel', 18, 5], ['shoot', 'Shoot', 18, 6], ['guard', 'ShieldBlockStart', 14, ''], ['taunt', 'Special2', 12, ''], ['cast', 'CastSpell', 16, 6], ['hurt', 'TakeDamage', 15, ''], ['die', 'Die', 12, ''], ['dodge', 'Rolling', 20, '']];
 const $ = id => document.getElementById(id);
 const st = { files: [], chars: [], sel: -1, outDir: null, dirRows: DEFAULT_ROWS.slice(), sheets: {}, strips: {}, t0: performance.now() };
 const log = m => { const l = $('log'); l.textContent += m + '\n'; l.scrollTop = l.scrollHeight; };
 
 /* ---------- 프로필 (설정 기억) ---------- */
 function saveProfile() {
-  try { localStorage.setItem('anim_tool_profile', JSON.stringify({ dirRows: st.dirRows, cell: +$('cell').value, cols: +$('cols').value, rows: +$('rows').value, size: +$('size').value, shadowMode: $('shadowMode').value, preferNoShadow: $('preferNoShadow').checked, up: $('up').value, acts: ACTS.map(a => [a[0], $('af_' + a[0]).value, +$('fps_' + a[0]).value]) })); } catch (e) { }
+  try { localStorage.setItem('anim_tool_profile', JSON.stringify({ dirRows: st.dirRows, cell: +$('cell').value, cols: +$('cols').value, rows: +$('rows').value, size: +$('size').value, shadowMode: $('shadowMode').value, preferNoShadow: $('preferNoShadow').checked, up: $('up').value, acts: ACTS.map(a => [a[0], $('af_' + a[0]).value, +$('fps_' + a[0]).value, $('hit_' + a[0]).value]) })); } catch (e) { }
 }
 function loadProfile() {
   try { const p = JSON.parse(localStorage.getItem('anim_tool_profile') || 'null'); if (!p) return;
     st.dirRows = p.dirRows || st.dirRows; $('cell').value = p.cell; $('cols').value = p.cols; $('rows').value = p.rows; $('size').value = p.size; $('shadowMode').value = p.shadowMode; $('preferNoShadow').checked = !!p.preferNoShadow; if (p.up) $('up').value = p.up;
-    (p.acts || []).forEach(a => { if ($('af_' + a[0])) { $('af_' + a[0]).value = a[1]; $('fps_' + a[0]).value = a[2]; } }); } catch (e) { }
+    (p.acts || []).forEach(a => { if ($('af_' + a[0])) { $('af_' + a[0]).value = a[1]; $('fps_' + a[0]).value = a[2]; if (a[3] !== undefined) $('hit_' + a[0]).value = a[3]; } }); } catch (e) { }
 }
 
 /* ---------- 화면 구성 ---------- */
-ACTS.forEach(([k, f, fps]) => { const tr = document.createElement('tr'); tr.innerHTML = `<td>${k}</td><td><input type="text" id="af_${k}" value="${f}"></td><td><input type="number" id="fps_${k}" value="${fps}" min="1" max="60"></td>`; $('acts').appendChild(tr); });
+ACTS.forEach(([k, f, fps, hit]) => { const tr = document.createElement('tr'); tr.innerHTML = `<td>${k}</td><td><input type="text" id="af_${k}" value="${f}"></td><td><input type="number" id="fps_${k}" value="${fps}" min="1" max="60"></td><td><input type="number" id="hit_${k}" value="${hit}" min="0" max="60" title="타격 순간 프레임"></td>`; $('acts').appendChild(tr); });
 ACTS.forEach(([k]) => { const o = document.createElement('option'); o.value = k; o.textContent = k; $('prevAct').appendChild(o); });
 function buildRing() {
   $('ring').innerHTML = '';
@@ -195,15 +196,22 @@ async function selectChar(i) {
 }
 $('autoFoot').onclick = () => { const ch = st.chars[st.sel]; if (!ch) return; const f = detectFoot(ch); if (f !== null) { ch.foot = f; $('foot').value = f; } };
 $('foot').oninput = () => { const ch = st.chars[st.sel]; if (ch) ch.foot = +$('foot').value; };
-['size', 'cell', 'cols', 'rows', 'shadowMode', 'preferNoShadow', 'up'].forEach(id => $(id).onchange = () => { st.strips = {}; saveProfile(); if (id === 'rows') buildRing(); });
+['size', 'cell', 'cols', 'rows', 'shadowMode', 'preferNoShadow', 'up'].forEach(id => $(id).onchange = () => { st.strips = {}; st.nCache = {}; saveProfile(); if (id === 'rows') buildRing(); });
 $('resetDirs').onclick = () => { st.dirRows = DEFAULT_ROWS.slice(); st.strips = {}; buildRing(); saveProfile(); };
 
 /* ---------- 미리보기 애니메이션 ---------- */
-const prevN = () => colsN();
+// 동작의 실제 프레임 수: 뒤쪽 빈 프레임은 뺀다(시트가 15열인데 동작이 더 짧을 때). 정면 방향 스트립으로 판정하고 캐시한다.
+function framesOf(ch, act) {
+  const key = ch.key + '|n|' + act + '|' + upMul() + cellPx(); if (st.nCache && st.nCache[key] !== undefined) return st.nCache[key];
+  const sp = stripOf(ch, act, 2), C = outC(), cols = colsN(), p = sp.getContext('2d').getImageData(0, 0, sp.width, C).data; let last = 0;
+  for (let f = 0; f < cols; f++) { let any = false; for (let y = 0; y < C && !any; y += 2) for (let x = 0; x < C; x += 2) if (p[(y * sp.width + f * C + x) * 4 + 3] > 0) { any = true; break; } if (any) last = f; }
+  (st.nCache = st.nCache || {})[key] = last + 1; return last + 1;
+}
+const prevN = (ch, act) => framesOf(ch, act);
 function frame() {
   const ch = st.chars[st.sel], act = $('prevAct').value;
   if (ch && ch.sheets && ch.sheets[act] && !st.busy) { // 내보내는 동안은 미리보기를 멈춰 인코딩에 CPU를 몰아준다
-    const fps = +$('fps_' + act).value, fr = Math.floor((performance.now() - st.t0) / 1000 * fps) % prevN(), C = outC();
+    const fps = +$('fps_' + act).value, fr = Math.floor((performance.now() - st.t0) / 1000 * fps) % prevN(ch, act), C = outC();
     for (let d = 0; d < 8; d++) { const c = $('rc' + d); if (!c) continue; const x = c.getContext('2d'); x.clearRect(0, 0, 128, 128); x.fillStyle = '#10131c'; x.fillRect(0, 0, 128, 128);
       x.strokeStyle = '#3a4160'; x.setLineDash([3, 3]); x.beginPath(); x.moveTo(0, +$('foot').value * 128 / C + 0.5); x.lineTo(128, +$('foot').value * 128 / C + 0.5); x.stroke(); x.setLineDash([]);
       x.imageSmoothingEnabled = C > 64; x.drawImage(stripOf(ch, act, d), fr * C, 0, C, C, 0, 0, 128, 128); }
@@ -236,12 +244,12 @@ $('export').onclick = async () => {
   for (const ch of todo) {
     const key = prefix + ch.key + suffix; if (!ch.key || used.has(key)) { log(`건너뜀: 이름이 비었거나 겹침 (${key})`); continue; } used.add(key);
     try {
-      await ensureSheets(ch); const C = outC(), n = colsN(), foot = ch.foot ?? detectFoot(ch) ?? Math.round(C * 0.8), fps = {}, nn = {};
-      for (const [act] of ACTS) { if (!ch.sheets[act]) continue; fps[act] = +$('fps_' + act).value; nn[act] = n;
+      await ensureSheets(ch); const C = outC(), n = colsN(), foot = ch.foot ?? detectFoot(ch) ?? Math.round(C * 0.8), fps = {}, nn = {}, hit = {};
+      for (const [act] of ACTS) { if (!ch.sheets[act]) continue; fps[act] = +$('fps_' + act).value; nn[act] = framesOf(ch, act); if ($('hit_' + act).value !== '') hit[act] = +$('hit_' + act).value;
         await Promise.all([0, 1, 2, 3, 4, 5, 6, 7].map(async d => writeFile(st.outDir, `anim/${key}/${act}_${d}.png`, await toBlob(makeStrip(ch, ch.sheets[act], st.dirRows[d], n))))); // 방향 8개를 동시에 인코딩
       }
       if (!fps.idle) { log(`경고: ${key} 에 idle 이 없다 — 게임에서 쓰려면 idle 이 필요하다`); }
-      data[key] = { size: +$('size').value, cell: C, foot, fps, n: nn, path: `assets/anim/${key}/{act}_{dir}.png` }; done++; log(`완료: ${key} (동작 ${Object.keys(fps).join(',')})`);
+      data[key] = { size: +$('size').value, cell: C, foot, fps, n: nn, hit, path: `assets/anim/${key}/{act}_{dir}.png` }; done++; log(`완료: ${key} (동작 ${Object.keys(fps).join(',')})`);
     } catch (e) { log(`실패: ${key} — ${e.message}`); }
   }
   const js = `// 자동 생성: tools/anim_tool.html — 손으로 고치지 않는다 (다시 내보내면 같은 이름은 덮어쓰고 나머지는 유지)\nwindow.ASSET_MANIFEST = window.ASSET_MANIFEST || {};\nwindow.ASSET_MANIFEST.anims = Object.assign(window.ASSET_MANIFEST.anims || {}, /*DATA*/${JSON.stringify(data, null, 1)}/*END*/);\n`;
