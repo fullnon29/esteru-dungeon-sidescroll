@@ -30,11 +30,18 @@ const Render = (function () {
     const cur = c.an; if (cur) { const prog = cur.t / animN(a, cur.act); if (cur.act === 'die' || (act === 'hurt' && prog < (ACTION_ACT[cur.act] ? 0.8 : 0.4)) || (cur.act === act && prog < 0.6)) return; } // 공격·스킬 동작은 80%까지 피격이 끊지 못한다(맞는 일이 잦아도 휘두르는 모습이 보이게)
     if (!force && cur && act !== 'hurt') return; c.an = { act, t: 0 }; if (face !== undefined) c.face = face;
   } // 일회성 동작(공격·시전·피격). 진행 중이면 덮어쓰지 않는다.
+  // 타격 번쩍임: 그림의 모양(불투명 부분)만 흰색으로 덮어 그린다. 이펙트 레시피의 flashFrames 로 정해지고, 흔들림 감소 설정이면 쓰지 않는다.
+  let flashNow = 0; const FLASH_CV = document.createElement('canvas');
+  function drawFlashed(src, srx, sry, srw, srh, dx, dy, dw, dh) {
+    const c = FLASH_CV; c.width = Math.max(1, Math.round(dw)); c.height = Math.max(1, Math.round(dh)); const f = c.getContext('2d'); f.imageSmoothingEnabled = ctx.imageSmoothingEnabled;
+    f.drawImage(src, srx, sry, srw, srh, 0, 0, c.width, c.height); f.globalCompositeOperation = 'source-atop'; f.fillStyle = 'rgba(255,255,255,.85)'; f.fillRect(0, 0, c.width, c.height); ctx.drawImage(c, dx, dy, dw, dh);
+  }
   function animBlit(a, act, dir, fr, sx, sy, scale) { // 발 위치(m.foot)를 (sx, sy)에 맞춰 그린다
     const im = (a.img[act] || a.img.idle)[dir]; if (!im) return false;
     const cl = a.m.cell || 128, sz = (a.m.size || 128) * (scale || 1), crisp = cl <= 64; // 칸 크기(기본 128). 64px 이하는 도트 그대로 확대
     if (crisp) ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(im, fr * cl, 0, cl, cl, sx - sz / 2, sy - (a.m.foot || cl * 0.8) * sz / cl, sz, sz);
+    const bx = sx - sz / 2, by = sy - (a.m.foot || cl * 0.8) * sz / cl;
+    if (flashNow > 0) drawFlashed(im, fr * cl, 0, cl, cl, bx, by, sz, sz); else ctx.drawImage(im, fr * cl, 0, cl, cl, bx, by, sz, sz);
     if (crisp) ctx.imageSmoothingEnabled = true; return true;
   }
   // 방향 안정화: 새 방향이 0.15초 이상 이어져야 바뀐다(길이 꺾일 때 몸이 파르르 돌아가는 것 방지). 처음 값과 공격·시전의 즉시 방향은 바로 적용.
@@ -43,7 +50,10 @@ const Render = (function () {
     if (o.fcand !== cand) { o.fcand = cand; o.fct = 0; } o.fct += dt; if (o.fct >= 0.15) { o.face = cand; o.fcand = undefined; }
   }
   // 상태가 있는 개체(전투판·캠프). 이동 중이면 가는 쪽, 일회성 동작 중이면 그 방향 유지, 그 외에는 표적 쪽(없으면 def)을 바라본다.
-  function animDraw(a, c, sx, sy, dt, moving, def) {
+  function animDraw(a, c, sx, sy, dt, moving, def) { // 번쩍임 중이면(c.flash 초) 그리는 동안만 flashNow 를 켠다
+    if (c.flash > 0) { flashNow = 1; c.flash -= dt; } const r = animDraw0(a, c, sx, sy, dt, moving, def); flashNow = 0; return r;
+  }
+  function animDraw0(a, c, sx, sy, dt, moving, def) {
     if (c.an) { c.an.t += dt * animFps(a, c.an.act) * (S.exp && S.exp.battle ? animK() : 1); if (c.an.t >= animN(a, c.an.act)) c.an = null; }
     if (moving) { if (Math.hypot(c.x - c.dx, c.y - c.dy) > 0.01) faceTo(c, dirOf(c.x - c.dx, c.y - c.dy), dt); }
     else if (!c.an) { const t = c.curTgt; faceTo(c, t && t.alive ? dirOf(t.dx - c.dx, t.dy - c.dy) : (c.face === undefined ? def : c.face), dt); }
@@ -81,10 +91,10 @@ const Render = (function () {
   const fxName = v => v.t === 'atk' ? 'hit' : (FX_BY[v.sid] || (v.t === 'fire' ? 'fire' : v.t === 'heal' ? 'heal' : null));
   function fxPlay(name, v, delay, big) { // 이펙트의 타격 프레임이 공격 모션의 타격 순간(delay)과 만나도록 미리 시작한다
     const f = Assets.fx(name); if (!f) return false; const hitSec = (f.m.hit || 0) / f.m.fps / animK();
-    later(Math.max(0, delay - hitSec), () => { (S.fxs = S.fxs || []).push({ f, gx: v.x, gy: v.y, t: 0, hit: false, big }); }); return true;
+    later(Math.max(0, delay - hitSec), () => { (S.fxs = S.fxs || []).push({ f, gx: v.x, gy: v.y, t: 0, hit: false, big }); }); return f; // 재생을 시작했으면 그 이펙트(없으면 false)
   }
   function procEvents(e) {
-    S.areas = S.areas || []; S.tileShake = S.tileShake || {}; const bt = e.battle; let delay = 0; // delay: 직전 행동의 타격 순간. 피해·치유 표시·피격 모션은 이만큼 늦춰 휘두르는 모션과 맞춘다
+    S.areas = S.areas || []; S.tileShake = S.tileShake || {}; const bt = e.battle; let delay = 0, flashSec = 0; // flashSec: 직전 이펙트가 정한 피격 번쩍임 시간(초). delay: 직전 행동의 타격 순간. 피해·치유 표시·피격 모션은 이만큼 늦춰 휘두르는 모션과 맞춘다
     const unitAt = v => bt && bt.units.find(c => c.alive && Math.round(c.x) === Math.round(v.x) && Math.round(c.y) === Math.round(v.y));
     for (const v of e.events) {
       if (v.k === 'learn') { S.learnFx = S.learnFx || []; S.learnFx.push({ x: v.x, y: v.y, age: 0 }); }
@@ -95,11 +105,14 @@ const Render = (function () {
         if (v.n) S.floaters.push({ x: v.from.x, y: v.from.y, t: v.n, col: '#ffd86b', age: 0, up: 28, big: true });
         if (v.t === 'atk' && !a) { const [ax, ay] = iso(v.from.x, v.from.y), [bx, by] = iso(v.x, v.y), d = Math.hypot(bx - ax, by - ay) || 1; v.from.lx = (bx - ax) / d * 12; v.from.ly = (by - ay) / d * 12; v.from.lt = 0.18; } // 애니메이션 없는 개체만 앞으로 밀리는 연출
         const fxn = fxName(v), fxOk = fxn && fxPlay(fxn, v, delay, v.t !== 'atk'); // 이펙트 시트가 있으면 그걸로, 없으면 아래 이모지 표시
+        flashSec = fxOk ? (fxOk.m.flashFrames || 0) / fxOk.m.fps / animK() : 0;
         if (!fxOk && (v.t === 'fire' || v.t === 'skill' || v.t === 'heal')) later(delay, () => S.floaters.push({ x: v.x, y: v.y, t: v.t === 'fire' ? '🔥' : v.t === 'heal' ? '✨' : '⚡', col: '#fff', age: 0, fx: true }));
       }
       if (v.k === 'area') later(delay, () => { S.areas.push({ cells: v.cells, col: v.col, age: 0 }); if (v.big && !reduced()) S.frameShake = { t: 0.4, d: 0.4, amp: 16 * shakeK() }; });
+      if (v.k === 'dmg') v.fl = flashSec; // 이 피해 앞의 이펙트가 정한 번쩍임(이벤트에 실어 늦춘 처리에서 쓴다)
       if (v.k === 'dmg') later(delay, () => {
         const tg = unitAt(v), a = tg && animEnt(tg);
+        if (v.fl > 0 && tg && !v.poison && !reduced()) tg.flash = v.fl; // 맞는 순간 흰색으로 번쩍
         if (a && !v.poison) { const guarding = (tg.guard || 0) > bt.t; animPlay(tg, (guarding && pickAct(a, ['guard'])) || 'hurt'); } // 방어 태세 중이면 막는 모션, 아니면 피격
         if (v.crit && !reduced()) S.tileShake[v.x + ',' + v.y] = 0.45; // 치명타: 맞은 타일이 크게 흔들리고 번쩍인다
         if (v.crit) S.floaters.push({ x: v.x, y: v.y, t: '치명타!', col: '#ffd24a', age: 0, big: true, crit: true, up: 44 }); // 머리 위 치명타 문구
@@ -207,11 +220,12 @@ const Render = (function () {
       const cy = sy - 12 - (c.size > 1 ? 8 : 0);
       const aa = animEnt(c), img = aa ? null : c.u ? Assets.unit('sprites', c.u) : Assets.enemy(c);
       if (aa) animDraw(aa, c, sx, sy + 4, dt, c.mvT > 0, !bt ? 2 : c.side === 'e' ? 3 : 7);
-      else if (img) { const h = 58 * (c.size || 1), w = img.width * h / img.height; ctx.drawImage(img, sx - w / 2, sy + 6 - h, w, h); }
+      else if (img) { const h = 58 * (c.size || 1), w = img.width * h / img.height; if (c.flash > 0) { c.flash -= dt; drawFlashed(img, 0, 0, img.width, img.height, sx - w / 2, sy + 6 - h, w, h); } else ctx.drawImage(img, sx - w / 2, sy + 6 - h, w, h); }
       else {
         ctx.fillStyle = c.color; ctx.beginPath(); ctx.arc(sx, cy, r, 0, 7); ctx.fill();
         ctx.lineWidth = 2.5; ctx.strokeStyle = c.side === 'p' ? '#8fc0ff' : '#ff8f8f'; ctx.stroke();
         emoji(c.icon, sx, cy + 1, Math.round(20 * (c.size || 1)));
+        if (c.flash > 0) { c.flash -= dt; ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.beginPath(); ctx.arc(sx, cy, r, 0, 7); ctx.fill(); } // 아트가 없는 개체(이모지 토큰)도 맞는 순간 번쩍
       }
       if (!c.noBar) { const w = 40 * (c.size || 1), p = Math.max(0, c.hp / c.maxhp); ctx.fillStyle = '#000a'; ctx.fillRect(sx - w / 2, cy - r - 10, w, 5); ctx.fillStyle = p < 0.25 ? '#ef6b6b' : p < 0.55 ? '#f0a34a' : '#6fd08c'; ctx.fillRect(sx - w / 2, cy - r - 10, w * p, 5); }
       if (c.isLeader) { ctx.font = '13px sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffd86b'; ctx.fillText('★', sx - r + 2, cy - r + 2); }
