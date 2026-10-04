@@ -29,7 +29,7 @@ const Assets = (function () {
   function loadAnims() {
     const am = man.anims || {};
     for (const name in am) { const m = am[name], a = anims[name] = { m, img: {}, ok: false }; let left = 0, bad = false;
-      for (const act in (m.fps || {})) { a.img[act] = []; for (let d = 0; d < 8; d++) { left++; const im = new Image(); im.onload = () => { a.img[act][d] = im; if (--left === 0 && !bad) a.ok = true; }; im.onerror = () => { bad = true; }; im.src = m.path.replace('{act}', act).replace('{dir}', d); } } }
+      for (const act in (m.fps || {})) { a.img[act] = []; for (let d = 0; d < 8; d++) { left++; const im = new Image(); im.onload = () => { a.img[act][d] = im; if (--left === 0 && !bad) a.ok = true; }; im.onerror = () => { bad = true; }; im.src = m.path.replace('{act}', act).replace('{dir}', d) + '?v=' + (window.ASSET_VER || ''); /* 시트가 바뀌어도 예전 그림이 캐시에서 나오지 않게 index.html 의 버전을 붙인다 */ } } }
   }
   // 용병 애니메이션: 이름 → 직업 → 기본 직업 순으로, 각각 `@무기-갑옷` → `@무기` → `@갑옷` → (없음) 순으로 시트를 찾는다. 갑옷 등급 mythic 은 없으면 plate 로 대체.
   const animFor = u => {

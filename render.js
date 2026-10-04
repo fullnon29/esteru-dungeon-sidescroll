@@ -19,12 +19,15 @@ const Render = (function () {
   /* ---------- 스프라이트 애니메이션 (assets/manifest.js 의 anims, 프레임 15장 가로 스트립) ---------- */
   const animN = (a, act) => (a.m.n && a.m.n[act]) || 15; // 동작별 프레임 수(기본 15)
   const animEnt = c => (c.u ? Assets.anim(c.u) : Assets.animEnemy(c)); // 개체(용병 또는 적)의 애니메이션
+  // 걸음 한 주기(양발 두 걸음)가 가는 거리(칸): 몸 높이의 약 0.8배. 전투판은 몸이 칸에 비해 크고, 미로는 작아서 값이 다르다.
+  const STRIDE_MAZE = 1.65, MAX_CYCLES = 2.2; // MAX_CYCLES: 걸음 주기를 초당 이 횟수 이하로 제한(배속이 빠르면 보폭을 늘려 프레임이 건너뛰어 뒤로 도는 듯 보이는 것을 막는다)
   const animFps = (a, act) => (a.m.fps && a.m.fps[act]) || 15;
   // 방향 0~7: 화면 각도(0=오른쪽, 시계 방향)를 45° 단위로 반올림한 값. 0=E 1=SE 2=정면(S) 3=SW 4=W 5=NW 6=뒷모습(N) 7=NE
   const dirOf = (gdx, gdy) => { const ang = Math.atan2((gdx + gdy) * TH / 2, (gdx - gdy) * TW / 2) * 180 / Math.PI; return Math.round(((ang + 360) % 360) / 45) % 8; };
+  const ACTION_ACT = { atk: 1, heavy: 1, sweep: 1, combo: 1, shoot: 1, cast: 1, guard: 1, taunt: 1, dodge: 1 };
   function animPlay(c, act, force, face) { // 일회성 동작. 같은 동작이 60% 넘게 진행되기 전엔 다시 시작하지 않고, 피격은 현재 동작이 40% 진행된 뒤에 끼어든다(사망은 못 끊음).
     const a = c && animEnt(c); if (!a) return;
-    const cur = c.an; if (cur) { const prog = cur.t / animN(a, cur.act); if (cur.act === 'die' || (act === 'hurt' && prog < 0.4) || (cur.act === act && prog < 0.6)) return; }
+    const cur = c.an; if (cur) { const prog = cur.t / animN(a, cur.act); if (cur.act === 'die' || (act === 'hurt' && prog < (ACTION_ACT[cur.act] ? 0.8 : 0.4)) || (cur.act === act && prog < 0.6)) return; } // 공격·스킬 동작은 80%까지 피격이 끊지 못한다(맞는 일이 잦아도 휘두르는 모습이 보이게)
     if (!force && cur && act !== 'hurt') return; c.an = { act, t: 0 }; if (face !== undefined) c.face = face;
   } // 일회성 동작(공격·시전·피격). 진행 중이면 덮어쓰지 않는다.
   function animBlit(a, act, dir, fr, sx, sy, scale) { // 발 위치(m.foot)를 (sx, sy)에 맞춰 그린다
@@ -34,15 +37,20 @@ const Render = (function () {
     ctx.drawImage(im, fr * cl, 0, cl, cl, sx - sz / 2, sy - (a.m.foot || cl * 0.8) * sz / cl, sz, sz);
     if (crisp) ctx.imageSmoothingEnabled = true; return true;
   }
+  // 방향 안정화: 새 방향이 0.15초 이상 이어져야 바뀐다(길이 꺾일 때 몸이 파르르 돌아가는 것 방지). 처음 값과 공격·시전의 즉시 방향은 바로 적용.
+  function faceTo(o, cand, dt) {
+    if (o.face === undefined) { o.face = cand; return; } if (cand === o.face) { o.fcand = undefined; return; }
+    if (o.fcand !== cand) { o.fcand = cand; o.fct = 0; } o.fct += dt; if (o.fct >= 0.15) { o.face = cand; o.fcand = undefined; }
+  }
   // 상태가 있는 개체(전투판·캠프). 이동 중이면 가는 쪽, 일회성 동작 중이면 그 방향 유지, 그 외에는 표적 쪽(없으면 def)을 바라본다.
   function animDraw(a, c, sx, sy, dt, moving, def) {
-    if (c.an) { c.an.t += dt * animFps(a, c.an.act); if (c.an.t >= animN(a, c.an.act)) c.an = null; }
-    if (moving) { if (Math.hypot(c.x - c.dx, c.y - c.dy) > 0.01) c.face = dirOf(c.x - c.dx, c.y - c.dy); }
-    else if (!c.an) { const t = c.curTgt; c.face = t && t.alive ? dirOf(t.dx - c.dx, t.dy - c.dy) : (c.face === undefined ? def : c.face); }
+    if (c.an) { c.an.t += dt * animFps(a, c.an.act) * (S.exp && S.exp.battle ? animK() : 1); if (c.an.t >= animN(a, c.an.act)) c.an = null; }
+    if (moving) { if (Math.hypot(c.x - c.dx, c.y - c.dy) > 0.01) faceTo(c, dirOf(c.x - c.dx, c.y - c.dy), dt); }
+    else if (!c.an) { const t = c.curTgt; faceTo(c, t && t.alive ? dirOf(t.dx - c.dx, t.dy - c.dy) : (c.face === undefined ? def : c.face), dt); }
     if (c.face === undefined) c.face = def;
     if (c.an) return animBlit(a, c.an.act, c.face, Math.min(animN(a, c.an.act) - 1, Math.floor(c.an.t)), sx, sy);
     const act = moving ? 'walk' : 'idle'; c.ln = c.ln || { act, t: Math.random() * animN(a, act) };
-    if (moving) return animBlit(a, 'walk', c.face, Math.floor((c.wt || 0) / 1.1 * animN(a, 'walk')) % animN(a, 'walk'), sx, sy); // 걸음은 실제로 걸은 거리에 맞춰 넘긴다(미끄러짐 방지)
+    if (moving) return animBlit(a, 'walk', c.face, Math.floor((c.wph || 0) * animN(a, 'walk')) % animN(a, 'walk'), sx, sy); // 걸음은 실제로 걸은 거리에 맞춰 넘긴다(미끄러짐 방지)
     if (c.ln.act !== act) { c.ln.act = act; c.ln.t = 0; } c.ln.t += dt * animFps(a, act);
     return animBlit(a, act, c.face, Math.floor(c.ln.t) % animN(a, act), sx, sy);
   }
@@ -60,26 +68,38 @@ const Render = (function () {
   /* ---------- 이벤트 → 플로터 ---------- */
   const reduced = () => document.body.classList.contains('reduce') || shakeK() <= 0;
   const shakeK = () => (S && S.prefs && S.prefs.shake !== undefined ? S.prefs.shake : 1); // 흔들림 강도 배율 (설정)
+  // 행동(공격·스킬) → 동작 후보. 앞쪽부터 그 용병의 시트에 있는 것을 쓴다(없으면 다음 후보).
+  // 동작 이름: atk 기본 공격 · heavy 강타 · sweep 회전/범위 근접 · combo 연타 · shoot 원거리 · guard 방어 · taunt 도발 · cast 마법 · hurt 피격 · dodge 회피 · die 사망
+  const SKILL_ANIM = { power: ['heavy', 'atk'], cleave: ['sweep', 'atk'], flurry: ['combo', 'atk'], volley: ['shoot', 'atk'], guard: ['guard', 'taunt', 'cast'], taunt: ['taunt', 'guard', 'cast'] };
+  const pickAct = (a, chain) => chain.find(k => a.img[k]) || null;
+  const animK = () => Math.min(3, Math.max(1, ((S && S.speed) || 1) / 1.5)); // 배속이 빠르면 모션·타격 타이밍도 함께 당긴다
+  const hitDelay = (a, act) => { const n = animN(a, act), h = a.m.hit && a.m.hit[act] !== undefined ? a.m.hit[act] : Math.round(n * 0.4); return h / animFps(a, act) / animK(); }; // 타격 순간(프레임)까지의 초
+  function later(sec, fn) { if (sec <= 0.02) fn(); else (S.later = S.later || []).push({ t: sec, fn }); }
   function procEvents(e) {
-    S.areas = S.areas || []; S.tileShake = S.tileShake || {};
+    S.areas = S.areas || []; S.tileShake = S.tileShake || {}; const bt = e.battle; let delay = 0; // delay: 직전 행동의 타격 순간. 피해·치유 표시·피격 모션은 이만큼 늦춰 휘두르는 모션과 맞춘다
+    const unitAt = v => bt && bt.units.find(c => c.alive && Math.round(c.x) === Math.round(v.x) && Math.round(c.y) === Math.round(v.y));
     for (const v of e.events) {
       if (v.k === 'learn') { S.learnFx = S.learnFx || []; S.learnFx.push({ x: v.x, y: v.y, age: 0 }); }
-      if (v.k === 'area') { S.areas.push({ cells: v.cells, col: v.col, age: 0 }); if (v.big && !reduced()) S.frameShake = { t: 0.4, d: 0.4, amp: 16 * shakeK() }; }
-      if (v.k === 'dmg' && e.battle) animPlay(e.battle.units.find(c => c.alive && Math.round(c.x) === Math.round(v.x) && Math.round(c.y) === Math.round(v.y)), 'hurt'); // 맞은 대원은 피격 동작
-      if (v.k === 'fx' && v.from) { if (v.t === 'atk') animPlay(v.from, 'atk', true, dirOf(v.x - v.from.x, v.y - v.from.y)); else if (v.t === 'fire' || v.t === 'skill' || v.t === 'heal') animPlay(v.from, 'cast', true, dirOf(v.x - v.from.x, v.y - v.from.y)); }
-      if (v.k === 'dmg' && v.crit && !reduced()) S.tileShake[v.x + ',' + v.y] = 0.45; // 치명타: 맞은 타일이 크게 흔들리고 번쩍인다
-      if (v.k === 'dmg' && v.crit) S.floaters.push({ x: v.x, y: v.y, t: '치명타!', col: '#ffd24a', age: 0, big: true, crit: true, up: 44 }); // 머리 위 치명타 문구
-      if (v.k === 'dmg') S.floaters.push({ x: v.x, y: v.y, t: (v.crit ? '💥' : '') + (v.poison ? '☠' : '') + v.v, col: v.side === 'p' ? '#ff8a8a' : '#ffffff', age: 0, big: v.crit });
-      else if (v.k === 'miss') S.floaters.push({ x: v.x, y: v.y, t: 'MISS', col: '#9fb2ff', age: 0 });
-      else if (v.k === 'heal') S.floaters.push({ x: v.x, y: v.y, t: '+' + v.v, col: '#7cf0a0', age: 0 });
-      else if (v.k === 'fx') {
+      if (v.k === 'fx' && v.from) {
+        const a = animEnt(v.from), face = dirOf(v.x - v.from.x, v.y - v.from.y), chain = v.t === 'atk' ? ['atk'] : (SKILL_ANIM[v.sid] || ['cast', 'atk']), act = a && pickAct(a, chain);
+        if (act) { animPlay(v.from, act, true, face); delay = hitDelay(a, act); } else delay = 0;
+        S.lastDelay = delay;
         if (v.n) S.floaters.push({ x: v.from.x, y: v.from.y, t: v.n, col: '#ffd86b', age: 0, up: 28, big: true });
-        if (v.from && v.t === 'atk') { const [ax, ay] = iso(v.from.x, v.from.y), [bx, by] = iso(v.x, v.y), d = Math.hypot(bx - ax, by - ay) || 1; v.from.lx = (bx - ax) / d * 12; v.from.ly = (by - ay) / d * 12; v.from.lt = 0.18; }
-        if (v.t === 'fire' || v.t === 'skill' || v.t === 'heal') S.floaters.push({ x: v.x, y: v.y, t: v.t === 'fire' ? '🔥' : v.t === 'heal' ? '✨' : '⚡', col: '#fff', age: 0, fx: true });
+        if (v.t === 'atk' && !a) { const [ax, ay] = iso(v.from.x, v.from.y), [bx, by] = iso(v.x, v.y), d = Math.hypot(bx - ax, by - ay) || 1; v.from.lx = (bx - ax) / d * 12; v.from.ly = (by - ay) / d * 12; v.from.lt = 0.18; } // 애니메이션 없는 개체만 앞으로 밀리는 연출
+        if (v.t === 'fire' || v.t === 'skill' || v.t === 'heal') later(delay, () => S.floaters.push({ x: v.x, y: v.y, t: v.t === 'fire' ? '🔥' : v.t === 'heal' ? '✨' : '⚡', col: '#fff', age: 0, fx: true }));
       }
+      if (v.k === 'area') later(delay, () => { S.areas.push({ cells: v.cells, col: v.col, age: 0 }); if (v.big && !reduced()) S.frameShake = { t: 0.4, d: 0.4, amp: 16 * shakeK() }; });
+      if (v.k === 'dmg') later(delay, () => {
+        const tg = unitAt(v), a = tg && animEnt(tg);
+        if (a && !v.poison) { const guarding = (tg.guard || 0) > bt.t; animPlay(tg, (guarding && pickAct(a, ['guard'])) || 'hurt'); } // 방어 태세 중이면 막는 모션, 아니면 피격
+        if (v.crit && !reduced()) S.tileShake[v.x + ',' + v.y] = 0.45; // 치명타: 맞은 타일이 크게 흔들리고 번쩍인다
+        if (v.crit) S.floaters.push({ x: v.x, y: v.y, t: '치명타!', col: '#ffd24a', age: 0, big: true, crit: true, up: 44 }); // 머리 위 치명타 문구
+        S.floaters.push({ x: v.x, y: v.y, t: (v.crit ? '💥' : '') + (v.poison ? '☠' : '') + v.v, col: v.side === 'p' ? '#ff8a8a' : '#ffffff', age: 0, big: v.crit });
+      });
+      else if (v.k === 'miss') later(delay, () => { const tg = unitAt(v), a = tg && animEnt(tg), act = a && pickAct(a, ['dodge']); if (act) animPlay(tg, act, true); S.floaters.push({ x: v.x, y: v.y, t: 'MISS', col: '#9fb2ff', age: 0 }); });
+      else if (v.k === 'heal') later(delay, () => S.floaters.push({ x: v.x, y: v.y, t: '+' + v.v, col: '#7cf0a0', age: 0 }));
     }
   }
-
   /* ---------- 캠프 편성판 / 전투 무대 ---------- */
   function boardEntities() {
     const out = [];
@@ -101,6 +121,7 @@ const Render = (function () {
     const camp = !S.exp, bt = S.exp && S.exp.battle ? S.exp.battle : null, hg = bt ? bt.hgt : null, terr = bt ? bt.terr : null, HST = 26; // 전투판 고저차 1단 높이(기존 7 → 14 → 26)
     const elAt = (x, y) => hg ? hg[clamp(Math.round(y), 0, 8)][clamp(Math.round(x), 0, 8)] * HST : 0;
     // 흔들림: 화면(범위 마법) · 타일(치명타)
+    if (S.later && S.later.length) { const q = S.later; S.later = []; for (const it of q) { it.t -= dt; if (it.t <= 0) it.fn(); else S.later.push(it); } } // 타격 순간에 맞춰 늦춘 표시들
     ctx.save(); S.areas = S.areas || []; S.tileShake = S.tileShake || {};
     const fs = S.frameShake; if (fs && fs.t > 0) { const am = fs.amp * (fs.t / fs.d); ctx.translate((Math.random() - 0.5) * 2 * am, (Math.random() - 0.5) * 2 * am); fs.t -= dt; }
     const jit = {}; for (const k in S.tileShake) { S.tileShake[k] -= dt; if (S.tileShake[k] <= 0) delete S.tileShake[k]; else { const r = S.tileShake[k] / 0.45, am = 15 * shakeK() * r; jit[k] = [Math.sin(S.time * 75) * am, Math.cos(S.time * 91) * am * 0.8 - am * 0.35, r]; } } // 감쇠 진동 + 번쩍임(r)
@@ -150,7 +171,7 @@ const Render = (function () {
       if (c.dx === undefined) { c.dx = c.x; c.dy = c.y; } const ox = c.dx, oy = c.dy;
       if (animEnt(c)) { const d = Math.hypot(c.x - c.dx, c.y - c.dy); if (d > 0.0005) { const st = Math.min(d, dt * Math.max(5, d * 4)); c.dx += (c.x - c.dx) / d * st; c.dy += (c.y - c.dy) / d * st; } } // 일정한 속도(칸/초)로 이동
       else { c.dx += (c.x - c.dx) * Math.min(1, dt * 9); c.dy += (c.y - c.dy) * Math.min(1, dt * 9); }
-      const mv = Math.hypot(c.dx - ox, c.dy - oy); c.wt = (c.wt || 0) + mv; c.mvT = mv > 0.0004 ? 0.1 : Math.max(0, (c.mvT || 0) - dt);
+      const mv = Math.hypot(c.dx - ox, c.dy - oy); c.wt = (c.wt || 0) + mv; c.wph = (c.wph || 0) + mv / Math.max(1.1, mv / Math.max(dt, 1e-3) / MAX_CYCLES); c.mvT = mv > 0.0004 ? 0.1 : Math.max(0, (c.mvT || 0) - dt);
       if (c.lt > 0) c.lt -= dt;
     });
     ents.sort((a, b) => (a.dx + a.dy) - (b.dx + b.dy));
@@ -194,12 +215,14 @@ const Render = (function () {
     }
     // 쓰러진 대원: 사망 동작을 재생하고 마지막 프레임에서 잠시 머문 뒤 사라진다
     S.ghosts = S.ghosts || [];
-    if (bt) for (const c of bt.units) if (!c.alive && !c.ghosted && animEnt(c)) { c.ghosted = true; S.ghosts.push({ c, age: 0 }); }
-    S.ghosts = S.ghosts.filter(g => (g.age += dt) < 2.2);
+    if (bt) for (const c of bt.units) if (!c.alive && !c.ghosted && animEnt(c)) { c.ghosted = true; S.ghosts.push({ c, age: -(S.lastDelay || 0) }); }
+    S.ghosts = S.ghosts.filter(g => (g.age += dt * (g.age < 0 ? 1 : animK())) < 2.2);
     for (const g of S.ghosts) {
       const a = animEnt(g.c); if (!a) continue; const [gx0, gy0] = iso(g.c.dx, g.c.dy);
       ctx.globalAlpha = g.age > 1.4 ? Math.max(0, 1 - (g.age - 1.4) / 0.8) : 1;
-      animBlit(a, 'die', g.c.face === undefined ? 7 : g.c.face, Math.min(animN(a, 'die') - 1, Math.floor(g.age * animFps(a, 'die'))), gx0, gy0 - elAt(g.c.dx, g.c.dy) + 4);
+      const gf = g.c.face === undefined ? 7 : g.c.face, gyy = gy0 - elAt(g.c.dx, g.c.dy) + 4;
+      if (g.age < 0) animBlit(a, 'idle', gf, 0, gx0, gyy); // 치명타가 들어가는 순간까지는 그대로 서 있는다
+      else animBlit(a, 'die', gf, Math.min(animN(a, 'die') - 1, Math.floor(g.age * animFps(a, 'die'))), gx0, gyy);
       ctx.globalAlpha = 1;
     }
     // 스킬 습득 이펙트: 머리 위로 반짝이는 전구 + 주위를 도는 별빛
@@ -301,21 +324,32 @@ const Render = (function () {
     const bgi = Assets.get('backgrounds', 'maze');
     if (bgi) ctx.drawImage(bgi, 0, 0, W, H); else { if (!bgCanvas) bgCanvas = makeBG(); ctx.drawImage(bgCanvas, 0, 0); }
     e.ents = e.ents || {}; e.cam = e.cam || { x: e.pos.x, y: e.pos.y };
-    if (Math.abs(e.cam.x - e.pos.x) > 8 || Math.abs(e.cam.y - e.pos.y) > 8) { e.cam.x = e.pos.x; e.cam.y = e.pos.y; }
-    e.cam.x += (e.pos.x - e.cam.x) * Math.min(1, dt * 4); e.cam.y += (e.pos.y - e.cam.y) * Math.min(1, dt * 4);
-    camXY = misoXY(e.cam.x, e.cam.y);
-    ctx.save(); ctx.translate(450, 280); ctx.scale(ZOOM, ZOOM); ctx.translate(-camXY[0], -camXY[1]);
+    // 논리 이동은 한 틱에 0~1칸씩 불규칙하게 온다(걸음 간격 0.14초 대 처리 단위 0.1초). 그대로 따라가면 걷다 서기를 반복해 절뚝여 보이므로
+    // ① 최근 3초의 평균 속도(J.v)로 일정하게 걷고 ② 목표를 한 칸 뒤(trail[0])로 잡아 완충(논리보다 2~3칸 뒤처짐)을 둬서 틱이 한두 번 비어도 멈추지 않게 한다.
+    const J = e.fl = e.fl || { rt: 0, lx: e.pos.x, ly: e.pos.y, lt: 0, cum: 0, h: [], v: 0 }; J.rt += dt;
+    if (e.pos.x !== J.lx || e.pos.y !== J.ly) { const dist = Math.hypot(e.pos.x - J.lx, e.pos.y - J.ly); if (dist < 3) J.cum += dist; J.lx = e.pos.x; J.ly = e.pos.y; J.lt = J.rt; }
+    J.h.push([J.rt, J.cum]); while (J.h.length > 2 && J.rt - J.h[1][0] > 3) J.h.shift();
+    { const o = J.h[0], span = J.rt - o[0]; if (span > 0.5) J.v = (J.cum - o[1]) / span; } // 창이 짧을 땐 이전 값 유지
+    if (J.rt - J.lt > 2) J.v *= Math.exp(-dt * 2); // 틱이 오래 멈추면(이벤트·일시정지) 서서히 선다
     const alive = e.party.filter(u => u.hp > 0);
     alive.forEach((u, i) => {
-      const tgt = i === 0 ? e.pos : (e.trail[i - 1] || e.pos); let en = e.ents[u.id];
+      const tgt = e.trail[i] || e.trail[e.trail.length - 1] || e.pos; let en = e.ents[u.id]; // 선두는 한 칸 뒤, 뒤따르는 대원은 그만큼 더 뒤
       if (!en) en = e.ents[u.id] = { dx: tgt.x, dy: tgt.y };
       if (Math.abs(en.dx - e.pos.x) > 6 || Math.abs(en.dy - e.pos.y) > 6) { en.dx = tgt.x; en.dy = tgt.y; }
-      const ox = en.dx, oy = en.dy; en.dx += (tgt.x - en.dx) * Math.min(1, dt * 11); en.dy += (tgt.y - en.dy) * Math.min(1, dt * 11);
+      const ox = en.dx, oy = en.dy, dd = Math.hypot(tgt.x - en.dx, tgt.y - en.dy);
+      if (dd > 0.015) { const want = J.v * 0.95 + dd * 0.12 + Math.max(0, dd - 4) * 1.5; en.sv = en.sv === undefined ? want : en.sv + (want - en.sv) * Math.min(1, dt * 2.5); const st = Math.min(dd, dt * en.sv); en.dx += (tgt.x - en.dx) / dd * st; en.dy += (tgt.y - en.dy) / dd * st; } else { en.dx = tgt.x; en.dy = tgt.y; }
       // 걷기 애니메이션용: 실제로 움직인 거리만큼 걸음 위상을 진행시키고, 가는 방향을 바라본다(멈추면 잠시 뒤 대기로 전환)
       const mv = Math.hypot(en.dx - ox, en.dy - oy), left = Math.hypot(tgt.x - en.dx, tgt.y - en.dy);
-      if (mv > 0.004 && !S.paused) { en.wt = (en.wt || 0) + mv; en.mvT = 0.18; } else en.mvT = Math.max(0, (en.mvT || 0) - dt);
-      if (left > 0.06) en.face = dirOf(tgt.x - en.dx, tgt.y - en.dy);
+      if (mv > 0.004 && !S.paused) { en.wt = (en.wt || 0) + mv; en.wph = (en.wph || 0) + mv / Math.max(STRIDE_MAZE, J.v / MAX_CYCLES); en.mvT = 0.18; } else en.mvT = Math.max(0, (en.mvT || 0) - dt);
+      if (left > 0.06) faceTo(en, dirOf(tgt.x - en.dx, tgt.y - en.dy), dt);
     });
+    { // 카메라는 선두의 부드러운 위치를 따라간다(끊기는 논리 좌표를 따라가면 화면이 출렁인다)
+      const ld = alive.length ? e.ents[alive[0].id] : null, tx = ld ? ld.dx : e.pos.x, ty = ld ? ld.dy : e.pos.y;
+      if (Math.abs(e.cam.x - tx) > 8 || Math.abs(e.cam.y - ty) > 8) { e.cam.x = tx; e.cam.y = ty; }
+      e.cam.x += (tx - e.cam.x) * Math.min(1, dt * 5); e.cam.y += (ty - e.cam.y) * Math.min(1, dt * 5);
+      camXY = misoXY(e.cam.x, e.cam.y);
+      ctx.save(); ctx.translate(450, 280); ctx.scale(ZOOM, ZOOM); ctx.translate(-camXY[0], -camXY[1]);
+    }
     const buckets = {}, put = (gx, gy, fn) => { const k = Math.round(gx + gy); (buckets[k] = buckets[k] || []).push(fn); };
     m.chests.forEach(c => { if (m.seen[c.y][c.x]) put(c.x, c.y, () => { const [sx, sy] = misoXYe(c.x, c.y); ctx.globalAlpha = c.open ? 0.4 : 1; if (!objImg(c.open ? 'chest_open' : (c.big ? 'chest_big' : 'chest'), sx, sy, 22)) emoji(c.big ? '🎁' : '📦', sx, sy - 8, 15); ctx.globalAlpha = 1; }); });
     m.traps.forEach(t => { if (t.found && !t.gone) put(t.x, t.y, () => { const [sx, sy] = misoXYe(t.x, t.y); if (!objImg('trap', sx, sy, 18)) emoji('⚠️', sx, sy - 6, 13); }); });
@@ -338,7 +372,7 @@ const Render = (function () {
         const [sx, sy] = misoXYe(en.dx, en.dy), bob = S.paused ? 0 : Math.abs(Math.sin(S.time * 9 + k)) * 2;
         ctx.fillStyle = '#0005'; ctx.beginPath(); ctx.ellipse(sx, sy - 1, 8, 3.5, 0, 0, 7); ctx.fill();
         const img = Assets.unit('sprites', u), aa = Assets.anim(u);
-        if (aa) { const fc = en.face === undefined ? 2 : en.face; if (en.mvT > 0) animBlit(aa, 'walk', fc, Math.floor(en.wt / 1.1 * animN(aa, 'walk')) % animN(aa, 'walk'), sx, sy + 1, 0.48); else animLoop(aa, 'idle', fc, sx, sy + 1, 0.48, k * 3); if (lead) { ctx.strokeStyle = '#ff3b3b'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(sx, sy, 9, 4, 0, 0, 7); ctx.stroke(); } }
+        if (aa) { const fc = en.face === undefined ? 2 : en.face; if (en.mvT > 0) animBlit(aa, 'walk', fc, Math.floor((en.wph || 0) * animN(aa, 'walk')) % animN(aa, 'walk'), sx, sy + 1, 0.62); else animLoop(aa, 'idle', fc, sx, sy + 1, 0.62, k * 3); if (lead) { ctx.strokeStyle = '#ff3b3b'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(sx, sy, 9, 4, 0, 0, 7); ctx.stroke(); } }
         else if (img) { const h = 26, w = img.width * h / img.height; ctx.drawImage(img, sx - w / 2, sy + 1 - h - bob, w, h); if (lead) { ctx.strokeStyle = '#ff3b3b'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(sx, sy, 9, 4, 0, 0, 7); ctx.stroke(); } }
         else {
           ctx.fillStyle = cl.color; ctx.beginPath(); ctx.arc(sx, sy - 10 - bob, 8, 0, 7); ctx.fill();

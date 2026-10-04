@@ -897,27 +897,27 @@ const Core = (function () {
     const inR = foes.filter(o => dist(c, o) <= rng).sort((p, q) => dist(c, p) - dist(c, q));
     c.b = b;
     switch (sk.type) {
-      case 'single': { if (!inR.length) return false; area(b, sid, [[inR[0].x, inR[0].y]]); ev(b, { k: 'fx', x: inR[0].x, y: inR[0].y, t: 'skill', n: sk.name, from: c }); damage(b, c, inR[0], sk.mult, !!sk.magic); break; }
+      case 'single': { if (!inR.length) return false; area(b, sid, [[inR[0].x, inR[0].y]]); ev(b, { k: 'fx', x: inR[0].x, y: inR[0].y, t: 'skill', n: sk.name, sid, from: c }); damage(b, c, inR[0], sk.mult, !!sk.magic); break; }
       case 'holy': {
         const t = inR.find(o => o.undead) || inR[0]; if (!t) return false;
         area(b, sid, [[t.x, t.y]]);
-        ev(b, { k: 'fx', x: t.x, y: t.y, t: 'skill', n: sk.name, from: c }); damage(b, c, t, t.undead ? sk.mult * 1.8 : sk.mult * 0.6, true); break;
+        ev(b, { k: 'fx', x: t.x, y: t.y, t: 'skill', n: sk.name, sid, from: c }); damage(b, c, t, t.undead ? sk.mult * 1.8 : sk.mult * 0.6, true); break;
       }
-      case 'aoe': { if (!inR.length) return false; const t = inR[0]; area(b, sid, box(t.x, t.y, 1), !!sk.magic); ev(b, { k: 'fx', x: t.x, y: t.y, t: 'fire', n: sk.name, from: c }); foes.filter(o => dist(t, o) <= 1).forEach(o => damage(b, c, o, sk.mult, true)); break; }
-      case 'adjacent': { const adj = foes.filter(o => dist(c, o) <= 1); if (!adj.length) return false; area(b, sid, box(c.x, c.y, 1).filter(q => q[0] !== c.x || q[1] !== c.y)); ev(b, { k: 'fx', x: c.x, y: c.y, t: 'skill', n: sk.name, from: c }); adj.forEach(o => damage(b, c, o, sk.mult, false)); break; }
-      case 'line': { if (!inR.length) return false; const hit = inR.slice(0, 3); area(b, sid, hit.map(o => [o.x, o.y]), !!sk.magic); ev(b, { k: 'fx', x: inR[0].x, y: inR[0].y, t: 'skill', n: sk.name, from: c }); hit.forEach(o => damage(b, c, o, sk.mult * (sid === 'thunder' && cellTh(b, o) === 'river' ? 1.3 : 1), !!sk.magic)); break; }
-      case 'heal': { const t = allies.filter(a => a.hp < a.maxhp).sort((p, q) => p.hp / p.maxhp - q.hp / q.maxhp)[0]; if (!t) return false; area(b, sid, [[t.x, t.y]]); ev(b, { k: 'fx', x: t.x, y: t.y, t: 'heal', n: sk.name, from: c }); heal(b, c, t, c.atk * 1.8 + t.maxhp * 0.15); break; }
-      case 'healall': { area(b, sid, allies.map(a => [a.x, a.y])); ev(b, { k: 'fx', x: c.x, y: c.y, t: 'heal', n: sk.name, from: c }); allies.forEach(a => heal(b, c, a, c.atk * 1.0 + a.maxhp * 0.1)); break; }
+      case 'aoe': { if (!inR.length) return false; const t = inR[0]; area(b, sid, box(t.x, t.y, 1), !!sk.magic); ev(b, { k: 'fx', x: t.x, y: t.y, t: 'fire', n: sk.name, sid, from: c }); foes.filter(o => dist(t, o) <= 1).forEach(o => damage(b, c, o, sk.mult, true)); break; }
+      case 'adjacent': { const adj = foes.filter(o => dist(c, o) <= 1); if (!adj.length) return false; area(b, sid, box(c.x, c.y, 1).filter(q => q[0] !== c.x || q[1] !== c.y)); ev(b, { k: 'fx', x: c.x, y: c.y, t: 'skill', n: sk.name, sid, from: c }); adj.forEach(o => damage(b, c, o, sk.mult, false)); break; }
+      case 'line': { if (!inR.length) return false; const hit = inR.slice(0, 3); area(b, sid, hit.map(o => [o.x, o.y]), !!sk.magic); ev(b, { k: 'fx', x: inR[0].x, y: inR[0].y, t: 'skill', n: sk.name, sid, from: c }); hit.forEach(o => damage(b, c, o, sk.mult * (sid === 'thunder' && cellTh(b, o) === 'river' ? 1.3 : 1), !!sk.magic)); break; }
+      case 'heal': { const t = allies.filter(a => a.hp < a.maxhp).sort((p, q) => p.hp / p.maxhp - q.hp / q.maxhp)[0]; if (!t) return false; area(b, sid, [[t.x, t.y]]); ev(b, { k: 'fx', x: t.x, y: t.y, t: 'heal', n: sk.name, sid, from: c }); heal(b, c, t, c.atk * 1.8 + t.maxhp * 0.15); break; }
+      case 'healall': { area(b, sid, allies.map(a => [a.x, a.y])); ev(b, { k: 'fx', x: c.x, y: c.y, t: 'heal', n: sk.name, sid, from: c }); allies.forEach(a => heal(b, c, a, c.atk * 1.0 + a.maxhp * 0.1)); break; }
       case 'cure': { const t = allies.find(a => a.poisoned); if (!t) return false; t.poisoned = false; t.u.poison = false; ev(b, { k: 'log', m: `💊 ${t.name}의 독이 해독됐다`, c: 'good' }); break; }
       case 'taunt': { // 도발: 사거리 안 모든 적의 위협 1위를 차지하고 5초간 강제 표적이 된다
         const en = foes.filter(o => dist(c, o) <= rng); if (!en.length) return false;
         const mx = Math.max(0, ...foes.map(o => Math.max(0, ...Object.values(o.threat || {}))));
         en.forEach(o => { o.threat[c.u.id] = mx * 1.3 + 60; o.curTgt = c; });
         c.tauntUntil = b.t + 5; area(b, sid, en.map(o => [o.x, o.y]).concat([[c.x, c.y]]));
-        ev(b, { k: 'fx', x: c.x, y: c.y, t: 'skill', n: sk.name, from: c }); ev(b, { k: 'log', m: `🛡️ ${c.name}의 도발! 적 ${en.length}기의 시선이 쏠린다`, c: 'good' }); break;
+        ev(b, { k: 'fx', x: c.x, y: c.y, t: 'skill', n: sk.name, sid, from: c }); ev(b, { k: 'log', m: `🛡️ ${c.name}의 도발! 적 ${en.length}기의 시선이 쏠린다`, c: 'good' }); break;
       }
-      case 'guard': { c.guard = b.t + 6; area(b, sid, [[c.x, c.y]]); ev(b, { k: 'fx', x: c.x, y: c.y, t: 'skill', n: sk.name, from: c }); break; }
-      case 'flurry': { if (!inR.length) return false; const t = inR[0]; area(b, sid, [[t.x, t.y]]); ev(b, { k: 'fx', x: t.x, y: t.y, t: 'skill', n: sk.name, from: c }); damage(b, c, t, sk.mult, false); if (t.alive) damage(b, c, t, sk.mult, false); break; }
+      case 'guard': { c.guard = b.t + 6; area(b, sid, [[c.x, c.y]]); ev(b, { k: 'fx', x: c.x, y: c.y, t: 'skill', n: sk.name, sid, from: c }); break; }
+      case 'flurry': { if (!inR.length) return false; const t = inR[0]; area(b, sid, [[t.x, t.y]]); ev(b, { k: 'fx', x: t.x, y: t.y, t: 'skill', n: sk.name, sid, from: c }); damage(b, c, t, sk.mult, false); if (t.alive) damage(b, c, t, sk.mult, false); break; }
     }
     if (c.u) consume(c, sid);
     return true;
