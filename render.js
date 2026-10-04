@@ -75,6 +75,14 @@ const Render = (function () {
   const animK = () => Math.min(3, Math.max(1, ((S && S.speed) || 1) / 1.5)); // 배속이 빠르면 모션·타격 타이밍도 함께 당긴다
   const hitDelay = (a, act) => { const n = animN(a, act), h = a.m.hit && a.m.hit[act] !== undefined ? a.m.hit[act] : Math.round(n * 0.4); return h / animFps(a, act) / animK(); }; // 타격 순간(프레임)까지의 초
   function later(sec, fn) { if (sec <= 0.02) fn(); else (S.later = S.later || []).push({ t: sec, fn }); }
+  /* ---------- 이펙트(FX) 시트 재생: tools/fx_tool.html 로 만든 assets/fx/*.png (규격은 assets/README.md) ---------- */
+  // 스킬 id → 이펙트 이름. 해당 이름의 시트가 없으면 이펙트 없이 기존 표시(이모지)를 쓴다. 기본 공격은 'hit'.
+  const FX_BY = { power: 'heavy', cleave: 'slash', flurry: 'slash', kenki: 'slash', assassinate: 'slash', volley: 'hit', renkan: 'hit', pierce: 'hit', fire: 'fire', meteor: 'fire', ice: 'ice', thunder: 'lightning', heal: 'heal', bless: 'heal', antidote: 'heal', holy: 'buff', sacred: 'buff', sanctuary: 'buff', guard: 'buff', taunt: 'shockwave' };
+  const fxName = v => v.t === 'atk' ? 'hit' : (FX_BY[v.sid] || (v.t === 'fire' ? 'fire' : v.t === 'heal' ? 'heal' : null));
+  function fxPlay(name, v, delay, big) { // 이펙트의 타격 프레임이 공격 모션의 타격 순간(delay)과 만나도록 미리 시작한다
+    const f = Assets.fx(name); if (!f) return false; const hitSec = (f.m.hit || 0) / f.m.fps / animK();
+    later(Math.max(0, delay - hitSec), () => { (S.fxs = S.fxs || []).push({ f, gx: v.x, gy: v.y, t: 0, hit: false, big }); }); return true;
+  }
   function procEvents(e) {
     S.areas = S.areas || []; S.tileShake = S.tileShake || {}; const bt = e.battle; let delay = 0; // delay: 직전 행동의 타격 순간. 피해·치유 표시·피격 모션은 이만큼 늦춰 휘두르는 모션과 맞춘다
     const unitAt = v => bt && bt.units.find(c => c.alive && Math.round(c.x) === Math.round(v.x) && Math.round(c.y) === Math.round(v.y));
@@ -86,7 +94,8 @@ const Render = (function () {
         S.lastDelay = delay;
         if (v.n) S.floaters.push({ x: v.from.x, y: v.from.y, t: v.n, col: '#ffd86b', age: 0, up: 28, big: true });
         if (v.t === 'atk' && !a) { const [ax, ay] = iso(v.from.x, v.from.y), [bx, by] = iso(v.x, v.y), d = Math.hypot(bx - ax, by - ay) || 1; v.from.lx = (bx - ax) / d * 12; v.from.ly = (by - ay) / d * 12; v.from.lt = 0.18; } // 애니메이션 없는 개체만 앞으로 밀리는 연출
-        if (v.t === 'fire' || v.t === 'skill' || v.t === 'heal') later(delay, () => S.floaters.push({ x: v.x, y: v.y, t: v.t === 'fire' ? '🔥' : v.t === 'heal' ? '✨' : '⚡', col: '#fff', age: 0, fx: true }));
+        const fxn = fxName(v), fxOk = fxn && fxPlay(fxn, v, delay, v.t !== 'atk'); // 이펙트 시트가 있으면 그걸로, 없으면 아래 이모지 표시
+        if (!fxOk && (v.t === 'fire' || v.t === 'skill' || v.t === 'heal')) later(delay, () => S.floaters.push({ x: v.x, y: v.y, t: v.t === 'fire' ? '🔥' : v.t === 'heal' ? '✨' : '⚡', col: '#fff', age: 0, fx: true }));
       }
       if (v.k === 'area') later(delay, () => { S.areas.push({ cells: v.cells, col: v.col, age: 0 }); if (v.big && !reduced()) S.frameShake = { t: 0.4, d: 0.4, amp: 16 * shakeK() }; });
       if (v.k === 'dmg') later(delay, () => {
@@ -235,6 +244,15 @@ const Render = (function () {
       for (let k = 0; k < 6; k++) { const an = f.age * 3 + k * Math.PI / 3, rr = 20 + 6 * Math.sin(f.age * 6 + k); emoji('✨', lx + Math.cos(an) * rr, by + Math.sin(an) * rr * 0.7, 10); }
       ctx.font = '700 13px "Malgun Gothic",sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = '#000'; ctx.strokeText('스킬 습득!', lx, by - 26); ctx.fillStyle = '#ffe27a'; ctx.fillText('스킬 습득!', lx, by - 26);
       ctx.restore();
+    }
+    // 이펙트(FX) 시트: 프레임은 모션과 같은 배속 규칙(animK)으로 진행. 타격 프레임에 도달하면 화면 흔들림·히트스톱(스킬만) 적용
+    if (S.fxs && S.fxs.length) {
+      const k = animK(); ctx.save(); ctx.imageSmoothingEnabled = false;
+      for (const x of S.fxs) { const m = x.f.m, fr = Math.floor(x.t * m.fps * k); x.t += dt;
+        if (!x.hit && fr >= (m.hit || 0)) { x.hit = true; if (!reduced() && m.shake > 0) S.frameShake = { t: 0.14, d: 0.14, amp: m.shake * shakeK() }; if (x.big && !reduced() && m.hitStop > 0) S.freeze = Math.min(0.09, m.hitStop / m.fps / k); }
+        if (fr >= m.n) { x.done = true; continue; }
+        const [sx, sy] = iso(x.gx, x.gy); ctx.drawImage(x.f.img, fr * m.cell, 0, m.cell, m.cell, sx - m.cell / 2, sy - elAt(x.gx, x.gy) - 34 - m.cell / 2, m.cell, m.cell); }
+      S.fxs = S.fxs.filter(x => !x.done); ctx.restore();
     }
     for (const f of S.floaters) {
       f.age += dt; const [sx, sy] = iso(f.x, f.y), a = 1 - f.age / (f.fx ? 0.5 : 1.0); if (a <= 0) continue;
@@ -429,6 +447,7 @@ const Render = (function () {
     return best && bd <= 1.2 ? best : null;
   }
   function draw(dt) {
+    if (S.freeze > 0) { S.freeze -= dt; dt = 0; } // 히트스톱: 타격 순간 화면 연출만 잠깐 멈춘다(전투 계산은 그대로)
     S.time += dt;
     ctx.clearRect(0, 0, W, H);
     if (S.exp && !S.exp.battle) { drawMaze(dt); vignette(0.25); } else if (!S.exp && S.tab === 'tavern') drawTavern(dt); else drawBoard(dt);

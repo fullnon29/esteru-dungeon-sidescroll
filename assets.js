@@ -41,6 +41,9 @@ const Assets = (function () {
   };
   // 적/보스 애니메이션: 보스는 'boss'+층, 일반 몹은 몹 id(tplId)로 찾는다.
   const animEnemy = c => { const a = (c.boss ? anims['boss' + c.floorKey] : null) || anims[c.tplId]; return a && a.ok ? a : null; };
-  loadAll(); loadAnims();
-  return { get, unit, enemy, report, anim: animFor, animEnemy, has: () => loaded > 0 };
+  // 이펙트(FX) 시트: tools/fx_tool.html 이 만드는 assets/fx/fx_manifest.js 의 window.FX_MANIFEST[이름] = { path, cell, n, fps, hit, hitStop, shake, flashFrames }. 가로 스트립(프레임 n장 × cell px). 없거나 못 불러오면 null.
+  const fxs = {};
+  function loadFx() { const fm = window.FX_MANIFEST || {}; for (const name in fm) { const m = fm[name], im = new Image(); im.onload = () => { fxs[name] = { img: im, m }; }; im.src = m.path + '?v=' + (window.ASSET_VER || ''); } }
+  loadAll(); loadAnims(); loadFx();
+  return { get, unit, enemy, report, anim: animFor, animEnemy, fx: name => fxs[name] || null, has: () => loaded > 0 };
 })();

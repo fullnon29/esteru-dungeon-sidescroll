@@ -48,6 +48,12 @@ slime(슬라임), goblin(고블린), gobarch(고블린 궁수), bat(큰박쥐), 
 - **합치기**: ②에서 같은 격자의 레이어 시트(몸·무기·갑옷 등)를 체크해 한 장으로 겹친다(레이어별 색조 지정 가능). 이름 예 `knight@sword-plate` — 키 이름에는 `@` 를 쓸 수 있다.
 - **시트 설정 프리셋**: 격자·배경 제거·후처리·변종 설정을 이름 붙여 저장했다가 다른 시트에 적용.
 
+## 이펙트 생성기
+- `tools/fx_tool.html` — 에셋 도구와 같은 주소 체계(`http://localhost:8123/tools/fx_tool.html`). 코드로 그리는 도트풍 이펙트를 **레이어(참격 호·충격파 링·섬광·파티클 폭발·떠오르는 반짝임·마법진·파편·번개)** 로 쌓아 만든다. 프리셋 10종(참격·강타·타격 스파크·충격파·화염·얼음·번개·치유·버프 오라·암흑 폭발)에서 시작해 슬라이더로 조절한다.
+- 설정: 칸 크기·프레임 수·fps·도트 크기·투명도/색 단계(칼같은 도트 느낌)·시드. 타격감 값(타격 프레임·히트스톱·피격 흔들림·번쩍임)은 이미지에 안 들어가고 레시피·매니페스트에 기록되며, 오른쪽 "타겟 미리보기"(내 스프라이트를 넣어 볼 수 있음)로 느낌을 확인한다.
+- 내보내기: `assets/fx/{name}.png`(가로 스트립) + `{name}.recipe.json`(다시 편집용) + `assets/fx/fx_manifest.js`(`window.FX_MANIFEST`, 같은 이름은 덮어쓰고 나머지는 유지). `ASSET_MANIFEST` 와 분리한 `FX_MANIFEST` 를 `assets.js`(`Assets.fx(이름)`)가 읽는다.
+- **게임 연동(`render.js`)**: 전투 중 스킬/기본 공격 이벤트가 나면 타겟 칸 위에 이펙트 시트를 재생한다. 이름 대응은 `render.js` 의 `FX_BY`(스킬 id → 이펙트 이름: power→heavy, cleave/flurry/kenki/assassinate→slash, volley/renkan/pierce→hit, fire/meteor→fire, ice→ice, thunder→lightning, heal/bless/antidote→heal, holy/sacred/sanctuary/guard→buff, taunt→shockwave, 기본 공격→hit)이고, 해당 이름의 시트가 없으면 기존 이모지 표시로 돌아간다. 이펙트의 **타격 프레임이 공격 모션의 타격 순간과 만나도록** 미리 시작하고, 타격 프레임에서 **화면 흔들림**(레시피 `shake`, 설정의 흔들림 배율·감소 모드 반영)과 **히트스톱**(`hitStop`, 스킬만, 최대 0.09초, 배속이 빠르면 짧아짐)을 적용한다. 이펙트 번쩍임(`flashFrames`)은 아직 게임에 연결하지 않았다. 새 이펙트를 만들면 `index.html` 의 `?v=` 값을 올린다.
+
 ## 적용 예
 ```js
 portraits: { warrior: 'assets/portraits/warrior.png', '레온': 'assets/portraits/leon.png' },
