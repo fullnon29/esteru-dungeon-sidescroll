@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>이펙트 생성기</title>
+<style>
+  :root { --bg:#14161d; --panel:#1d2130; --line:#2f3550; --txt:#e4e8f5; --dim:#8d96b4; --acc:#6aa8ff; --ok:#6fd08c; --bad:#ef6b6b; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:14px/1.5 "Malgun Gothic",system-ui,sans-serif; }
+  header { padding:12px 20px; border-bottom:1px solid var(--line); display:flex; gap:14px; align-items:baseline; flex-wrap:wrap; }
+  h1 { margin:0; font-size:18px; } header small { color:var(--dim); }
+  main { display:grid; grid-template-columns:minmax(0,470px) minmax(0,1fr); gap:16px; padding:14px 20px; align-items:start; }
+  main > div { min-width:0; }
+  @media (max-width:1100px) { main { grid-template-columns:minmax(0,1fr); } }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px 14px; margin-bottom:14px; }
+  h2 { margin:0 0 8px; font-size:14px; color:var(--acc); display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  button, select, input { background:#252b40; color:var(--txt); border:1px solid var(--line); border-radius:5px; padding:4px 8px; font:inherit; }
+  button { cursor:pointer; } button:hover { border-color:var(--acc); } button.primary { background:#2f5fb0; border-color:#4a7fd8; } button.on { background:#3b4a78; border-color:var(--acc); }
+  button.sm { padding:1px 7px; font-size:12px; }
+  input[type=number] { width:64px; } input[type=text] { width:100%; } input[type=color] { padding:0; width:32px; height:24px; } input[type=range] { padding:0; width:100%; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:4px 0; } .row > label { display:flex; gap:5px; align-items:center; }
+  .dim { color:var(--dim); font-size:12px; } .ok { color:var(--ok); } .bad { color:var(--bad); }
+  .grid2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px 10px; } .grid2 label { display:flex; flex-direction:column; font-size:12px; color:var(--dim); gap:2px; min-width:0; }
+  .grid2 label > input:not([type=color]), .grid2 label > select { width:100%; min-width:0; color:var(--txt); font-size:14px; }
+  .chk { background-image:linear-gradient(45deg,#222 25%,transparent 25%,transparent 75%,#222 75%),linear-gradient(45deg,#222 25%,transparent 25%,transparent 75%,#222 75%); background-color:#2c2c2c; background-size:12px 12px; background-position:0 0,6px 6px; }
+  canvas { image-rendering:pixelated; border:1px solid var(--line); border-radius:4px; max-width:100%; }
+  .layer { border:1px solid var(--line); border-radius:6px; margin-bottom:8px; background:#191d2b; } .layer > summary { padding:5px 8px; cursor:pointer; display:flex; gap:6px; align-items:center; } .layer .body { padding:4px 10px 8px; }
+  .layer .pr { display:grid; grid-template-columns:96px 1fr 44px; gap:6px; align-items:center; font-size:12px; color:var(--dim); } .layer .pr span:last-child { text-align:right; color:var(--txt); }
+  #log { height:90px; overflow:auto; font:12px/1.5 Consolas,monospace; background:#0d0f16; border:1px solid var(--line); border-radius:5px; padding:6px; white-space:pre-wrap; }
+  #strip { width:100%; } #target { width:100%; max-width:560px; }
+  .chips { display:flex; flex-wrap:wrap; gap:4px; }
+</style>
+</head>
+<body>
+<header><h1>이펙트 생성기</h1><small>레이어를 쌓아 참격·충격·마법 이펙트를 만들고 → 도트풍 PNG 스트립 + 레시피(JSON)로 내보낸다. 코드로 그리므로 토큰 없이 직접 조절</small></header>
+<main>
+<div>
+  <section>
+    <h2>① 프리셋 <span class="dim">누르면 레이어가 채워진다</span></h2>
+    <div class="chips" id="presets"></div>
+  </section>
+  <section>
+    <h2>② 기본 설정</h2>
+    <div class="grid2">
+      <label>이름 (게임에서 쓰는 키)<input type="text" id="g_name"></label>
+      <label>칸 크기 (px)<select id="g_size"><option>32</option><option>48</option><option>64</option><option>96</option><option selected>128</option><option>192</option><option>256</option></select></label>
+      <label>프레임 수<input type="number" id="g_frames" min="2" max="48"></label>
+      <label>재생 fps<input type="number" id="g_fps" min="1" max="60"></label>
+      <label>도트 1개 = 출력 px (1=부드러움)<input type="number" id="g_ps" min="1" max="8"></label>
+      <label>투명도 단계 (0=연속, 2=칼같이)<input type="number" id="g_alphaLevels" min="0" max="16"></label>
+      <label>색 단계 (0=끔, 채널당)<input type="number" id="g_colorLevels" min="0" max="32"></label>
+      <label>랜덤 시드<span class="row" style="margin:0"><input type="number" id="g_seed" style="flex:1"><button class="sm" id="reseed">🎲</button></span></label>
+      <label>타격 프레임 (효과 정점)<input type="number" id="g_hit" min="0" max="47"></label>
+      <label>히트스톱 (프레임)<input type="number" id="g_hitStop" min="0" max="12"></label>
+      <label>피격 흔들림 (px)<input type="number" id="g_shake" min="0" max="12"></label>
+      <label>피격 번쩍임 (프레임)<input type="number" id="g_flashFrames" min="0" max="6"></label>
+    </div>
+    <div class="dim">타격 프레임·히트스톱·흔들림·번쩍임은 이미지에는 안 들어가고 레시피(JSON)와 매니페스트에 기록된다 — 게임이 이 값으로 타격감을 연출하도록 연결할 때 쓴다. 오른쪽 "타겟 미리보기"로 느낌을 확인.</div>
+  </section>
+  <section>
+    <h2>③ 레이어 <span><select id="addType"></select><button class="sm" id="addLayer">추가</button></span></h2>
+    <div id="layers"></div>
+  </section>
+</div>
+<div>
+  <section>
+    <h2>미리보기 <span class="row" style="margin:0"><label class="dim">배경 <input type="color" id="bg" value="#2a3d5c"></label><label class="dim">확대 <select id="zoom"><option>1</option><option selected>2</option><option>3</option><option>4</option></select></label><button class="sm" id="play">⏸ 정지</button></span></h2>
+    <div class="row" style="align-items:flex-start"><canvas id="main" class="chk" width="128" height="128"></canvas><div class="dim" id="info"></div></div>
+    <div class="dim" style="margin-top:6px">프레임 전체</div>
+    <canvas id="strip" class="chk" width="10" height="10"></canvas>
+  </section>
+  <section>
+    <h2>타겟 미리보기 <span class="dim">타격감 확인 — 맞는 쪽에 이펙트를 겹쳐 보여 준다</span></h2>
+    <div class="row"><button id="pickTarget">타겟 이미지 넣기…</button><button id="clearTarget" class="sm">기본 인형</button><label class="dim">위치 x <input type="number" id="t_x" value="0" style="width:56px"> y <input type="number" id="t_y" value="-8" style="width:56px"> %</label><label class="dim">크기 <select id="t_zoom"><option>1</option><option selected>2</option><option>3</option></select></label></div>
+    <canvas id="target" class="chk" width="560" height="260"></canvas>
+  </section>
+  <section>
+    <h2>④ 내보내기</h2>
+    <div class="row"><button id="pickOut">프로젝트 폴더 선택…</button><span id="outInfo" class="dim">미선택 — ZIP 저장 가능</span></div>
+    <div class="row"><label>저장 경로 <input type="text" id="e_path" value="assets/fx/{name}.png" style="width:260px"></label></div>
+    <div class="row"><button id="exportDir" class="primary" disabled>폴더에 내보내기</button><button id="exportZip">ZIP 으로 저장</button><button id="saveRecipe">레시피 JSON 저장</button><button id="loadRecipe">레시피 불러오기</button></div>
+    <div class="dim">내보내기: <code>{name}.png</code>(가로 스트립, 프레임×칸) + <code>{name}.recipe.json</code>(다시 편집용) + <code>fx_manifest.js</code>(<code>window.FX_MANIFEST</code>, 같은 이름은 덮어쓰고 나머지는 유지). 폴더 쓰기는 크롬/엣지 전용.</div>
+    <div id="log"></div>
+  </section>
+</div>
+</main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v)), lerp = (a, b, t) => a + (b - a) * t;
+const mk = (w, h) => { const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h)); return c; };
+const log = m => { const l = $('log'); l.textContent += m + '\n'; l.scrollTop = l.scrollHeight; };
+const safe = s => String(s).replace(/[^\w가-힣\-]+/g, '_').replace(/^_+|_+$/g, '');
+const hex2rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const mix = (a, b, t) => { const A = hex2rgb(a), B = hex2rgb(b); return [0, 1, 2].map(i => A[i] + (B[i] - A[i]) * t); };
+const rgba = (c, a) => `rgba(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])},${clamp(a, 0, 1)})`;
+function rng(seed) { let a = seed | 0; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const EASE = { lin: t => t, out: t => 1 - Math.pow(1 - t, 3), in: t => t * t * t, io: t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2 };
+
+/* ===================== 레이어 정의 (스키마) ===================== */
+// [키, 이름, 최소, 최대, 간격, 기본값]
+const COMMON = [['start', '시작 시점', 0, 1, 0.01, 0], ['end', '끝 시점', 0, 1, 0.01, 1], ['x', '가로 위치 %', -50, 50, 1, 0], ['y', '세로 위치 %', -50, 50, 1, 0], ['alpha', '투명도', 0, 1, 0.05, 1], ['glow', '번짐', 0, 20, 1, 0], ['fadeIn', '페이드인', 0, 1, 0.05, 0.05], ['fadeOut', '페이드아웃', 0, 1, 0.05, 0.3]];
+const TYPES = {
+  arc: { name: '참격 호', params: [['radius', '반지름 %', 5, 70, 1, 40], ['thick', '두께 %', 2, 40, 1, 20], ['sweep', '휘두르는 각도', 20, 360, 5, 170], ['angle', '방향 °', -180, 180, 5, -40], ['tail', '꼬리 길이', 0.1, 1, 0.05, 1]] },
+  ring: { name: '충격파 링', params: [['r0', '시작 반지름 %', 0, 60, 1, 4], ['r1', '끝 반지름 %', 5, 80, 1, 38], ['w0', '시작 두께 %', 0.5, 20, 0.5, 5], ['w1', '끝 두께 %', 0.5, 20, 0.5, 1], ['squash', '세로 비율(0.5=쿼터뷰)', 0.2, 1, 0.05, 0.55]] },
+  flash: { name: '섬광', params: [['radius', '반지름 %', 4, 70, 1, 24], ['decay', '사라지는 속도', 0.3, 4, 0.1, 1.6]] },
+  burst: { name: '파티클 폭발', params: [['count', '개수', 1, 80, 1, 18], ['speed', '퍼지는 거리 %', 2, 70, 1, 32], ['spread', '퍼짐 각도', 10, 360, 10, 360], ['dir', '방향 °', -180, 180, 5, -90], ['size', '시작 크기', 0.5, 12, 0.5, 3], ['sizeEnd', '끝 크기', 0, 12, 0.5, 0.5], ['gravity', '중력 % (음수=위로)', -40, 40, 1, 8], ['shape', '모양 0점 1선 2사각', 0, 2, 1, 1]] },
+  rise: { name: '떠오르는 반짝임', params: [['count', '개수', 1, 60, 1, 14], ['width', '가로 폭 %', 5, 80, 1, 36], ['height', '상승 높이 %', 5, 80, 1, 42], ['size', '크기', 1, 10, 0.5, 4], ['sway', '흔들림', 0, 12, 0.5, 3]] },
+  rune: { name: '마법진', params: [['radius', '반지름 %', 8, 60, 1, 34], ['rings', '원 개수', 1, 4, 1, 2], ['spokes', '꼭짓점 수', 3, 12, 1, 6], ['spin', '회전 °', -720, 720, 15, 180], ['squash', '세로 비율', 0.2, 1, 0.05, 0.5]] },
+  shards: { name: '파편', params: [['count', '개수', 1, 30, 1, 9], ['speed', '퍼지는 거리 %', 2, 70, 1, 30], ['length', '파편 길이 %', 2, 30, 1, 11], ['gravity', '중력 %', -30, 40, 1, 10]] },
+  bolt: { name: '번개', params: [['length', '길이 %', 10, 70, 1, 45], ['angle', '방향 °', -180, 180, 5, -90], ['width', '굵기', 0.5, 8, 0.5, 2.5], ['jitter', '꺾임 %', 1, 20, 1, 7], ['flicker', '깜빡임 횟수', 1, 12, 1, 5]] },
+};
+const defaultLayer = (type, o = {}) => { const L = { type, on: true, color: '#ffffff', color2: '#8ad0ff' }; for (const p of COMMON.concat(TYPES[type].params)) L[p[0]] = p[5]; return Object.assign(L, o); };
+const PL = (type, o) => defaultLayer(type, o);
+const PRESETS = {
+  '참격': { frames: 10, hit: 5, hitStop: 2, shake: 2, flashFrames: 2, layers: [PL('arc', { start: 0.05, end: 0.62, color: '#ffffff', color2: '#7fd0ff', glow: 4 }), PL('flash', { start: 0.4, end: 0.8, radius: 15, color: '#ffffff', color2: '#cfeaff' }), PL('burst', { start: 0.4, end: 1, count: 9, speed: 24, size: 2, color: '#ffffff', color2: '#7fd0ff', gravity: 6 })] },
+  '강타': { frames: 12, hit: 6, hitStop: 3, shake: 4, flashFrames: 2, layers: [PL('arc', { start: 0.05, end: 0.5, radius: 38, thick: 20, sweep: 170, angle: -60, color: '#fff3c0', color2: '#ff9a3a', glow: 5 }), PL('arc', { start: 0.15, end: 0.6, radius: 30, thick: 12, sweep: 140, angle: 20, color: '#ffffff', color2: '#ffb347' }), PL('ring', { start: 0.45, end: 1, r1: 44, squash: 0.5, color: '#ffd28a', color2: '#ff7a3a' }), PL('flash', { start: 0.42, end: 0.85, radius: 26, color: '#ffffff', color2: '#ffc27a' }), PL('burst', { start: 0.42, end: 1, count: 22, speed: 34, size: 3, color: '#ffe9a8', color2: '#ff5a1f', gravity: 12 })] },
+  '타격 스파크': { frames: 8, hit: 2, hitStop: 2, shake: 2, flashFrames: 2, layers: [PL('flash', { start: 0, end: 0.55, radius: 22, decay: 2.4, color: '#ffffff', color2: '#ffe08a' }), PL('burst', { start: 0, end: 0.9, count: 14, speed: 28, size: 2.5, color: '#ffffff', color2: '#ffc83a', gravity: 6 }), PL('ring', { start: 0, end: 0.6, r1: 22, w0: 3, squash: 0.7, color: '#ffffff', color2: '#ffd36a' })] },
+  '충격파': { frames: 12, hit: 1, hitStop: 2, shake: 4, flashFrames: 1, layers: [PL('ring', { start: 0, end: 1, r1: 46, w0: 7, w1: 1, color: '#ffffff', color2: '#7fb8ff' }), PL('ring', { start: 0.12, end: 1, r1: 34, w0: 4, w1: 1, color: '#bfe0ff', color2: '#4a7fd8' }), PL('burst', { start: 0, end: 1, count: 16, speed: 38, size: 3, sizeEnd: 1, color: '#d9e6ff', color2: '#6a7fa8', gravity: 10, shape: 0 })] },
+  '화염': { frames: 12, hit: 3, hitStop: 2, shake: 2, flashFrames: 2, layers: [PL('flash', { start: 0, end: 0.6, radius: 30, color: '#fff2b0', color2: '#ff8a1f' }), PL('burst', { start: 0.05, end: 1, count: 26, speed: 26, size: 5, sizeEnd: 0.5, shape: 0, gravity: -14, color: '#ffd24a', color2: '#d9301a', glow: 5 }), PL('ring', { start: 0.05, end: 0.7, r1: 36, squash: 0.55, color: '#ffb347', color2: '#d9301a' })] },
+  '얼음': { frames: 12, hit: 3, hitStop: 2, shake: 3, flashFrames: 2, layers: [PL('flash', { start: 0, end: 0.5, radius: 24, color: '#ffffff', color2: '#9fe8ff' }), PL('shards', { start: 0.05, end: 1, count: 10, speed: 32, length: 13, gravity: 8, color: '#e8fbff', color2: '#4fb8ff' }), PL('ring', { start: 0, end: 0.7, r1: 38, squash: 0.55, color: '#ffffff', color2: '#4fb8ff' })] },
+  '번개': { frames: 10, hit: 3, hitStop: 2, shake: 3, flashFrames: 3, layers: [PL('bolt', { start: 0, end: 0.8, length: 48, width: 3, color: '#ffffff', color2: '#ffe45a', glow: 8 }), PL('flash', { start: 0.15, end: 0.7, radius: 24, color: '#ffffff', color2: '#fff29a' }), PL('burst', { start: 0.2, end: 1, count: 12, speed: 26, size: 2, color: '#ffffff', color2: '#ffd83a', gravity: 4 })] },
+  '치유': { frames: 14, hit: 4, hitStop: 0, shake: 0, flashFrames: 0, layers: [PL('ring', { start: 0, end: 0.8, r0: 6, r1: 32, w0: 3, w1: 1, squash: 0.5, color: '#d6ffe0', color2: '#4fe08a' }), PL('rise', { start: 0.05, end: 1, count: 16, color: '#eaffef', color2: '#5fe38e', glow: 4 }), PL('flash', { start: 0.1, end: 0.6, radius: 26, decay: 1, alpha: 0.5, color: '#cffff0', color2: '#6fe8a0' })] },
+  '버프 오라': { frames: 16, hit: 6, hitStop: 0, shake: 0, flashFrames: 0, layers: [PL('rune', { start: 0, end: 1, radius: 36, color: '#fff0b0', color2: '#ffb830', glow: 3, fadeIn: 0.2, fadeOut: 0.3 }), PL('rise', { start: 0.1, end: 1, count: 14, color: '#fff7d0', color2: '#ffc83a' })] },
+  '암흑 폭발': { frames: 14, hit: 3, hitStop: 3, shake: 5, flashFrames: 2, layers: [PL('flash', { start: 0, end: 0.55, radius: 30, color: '#f0c8ff', color2: '#7a1fc0' }), PL('ring', { start: 0, end: 0.9, r1: 44, w0: 8, color: '#d78aff', color2: '#4a0f80', squash: 0.55 }), PL('burst', { start: 0, end: 1, count: 24, speed: 30, size: 4, sizeEnd: 0.5, shape: 0, gravity: -6, color: '#e0a8ff', color2: '#40106a', glow: 4 })] },
+};
+
+/* ===================== 상태 ===================== */
+const DEF_G = { name: 'slash', size: 128, frames: 10, fps: 20, ps: 2, alphaLevels: 4, colorLevels: 0, seed: 7, hit: 5, hitStop: 2, shake: 2, flashFrames: 2 };
+const st = { g: Object.assign({}, DEF_G), layers: [], frames: [], playing: true, t0: performance.now(), target: null, outDir: null };
+
+/* ===================== 렌더 ===================== */
+function envAlpha(L, u) { const a = L.fadeIn > 0 ? clamp(u / L.fadeIn, 0, 1) : 1, b = L.fadeOut > 0 ? clamp((1 - u) / L.fadeOut, 0, 1) : 1; return L.alpha * a * b; }
+const colAt = (L, u) => mix(L.color, L.color2, clamp(u, 0, 1));
+const R = {
+  arc(x, L, u, S, cx, cy, A, ri) {
+    const Rr = L.radius * S / 100, th = L.thick * S / 100, sw = L.sweep * Math.PI / 180, a0 = L.angle * Math.PI / 180 - sw / 2, head = a0 + sw * EASE.out(clamp(u / 0.55, 0, 1)), tail0 = Math.max(a0, head - sw * L.tail), tail = lerp(tail0, head - 0.02, EASE.in(clamp((u - 0.45) / 0.55, 0, 1))), n = 30; // 머리가 끝에 닿은 뒤에는 꼬리가 따라잡으며 사라진다
+    for (let k = 0; k < n; k++) { const f0 = k / n, f1 = (k + 1) / n, t0 = tail + (head - tail) * f0, t1 = tail + (head - tail) * f1, taper = f => th * Math.pow(f, 0.75) * (f > 0.9 ? 1 - (f - 0.9) * 5 : 1) + 0.3, w0 = taper(f0), w1 = taper(f1), c = mix(L.color2, L.color, f1), al = A * Math.pow(f1, 1.1);
+      x.fillStyle = x.strokeStyle = rgba(c, al); x.lineWidth = 0.5; x.beginPath();
+      x.moveTo(cx + Math.cos(t0) * (Rr + w0 / 2), cy + Math.sin(t0) * (Rr + w0 / 2)); x.lineTo(cx + Math.cos(t1) * (Rr + w1 / 2), cy + Math.sin(t1) * (Rr + w1 / 2));
+      x.lineTo(cx + Math.cos(t1) * (Rr - w1 / 2), cy + Math.sin(t1) * (Rr - w1 / 2)); x.lineTo(cx + Math.cos(t0) * (Rr - w0 / 2), cy + Math.sin(t0) * (Rr - w0 / 2)); x.closePath(); x.fill(); x.stroke(); }
+  },
+  ring(x, L, u, S, cx, cy, A) { const e = EASE.out(u), r = lerp(L.r0, L.r1, e) * S / 100, w = Math.max(0.6, lerp(L.w0, L.w1, e) * S / 100); x.save(); x.translate(cx, cy); x.scale(1, L.squash); x.beginPath(); x.arc(0, 0, Math.max(0.1, r), 0, Math.PI * 2); x.lineWidth = w; x.strokeStyle = rgba(colAt(L, u), A); x.stroke(); x.restore(); },
+  flash(x, L, u, S, cx, cy, A) { const r = L.radius * S / 100 * (0.45 + 0.55 * EASE.out(u)), a = A * Math.pow(1 - u, L.decay), g = x.createRadialGradient(cx, cy, 0, cx, cy, r); g.addColorStop(0, rgba(mix(L.color, L.color2, 0.05), Math.min(1, a * 1.15))); g.addColorStop(0.3, rgba(mix(L.color, L.color2, 0.45), a * 0.8)); g.addColorStop(0.65, rgba(hex2rgb(L.color2), a * 0.3)); g.addColorStop(1, rgba(hex2rgb(L.color2), 0)); x.globalCompositeOperation = 'lighter'; x.fillStyle = g; /* 가산 합성: 어두운 배경에서도 칙칙하지 않게 밝게 번진다 */ x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.fill(); },
+  burst(x, L, u, S, cx, cy, A, ri, seed) {
+    const r = rng(seed), e = 1 - Math.pow(1 - u, 2), spr = L.spread * Math.PI / 180, dir = L.dir * Math.PI / 180;
+    for (let i = 0; i < L.count; i++) { const ang = dir + (r() - 0.5) * spr, spd = L.speed * S / 100 * (0.45 + r() * 0.75), sz = lerp(L.size, L.sizeEnd, u) * (0.7 + r() * 0.6), px = cx + Math.cos(ang) * spd * e, py = cy + Math.sin(ang) * spd * e + L.gravity * S / 100 * u * u, c = rgba(mix(L.color, L.color2, u), A * Math.pow(1 - u, 1.1));
+      x.fillStyle = x.strokeStyle = c; if (L.shape === 1) { x.lineWidth = Math.max(0.8, sz * 0.5); x.beginPath(); x.moveTo(px, py); x.lineTo(px - Math.cos(ang) * sz * 3.2, py - Math.sin(ang) * sz * 3.2 - L.gravity * S / 100 * u * 0.4); x.stroke(); } else if (L.shape === 2) x.fillRect(px - sz / 2, py - sz / 2, sz, sz); else { x.beginPath(); x.arc(px, py, Math.max(0.3, sz / 2), 0, Math.PI * 2); x.fill(); } }
+  },
+  rise(x, L, u, S, cx, cy, A, ri, seed) {
+    const r = rng(seed); for (let i = 0; i < L.count; i++) { const x0 = cx + (r() - 0.5) * L.width * S / 100, d = r() * 0.5, ph = r() * 6.28, uu = clamp((u - d) / (1 - d), 0, 1); if (u < d) continue; const px = x0 + Math.sin(uu * 6.28 + ph) * L.sway, py = cy + L.height * S / 200 - uu * L.height * S / 100, s = L.size * (0.6 + r() * 0.7) * (1 - uu * 0.4), tw = Math.sin(uu * Math.PI);
+      x.fillStyle = rgba(mix(L.color, L.color2, uu), A * tw); x.fillRect(px - s / 2, py - 0.5, s, 1); x.fillRect(px - 0.5, py - s / 2, 1, s); x.fillRect(px - 0.75, py - 0.75, 1.5, 1.5); }
+  },
+  rune(x, L, u, S, cx, cy, A) {
+    const Rr = L.radius * S / 100, c = rgba(mix(L.color, L.color2, 0.3), A); x.save(); x.translate(cx, cy); x.scale(1, L.squash); x.strokeStyle = c; x.fillStyle = c; x.lineWidth = Math.max(0.8, S / 90);
+    for (let k = 0; k < L.rings; k++) { x.beginPath(); x.arc(0, 0, Rr * (1 - k * 0.2) * (0.6 + 0.4 * EASE.out(Math.min(1, u * 2))), 0, Math.PI * 2); x.stroke(); }
+    const n = L.spokes, rot = L.spin * Math.PI / 180 * u, step = n % 2 === 0 ? 2 : Math.floor(n / 2), rr = Rr * 0.85 * (0.6 + 0.4 * EASE.out(Math.min(1, u * 2))); x.beginPath();
+    for (let k = 0; k <= n; k++) { const a = rot + (k * step % n) * Math.PI * 2 / n; const px = Math.cos(a) * rr, py = Math.sin(a) * rr; k ? x.lineTo(px, py) : x.moveTo(px, py); } x.stroke();
+    for (let k = 0; k < n; k++) { const a = rot + k * Math.PI * 2 / n; x.beginPath(); x.arc(Math.cos(a) * rr, Math.sin(a) * rr, Math.max(0.8, S / 80), 0, Math.PI * 2); x.fill(); } x.restore();
+  },
+  shards(x, L, u, S, cx, cy, A, ri, seed) {
+    const r = rng(seed), e = 1 - Math.pow(1 - u, 2.2); for (let i = 0; i < L.count; i++) { const ang = r() * Math.PI * 2, sp = L.speed * S / 100 * (0.5 + r() * 0.7), len = L.length * S / 100 * (0.6 + r() * 0.7), d = sp * e, px = cx + Math.cos(ang) * d, py = cy + Math.sin(ang) * d + L.gravity * S / 100 * u * u, a = A * (1 - u * u);
+      x.save(); x.translate(px, py); x.rotate(ang); x.fillStyle = rgba(mix(L.color, L.color2, 0.5 + u * 0.5), a); x.strokeStyle = rgba(mix(L.color, L.color2, 0), a); x.lineWidth = 0.6; x.beginPath(); x.moveTo(len, 0); x.lineTo(-len * 0.3, len * 0.28); x.lineTo(-len * 0.1, 0); x.lineTo(-len * 0.3, -len * 0.28); x.closePath(); x.fill(); x.stroke(); x.restore(); }
+  },
+  bolt(x, L, u, S, cx, cy, A, ri, seed) {
+    const r = rng(seed + Math.floor(u * L.flicker) * 131), len = L.length * S / 100, ang = L.angle * Math.PI / 180, n = 8, pts = []; for (let k = 0; k <= n; k++) { const f = k / n, off = k === 0 || k === n ? 0 : (r() - 0.5) * 2 * L.jitter * S / 100; pts.push([cx + Math.cos(ang) * len * (1 - f) + Math.cos(ang + Math.PI / 2) * off, cy + Math.sin(ang) * len * (1 - f) + Math.sin(ang + Math.PI / 2) * off]); }
+    const line = (w, c) => { x.lineWidth = w; x.strokeStyle = c; x.lineJoin = 'round'; x.beginPath(); pts.forEach((p, k) => k ? x.lineTo(p[0], p[1]) : x.moveTo(p[0], p[1])); x.stroke(); };
+    line(L.width * 2.4, rgba(hex2rgb(L.color2), A * 0.55)); line(L.width, rgba(hex2rgb(L.color), A));
+    const b = Math.floor(r() * (n - 3)) + 2; x.lineWidth = L.width * 0.6; x.strokeStyle = rgba(hex2rgb(L.color2), A * 0.8); x.beginPath(); x.moveTo(pts[b][0], pts[b][1]); x.lineTo(pts[b][0] + (r() - 0.3) * len * 0.5, pts[b][1] + (r() - 0.5) * len * 0.35); x.stroke();
+  },
+};
+function renderFrame(f) { // 한 프레임을 (도트화·후처리까지) 최종 캔버스로
+  const g = st.g, S = g.size, ps = Math.max(1, g.ps | 0), lw = Math.ceil(S / ps), low = mk(lw, lw), x = low.getContext('2d', { willReadFrequently: true }), t = g.frames > 1 ? f / (g.frames - 1) : 0;
+  x.setTransform(1 / ps, 0, 0, 1 / ps, 0, 0); x.imageSmoothingEnabled = true;
+  st.layers.forEach((L, i) => { if (!L.on) return; const span = Math.max(0.001, L.end - L.start), u = (t - L.start) / span; if (u < 0 || u > 1) return; const A = envAlpha(L, u); if (A <= 0.003) return;
+    x.save(); x.shadowBlur = L.glow; x.shadowColor = rgba(hex2rgb(L.color2), A); R[L.type](x, L, u, S, S / 2 + L.x * S / 100, S / 2 + L.y * S / 100, A, i, g.seed + i * 977); x.restore(); });
+  const im = x.getImageData(0, 0, lw, lw), d = im.data, al = g.alphaLevels | 0, cl = g.colorLevels | 0;
+  if (al > 0 || cl > 0) for (let i = 0; i < d.length; i += 4) { if (al > 0) { const a = d[i + 3] / 255, q = al === 1 ? (a > 0.5 ? 1 : 0) : Math.round(a * al) / al; d[i + 3] = Math.round(q * 255); } if (cl > 1 && d[i + 3] > 0) for (let k = 0; k < 3; k++) d[i + k] = Math.round(Math.round(d[i + k] / 255 * (cl - 1)) / (cl - 1) * 255); }
+  x.setTransform(1, 0, 0, 1, 0, 0); x.putImageData(im, 0, 0);
+  if (ps === 1) return low; const out = mk(S, S), ox = out.getContext('2d'); ox.imageSmoothingEnabled = false; ox.drawImage(low, 0, 0, lw * ps, lw * ps); return out;
+}
+function rebuild() { const g = st.g; st.frames = Array.from({ length: g.frames }, (_, f) => renderFrame(f)); drawStrip(); $('info').innerHTML = `${g.size}×${g.size}px · ${g.frames}프레임 · ${g.fps}fps · ${(g.frames / g.fps).toFixed(2)}초<br>타격 프레임 ${g.hit} · 히트스톱 ${g.hitStop} · 흔들림 ${g.shake}px`; }
+let tm = 0; const schedule = () => { clearTimeout(tm); tm = setTimeout(rebuild, 90); };
+function drawStrip() { const c = $('strip'), g = st.g, W = g.size * g.frames; c.width = W; c.height = g.size; const x = c.getContext('2d'); x.clearRect(0, 0, W, g.size); st.frames.forEach((f, i) => { x.drawImage(f, i * g.size, 0); x.strokeStyle = i === g.hit ? 'rgba(255,220,80,.8)' : 'rgba(255,255,255,.12)'; x.strokeRect(i * g.size + 0.5, 0.5, g.size - 1, g.size - 1); }); c.style.background = $('bg').value; }
+
+/* ===================== 재생 (미리보기 + 타겟) ===================== */
+function stepFrame(ms) { const g = st.g, total = g.frames + g.hitStop, s = Math.floor(ms * g.fps / 1000) % total; return s <= g.hit ? { f: s, frozen: false, k: s } : s < g.hit + g.hitStop ? { f: g.hit, frozen: true, k: s } : { f: s - g.hitStop, frozen: false, k: s }; }
+const dummy = (() => { const c = mk(48, 64), x = c.getContext('2d'); x.fillStyle = '#c9a36a'; x.fillRect(14, 22, 20, 26); x.fillStyle = '#e8c9a0'; x.beginPath(); x.arc(24, 14, 9, 0, 7); x.fill(); x.fillStyle = '#5a4630'; x.fillRect(15, 48, 7, 14); x.fillRect(26, 48, 7, 14); x.fillStyle = '#8a6a44'; x.fillRect(8, 24, 6, 18); x.fillRect(34, 24, 6, 18); return c; })();
+function tick() {
+  const g = st.g, ms = performance.now() - st.t0; if (st.playing && st.frames.length) { const s = stepFrame(ms), z = +$('zoom').value, c = $('main'); c.width = g.size; c.height = g.size; c.style.width = g.size * z + 'px'; c.style.background = $('bg').value; const x = c.getContext('2d'); x.clearRect(0, 0, g.size, g.size); x.drawImage(st.frames[s.f] || st.frames[0], 0, 0);
+    // 타겟 미리보기
+    const T = $('target'), tx = T.getContext('2d'), W = T.width, H = T.height, tz = +$('t_zoom').value, spr = st.target || dummy, sw = spr.width * tz, sh = spr.height * tz; tx.fillStyle = $('bg').value; tx.fillRect(0, 0, W, H); tx.fillStyle = 'rgba(0,0,0,.22)'; tx.beginPath(); tx.ellipse(W / 2, H * 0.78, sw * 0.42, sh * 0.07, 0, 0, 7); tx.fill();
+    let ox = 0, oy = 0; const since = s.k - g.hit; if (since >= 0 && since < g.hitStop + 3 && g.shake > 0) { const r = rng(since * 31 + 5), amp = g.shake * (1 - since / (g.hitStop + 3)); ox = Math.round((r() - 0.5) * 2 * amp); oy = Math.round((r() - 0.5) * amp); }
+    tx.imageSmoothingEnabled = false; const bx = W / 2 - sw / 2 + ox, by = H * 0.78 - sh + oy; tx.drawImage(spr, bx, by, sw, sh);
+    if (since >= 0 && since < g.flashFrames) { const tmp = mk(sw, sh), tc = tmp.getContext('2d'); tc.imageSmoothingEnabled = false; tc.drawImage(spr, 0, 0, sw, sh); tc.globalCompositeOperation = 'source-atop'; tc.fillStyle = 'rgba(255,255,255,.85)'; tc.fillRect(0, 0, sw, sh); tx.drawImage(tmp, bx, by); }
+    const fz = tz * (g.size >= 128 ? 1 : 2), fw = g.size * fz, fx = W / 2 - fw / 2 + (+$('t_x').value) * fw / 100, fy = by + sh * 0.45 - fw / 2 + (+$('t_y').value) * fw / 100; tx.drawImage(st.frames[s.f] || st.frames[0], fx, fy, fw, fw); }
+  requestAnimationFrame(tick);
+}
+$('play').onclick = () => { st.playing = !st.playing; $('play').textContent = st.playing ? '⏸ 정지' : '▶ 재생'; };
+
+/* ===================== UI ===================== */
+function syncG() { for (const k in DEF_G) { const el = $('g_' + k); if (el) el.value = st.g[k]; } }
+for (const k in DEF_G) { const el = $('g_' + k); if (!el) continue; el.oninput = el.onchange = () => { st.g[k] = el.type === 'number' || el.tagName === 'SELECT' && k === 'size' ? +el.value : el.value; if (k === 'name') st.g.name = safe(el.value) || 'fx'; if (k === 'frames') st.g.frames = clamp(+el.value || 2, 2, 48); schedule(); }; }
+$('reseed').onclick = () => { st.g.seed = Math.floor(Math.random() * 99999); syncG(); schedule(); };
+$('bg').oninput = () => { drawStrip(); }; ['zoom', 't_zoom', 't_x', 't_y'].forEach(id => $(id).onchange = $(id).oninput = () => { });
+for (const k in TYPES) { const o = document.createElement('option'); o.value = k; o.textContent = TYPES[k].name; $('addType').appendChild(o); }
+$('addLayer').onclick = () => { st.layers.push(defaultLayer($('addType').value)); renderLayers(); schedule(); };
+function renderLayers() {
+  const box = $('layers'); const open = new Set([...box.querySelectorAll('details[open]')].map(d => d.dataset.i)); box.innerHTML = '';
+  st.layers.forEach((L, i) => { const d = document.createElement('details'); d.className = 'layer'; d.dataset.i = i; if (open.has(String(i)) || st.layers.length <= 3) d.open = true;
+    const sm = document.createElement('summary'); sm.innerHTML = `<input type="checkbox" ${L.on ? 'checked' : ''} title="켜기/끄기"> <b>${i + 1}. ${TYPES[L.type].name}</b> <span class="dim" style="flex:1">${(L.start * 100) | 0}%→${(L.end * 100) | 0}%</span><button class="sm" data-a="up">▲</button><button class="sm" data-a="dn">▼</button><button class="sm" data-a="cp">복제</button><button class="sm" data-a="del">✕</button>`;
+    sm.querySelector('input').onclick = e => { e.stopPropagation(); L.on = e.target.checked; schedule(); };
+    sm.querySelectorAll('button').forEach(b => b.onclick = e => { e.preventDefault(); e.stopPropagation(); const a = b.dataset.a; if (a === 'del') st.layers.splice(i, 1); else if (a === 'cp') st.layers.splice(i + 1, 0, JSON.parse(JSON.stringify(L))); else if (a === 'up' && i > 0) [st.layers[i - 1], st.layers[i]] = [st.layers[i], st.layers[i - 1]]; else if (a === 'dn' && i < st.layers.length - 1) [st.layers[i + 1], st.layers[i]] = [st.layers[i], st.layers[i + 1]]; renderLayers(); schedule(); });
+    d.appendChild(sm); const body = document.createElement('div'); body.className = 'body';
+    body.innerHTML = `<div class="row"><label class="dim">색 <input type="color" value="${L.color}" data-c="color"></label><label class="dim">색2 <input type="color" value="${L.color2}" data-c="color2"></label><span class="dim">(색→색2로 변하거나 꼬리→머리)</span></div>`;
+    body.querySelectorAll('[data-c]').forEach(inp => inp.oninput = () => { L[inp.dataset.c] = inp.value; schedule(); });
+    for (const p of COMMON.concat(TYPES[L.type].params)) { const [k, nm, mn, mx, stp] = p, row = document.createElement('div'); row.className = 'pr'; row.innerHTML = `<span>${nm}</span><input type="range" min="${mn}" max="${mx}" step="${stp}" value="${L[k]}"><span>${L[k]}</span>`; const rg = row.querySelector('input'), lb = row.lastElementChild; rg.oninput = () => { L[k] = +rg.value; lb.textContent = L[k]; schedule(); }; body.appendChild(row); }
+    d.appendChild(body); box.appendChild(d); });
+}
+function loadPreset(name) { const p = PRESETS[name]; Object.assign(st.g, { name: safe(name) === '참격' ? 'slash' : st.g.name }, { frames: p.frames, hit: p.hit, hitStop: p.hitStop, shake: p.shake, flashFrames: p.flashFrames }); st.layers = JSON.parse(JSON.stringify(p.layers)); syncG(); renderLayers(); rebuild(); }
+for (const n in PRESETS) { const b = document.createElement('button'); b.textContent = n; b.onclick = () => { const map = { '참격': 'slash', '강타': 'heavy', '타격 스파크': 'hit', '충격파': 'shockwave', '화염': 'fire', '얼음': 'ice', '번개': 'lightning', '치유': 'heal', '버프 오라': 'buff', '암흑 폭발': 'dark' }; loadPreset(n); st.g.name = map[n] || safe(n); syncG(); }; $('presets').appendChild(b); }
+$('pickTarget').onclick = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.onchange = async () => { try { const bm = await createImageBitmap(i.files[0]), c = mk(bm.width, bm.height); c.getContext('2d').drawImage(bm, 0, 0); st.target = c; } catch (e) { log('타겟 이미지를 읽지 못했다.'); } }; i.click(); };
+$('clearTarget').onclick = () => { st.target = null; };
+
+/* ===================== 내보내기 ===================== */
+const toBlob = cv => new Promise(r => cv.toBlob(r, 'image/png'));
+const recipe = () => ({ generator: 'fx_tool', version: 1, g: st.g, layers: st.layers });
+function applyRecipe(o) { if (!o || !o.g || !Array.isArray(o.layers)) throw new Error('레시피 형식이 아니다'); st.g = Object.assign({}, DEF_G, o.g); st.layers = o.layers.map(L => Object.assign(defaultLayer(L.type), L)); syncG(); renderLayers(); rebuild(); }
+$('saveRecipe').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(recipe(), null, 1)], { type: 'application/json' })); a.download = st.g.name + '.recipe.json'; a.click(); };
+$('loadRecipe').onclick = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = '.json'; i.onchange = async () => { try { applyRecipe(JSON.parse(await i.files[0].text())); log('레시피를 불러왔다.'); } catch (e) { log('불러오기 실패: ' + e.message); } }; i.click(); };
+async function gather() { const g = st.g, S = g.size, cv = mk(S * g.frames, S), x = cv.getContext('2d'); st.frames.forEach((f, i) => x.drawImage(f, i * S, 0)); const path = $('e_path').value.replace('{name}', g.name), dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/') + 1) : '';
+  return { png: { path, blob: await toBlob(cv) }, rec: { path: path.replace(/\.png$/i, '') + '.recipe.json', text: JSON.stringify(recipe(), null, 1) }, man: { path: dir + 'fx_manifest.js', key: g.name, entry: { path, cell: S, n: g.frames, fps: g.fps, hit: g.hit, hitStop: g.hitStop, shake: g.shake, flashFrames: g.flashFrames, anchor: [S / 2, S / 2] } } }; }
+const manText = data => `// 자동 생성: tools/fx_tool.html — 같은 이름은 덮어쓰고 나머지는 유지한다\nwindow.FX_MANIFEST = Object.assign(window.FX_MANIFEST || {}, /*DATA*/${JSON.stringify(data, null, 1)}/*END*/);\n`;
+const DATA_RE = /\/\*DATA\*\/([\s\S]*?)\/\*END\*\//;
+async function writeFile(dir, path, data) { const parts = path.split('/'), name = parts.pop(); let h = dir; for (const q of parts) h = await h.getDirectoryHandle(q, { create: true }); const fh = await h.getFileHandle(name, { create: true }), w = await fh.createWritable(); await w.write(data); await w.close(); }
+async function readText(dir, path) { try { const parts = path.split('/'), name = parts.pop(); let h = dir; for (const q of parts) h = await h.getDirectoryHandle(q); return await (await h.getFileHandle(name)).getFile().then(f => f.text()); } catch (e) { return null; } }
+$('pickOut').onclick = async () => { if (!window.showDirectoryPicker) { log('이 브라우저는 폴더 쓰기를 지원하지 않는다. ZIP 저장을 쓴다.'); return; } try { st.outDir = await showDirectoryPicker({ mode: 'readwrite' }); $('outInfo').textContent = st.outDir.name; $('exportDir').disabled = false; } catch (e) { } };
+$('exportDir').onclick = async () => { try { const o = await gather(); let data = {}; const old = await readText(st.outDir, o.man.path); if (old) { const m = DATA_RE.exec(old); if (m) try { data = JSON.parse(m[1]); } catch (e) { } } data[o.man.key] = o.man.entry;
+  await writeFile(st.outDir, o.png.path, o.png.blob); await writeFile(st.outDir, o.rec.path, o.rec.text); await writeFile(st.outDir, o.man.path, manText(data)); log(`저장: ${o.png.path} (${st.g.frames}프레임), ${o.rec.path}, ${o.man.path} (총 ${Object.keys(data).length}종)`); } catch (e) { log('실패: ' + e.message); } };
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })(), crc32 = u => { let c = 0xFFFFFFFF; for (let i = 0; i < u.length; i++) c = CRC[(c ^ u[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+function makeZip(files) { const enc = new TextEncoder(), parts = [], cen = []; let off = 0; for (const f of files) { const nm = enc.encode(f.path), crc = crc32(f.data), h = new DataView(new ArrayBuffer(30)); h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(12, 0x21, true); h.setUint32(14, crc, true); h.setUint32(18, f.data.length, true); h.setUint32(22, f.data.length, true); h.setUint16(26, nm.length, true); parts.push(new Uint8Array(h.buffer), nm, f.data); const c = new DataView(new ArrayBuffer(46)); c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(14, 0x21, true); c.setUint32(16, crc, true); c.setUint32(20, f.data.length, true); c.setUint32(24, f.data.length, true); c.setUint16(28, nm.length, true); c.setUint32(42, off, true); cen.push(new Uint8Array(c.buffer), nm); off += 30 + nm.length + f.data.length; }
+  const cs = cen.reduce((a, b) => a + b.length, 0), e = new DataView(new ArrayBuffer(22)); e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, cs, true); e.setUint32(16, off, true); return new Blob([...parts, ...cen, new Uint8Array(e.buffer)], { type: 'application/zip' }); }
+$('exportZip').onclick = async () => { try { const o = await gather(), enc = new TextEncoder(), files = [{ path: o.png.path, data: new Uint8Array(await o.png.blob.arrayBuffer()) }, { path: o.rec.path, data: enc.encode(o.rec.text) }, { path: o.man.path, data: enc.encode(manText({ [o.man.key]: o.man.entry })) }];
+  const a = document.createElement('a'); a.href = URL.createObjectURL(makeZip(files)); a.download = st.g.name + '_fx.zip'; a.click(); log('ZIP 저장 (fx_manifest.js 는 이 이펙트만 담긴다 — 기존 파일과는 직접 합치거나 폴더 내보내기를 쓴다)'); } catch (e) { log('실패: ' + e.message); } };
+
+/* ===================== 시작 ===================== */
+syncG(); loadPreset('참격'); requestAnimationFrame(tick);
+window.__fx = { st, renderFrame, rebuild, applyRecipe, recipe, gather, PRESETS, loadPreset, makeZip };
+</script>
+</body>
+</html>
