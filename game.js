@@ -691,9 +691,9 @@
     const dt = Math.min(1, (now - last) / 1000); last = now; // 프레임이 느려도(앱 내 창·저사양) 실제 시간 기준으로 진행되도록 상한을 1초로(탭 복귀 시 폭주 방지)
     const e = S.exp;
     if (e && e.pending && !S.evOpen && !e.done) openEventModal(e);
-    if (e && !S.paused && !e.done && !e.pending) {
+    if (e && !S.paused && !e.done && !e.pending && !S.cine) { // 오의 연출(S.cine) 동안은 전투 진행을 멈춘다 — 유닛이 움직여 연출 초점이 튀는 것을 막는다
       S.acc += dt * effSpeed() / (C.TUNE.pace || 1); let n = 0;
-      while (S.acc >= 0.1 && n++ < 80 && !e.done) { C.stepExpedition(e, 0.1); S.acc -= 0.1; consumeEvents(e); }
+      while (S.acc >= 0.1 && n++ < 80 && !e.done && !S.cine) { C.stepExpedition(e, 0.1); S.acc -= 0.1; consumeEvents(e); }
     }
     if (e) {
       uiT += dt; if (uiT > 0.25) { uiT = 0; updateHud(); renderStats(); }

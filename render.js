@@ -95,7 +95,7 @@ const Render = (function () {
     later(Math.max(0, delay - hitSec), () => { (S.fxs = S.fxs || []).push({ f, gx: v.x, gy: v.y, t: 0, hit: false, big }); }); return f; // 재생을 시작했으면 그 이펙트(없으면 false)
   }
   /* ---------- 오의(필살기) 연출: cine.js 엔진 + assets/cine/cine_manifest.js(스킬 id → 연출). 편집은 tools/cine_tool.html ---------- */
-  const startCine = (def, v) => { S.cine = { def, t: 0, prev: -1, later: [], who: v.from, tx: v.x, ty: v.y, name: v.n || '', cs: null, ts: 1 }; return true; };
+  const startCine = (def, v) => { S.cine = { def, t: 0, prev: -1, later: [], who: v.from, wx: v.from.x, wy: v.from.y, tx: v.x, ty: v.y, name: v.n || '', cs: null, ts: 1 }; return true; }; // wx/wy: 시전자 칸을 연출 시작 시점으로 고정(초점·이펙트 위치가 튀지 않게)
   const cineInfo = name => { const f = Assets.fx(name); return f ? { fps: f.m.fps, n: f.m.n } : null; };
   function cineTick(dtc) { // 연출 시계를 진행하고, 한 번만 일어나는 스텝(동작·히트스톱)과 늦춘 처리를 실행. 배속이 빠르면 연출도 빨라진다
     const c = S.cine; if (!c) return; const k = animK(), t0 = c.prev; c.t += dtc * k;
@@ -111,8 +111,8 @@ const Render = (function () {
   function cineOverlay() { // 화면 전체 번쩍임·스킬 이름 배너(확대와 무관하게 화면에 고정)
     const c = S.cine; if (!c || !c.cs) return; const cs = c.cs;
     for (const f of cs.flash) { ctx.fillStyle = f.color; ctx.globalAlpha = Math.max(0, Math.min(1, f.a)); ctx.fillRect(0, 0, W, H); } ctx.globalAlpha = 1;
-    if (cs.banner) { const b = cs.banner, p = b.p, a = p < 0.15 ? p / 0.15 : p > 0.8 ? (1 - p) / 0.2 : 1, slide = Math.pow(1 - Math.min(1, p / 0.2), 2) * 120, text = (b.text || '{skill}').replace('{skill}', c.name || '');
-      ctx.save(); ctx.globalAlpha = Math.max(0, a); ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, H * 0.14, W, 52); ctx.font = '900 32px "Malgun Gothic",sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 5; ctx.strokeStyle = '#000'; ctx.strokeText(text, W / 2 - slide, H * 0.14 + 38); ctx.fillStyle = '#ffe27a'; ctx.fillText(text, W / 2 - slide, H * 0.14 + 38); ctx.restore(); }
+    if (cs.banner) { const b = cs.banner, p = b.p, a = p < 0.15 ? p / 0.15 : p > 0.8 ? (1 - p) / 0.2 : 1, slide = Math.pow(1 - Math.min(1, p / 0.2), 2) * 100, text = (b.text || '{skill}').replace('{skill}', c.name || ''), y0 = b.pos === 'bottom' ? H - 44 : 8; // 시전 장면(화면 가운데)을 가리지 않게 위쪽 얇은 띠(옵션: 아래)
+      ctx.save(); ctx.globalAlpha = Math.max(0, a); ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0, y0, W, 36); ctx.font = '900 24px "Malgun Gothic",sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 4; ctx.strokeStyle = '#000'; ctx.strokeText(text, W / 2 - slide, y0 + 27); ctx.fillStyle = '#ffe27a'; ctx.fillText(text, W / 2 - slide, y0 + 27); ctx.restore(); }
   }
   function procEvents(e) {
     S.areas = S.areas || []; S.tileShake = S.tileShake || {}; const bt = e.battle; cineLaterOn = false; let delay = 0, flashSec = 0; // flashSec: 직전 이펙트가 정한 피격 번쩍임 시간(초). delay: 직전 행동의 타격 순간. 피해·치유 표시·피격 모션은 이만큼 늦춰 휘두르는 모션과 맞춘다
@@ -172,7 +172,7 @@ const Render = (function () {
     const fs = S.frameShake; if (fs && fs.t > 0) { const am = fs.amp * (fs.t / fs.d); ctx.translate((Math.random() - 0.5) * 2 * am, (Math.random() - 0.5) * 2 * am); fs.t -= dt; }
     const cineAt = (gx, gy) => { const [ax, ay] = iso(gx, gy); return [ax, ay - elAt(gx, gy) - 30]; }; // 연출 초점: 칸 위 가슴 높이
     if (S.cine && S.cine.cs && S.cine.cs.zoom !== 1) { // 오의 연출 확대: 초점(목표/시전자/가운데)을 중심으로
-      const c = S.cine, w = c.who ? cineAt(c.who.x, c.who.y) : cineAt(c.tx, c.ty), t = cineAt(c.tx, c.ty), foc = c.cs.focus === 'caster' ? w : c.cs.focus === 'mid' ? [(w[0] + t[0]) / 2, (w[1] + t[1]) / 2] : t;
+      const c = S.cine, w = c.who ? cineAt(c.wx, c.wy) : cineAt(c.tx, c.ty), t = cineAt(c.tx, c.ty), foc = c.cs.focus === 'caster' ? w : c.cs.focus === 'mid' ? [(w[0] + t[0]) / 2, (w[1] + t[1]) / 2] : t;
       ctx.translate(foc[0], foc[1]); ctx.scale(c.cs.zoom, c.cs.zoom); ctx.translate(-foc[0], -foc[1]);
     }
     const jit = {}; for (const k in S.tileShake) { S.tileShake[k] -= dt; if (S.tileShake[k] <= 0) delete S.tileShake[k]; else { const r = S.tileShake[k] / 0.45, am = 15 * shakeK() * r; jit[k] = [Math.sin(S.time * 75) * am, Math.cos(S.time * 91) * am * 0.8 - am * 0.35, r]; } } // 감쇠 진동 + 번쩍임(r)
@@ -301,7 +301,7 @@ const Render = (function () {
     }
     if (S.cine && S.cine.cs && S.cine.cs.fx.length) { // 오의 연출 이펙트: 시각에서 바로 계산한 프레임을 그린다
       ctx.save(); ctx.imageSmoothingEnabled = false; const cn = S.cine;
-      for (const x of cn.cs.fx) { const f = Assets.fx(x.name); if (!f) continue; const m = f.m, gx = x.at === 'caster' && cn.who ? cn.who.x : cn.tx, gy = x.at === 'caster' && cn.who ? cn.who.y : cn.ty, [sx, sy] = iso(gx, gy), sz = m.cell * (x.scale !== undefined ? x.scale : (m.scale || 1)), ox = x.ox !== undefined ? x.ox : (m.ox || 0), oy = x.oy !== undefined ? x.oy : (m.oy === undefined ? -34 : m.oy);
+      for (const x of cn.cs.fx) { const f = Assets.fx(x.name); if (!f) continue; const m = f.m, gx = x.at === 'caster' && cn.who ? cn.wx : cn.tx, gy = x.at === 'caster' && cn.who ? cn.wy : cn.ty, [sx, sy] = iso(gx, gy), sz = m.cell * (x.scale !== undefined ? x.scale : (m.scale || 1)), ox = x.ox !== undefined ? x.ox : (m.ox || 0), oy = x.oy !== undefined ? x.oy : (m.oy === undefined ? -34 : m.oy);
         ctx.drawImage(f.img, x.fr * m.cell, 0, m.cell, m.cell, sx + ox - sz / 2, sy - elAt(gx, gy) + oy - sz / 2, sz, sz); }
       ctx.restore();
     }

@@ -10,7 +10,7 @@
  *   fx        { name, at: target|caster, ox?, oy?, scale? }   이펙트 시트 재생(FX_MANIFEST 의 이름, 길이는 시트 길이)
  *   anim      { act, dur }                      시전자 동작 재생(게임: 시트 동작, 편집기: 앞으로 찌르는 흉내)
  *   freeze    { dur }                           히트스톱(화면 연출 잠깐 정지)
- *   banner    { text, dur }                     스킬 이름 배너. {skill} 은 스킬 이름으로 바뀐다
+ *   banner    { text, dur, pos: top|bottom }    스킬 이름 띠(기본 화면 위쪽, 시전 장면을 가리지 않게 얇게). {skill} 은 스킬 이름으로 바뀐다
  * 시각 t 의 상태는 sample(def, t, fxInfo) 로 구한다(상태 없음 → 스크럽·재생 어디서나 같은 결과). 한 번만 일어나는 일(anim·freeze)은 events(def, t0, t1) 로 받는다. */
 const Cine = (function () {
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v)), lerp = (a, b, t) => a + (b - a) * t;
@@ -25,7 +25,7 @@ const Cine = (function () {
       const p = (t - s.t) / Math.max(0.001, s.dur || 0.2), on = t >= s.t && p < 1;
       if (s.type === 'flash' && on) out.flash.push({ color: s.color || '#ffffff', a: (s.alpha === undefined ? 0.8 : s.alpha) * (1 - p) });
       else if (s.type === 'shake' && on) out.shake = Math.max(out.shake, (s.amp || 8) * (1 - p));
-      else if (s.type === 'banner' && on) out.banner = { text: s.text || '{skill}', p, dur: s.dur || 1 };
+      else if (s.type === 'banner' && on) out.banner = { text: s.text || '{skill}', p, dur: s.dur || 1, pos: s.pos || 'top' };
       else if (s.type === 'anim' && on) out.lunge = Math.max(out.lunge, Math.sin(Math.PI * p));
       else if (s.type === 'fx' && t >= s.t) { const info = fxInfo && fxInfo(s.name); if (!info) continue; const fr = Math.floor((t - s.t) * info.fps); if (fr < info.n) out.fx.push({ name: s.name, at: s.at || 'target', ox: s.ox, oy: s.oy, scale: s.scale, fr }); }
     }

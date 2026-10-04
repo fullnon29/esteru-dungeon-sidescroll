@@ -81,7 +81,7 @@ const FIELDS = {
   fx: [['name', '이펙트', 'fx', 0, 0, 0, 'slash'], ['at', '위치', 's', ['target', 'caster'], 0, 0, 'target'], ['ox', '가로 오프셋', 'o', -128, 128, 1, undefined], ['oy', '세로 오프셋', 'o', -192, 128, 1, undefined], ['scale', '크기', 'o', 0.25, 3, 0.05, undefined]],
   anim: [['act', '동작', 's', ACTS, 0, 0, 'heavy'], ['dur', '미리보기 길이', 'n', 0.1, 2, 0.05, 0.4]],
   freeze: [['dur', '정지 시간', 'n', 0.03, 0.25, 0.01, 0.1]],
-  banner: [['text', '문구', 't', 0, 0, 0, '{skill}'], ['dur', '지속', 'n', 0.2, 4, 0.1, 1.2]],
+  banner: [['text', '문구', 't', 0, 0, 0, '{skill}'], ['dur', '지속', 'n', 0.2, 4, 0.1, 1.2], ['pos', '위치', 's', ['top', 'bottom'], 0, 0, 'top']],
 };
 const newStep = (type, t = 0) => { const s = { t, type }; for (const f of FIELDS[type]) if (f[6] !== undefined) s[f[0]] = f[6]; return s; };
 const DEF = () => ({ name: '새 오의', dur: 1.5, hit: 0.6, steps: [newStep('dim', 0), newStep('banner', 0), newStep('fx', 0.4), newStep('flash', 0.6), newStep('shake', 0.6), newStep('dim', 0.95)].map(s => s.type === 'dim' && s.t > 0 ? Object.assign(s, { to: 0 }) : s) });
@@ -144,7 +144,7 @@ function drawStage(c, t) {
     x.drawImage(im.im, f.fr * m.cell, 0, m.cell, m.cell, p[0] + lx + ox - sz / 2, p[1] + oy - sz / 2, sz, sz); }
   x.restore(); x.restore();
   for (const f of cs.flash) { x.fillStyle = f.color; x.globalAlpha = clamp(f.a, 0, 1); x.fillRect(0, 0, W, H); } x.globalAlpha = 1;
-  if (cs.banner) { const b = cs.banner, p = b.p, a = p < 0.15 ? p / 0.15 : p > 0.8 ? (1 - p) / 0.2 : 1, slide = Math.pow(1 - Math.min(1, p / 0.2), 2) * 120, text = (b.text || '{skill}').replace('{skill}', c.name || ''); x.save(); x.globalAlpha = clamp(a, 0, 1); x.fillStyle = 'rgba(0,0,0,.55)'; x.fillRect(0, H * 0.14, W, 52); x.font = '900 32px "Malgun Gothic",sans-serif'; x.textAlign = 'center'; x.lineWidth = 5; x.strokeStyle = '#000'; x.strokeText(text, W / 2 - slide, H * 0.14 + 38); x.fillStyle = '#ffe27a'; x.fillText(text, W / 2 - slide, H * 0.14 + 38); x.restore(); }
+  if (cs.banner) { const b = cs.banner, p = b.p, a = p < 0.15 ? p / 0.15 : p > 0.8 ? (1 - p) / 0.2 : 1, slide = Math.pow(1 - Math.min(1, p / 0.2), 2) * 100, text = (b.text || '{skill}').replace('{skill}', c.name || ''), y0 = b.pos === 'bottom' ? H - 44 : 8; x.save(); x.globalAlpha = clamp(a, 0, 1); x.fillStyle = 'rgba(0,0,0,.45)'; x.fillRect(0, y0, W, 36); x.font = '900 24px "Malgun Gothic",sans-serif'; x.textAlign = 'center'; x.lineWidth = 4; x.strokeStyle = '#000'; x.strokeText(text, W / 2 - slide, y0 + 27); x.fillStyle = '#ffe27a'; x.fillText(text, W / 2 - slide, y0 + 27); x.restore(); }
   $('tinfo').textContent = `${t.toFixed(2)} / ${c.dur.toFixed(2)}초${cs.ts < 0.99 ? ` · 슬로모션 ×${cs.ts.toFixed(2)}` : ''}${st.hold > 0 ? ' · 히트스톱' : ''}`;
 }
 function drawTimeline(c, t) {

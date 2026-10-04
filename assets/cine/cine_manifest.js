@@ -2,7 +2,7 @@
 window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
  "kenki": {
   "name": "검기 난무",
-  "dur": 1.5,
+  "dur": 1.55,
   "hit": 0.6,
   "steps": [
    {
@@ -15,13 +15,14 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
     "t": 0,
     "type": "banner",
     "text": "{skill}",
-    "dur": 1.1
+    "dur": 1.1,
+    "pos": "top"
    },
    {
     "t": 0,
     "type": "zoom",
-    "to": 1.3,
-    "dur": 0.3,
+    "to": 1.2,
+    "dur": 0.5,
     "focus": "caster"
    },
    {
@@ -54,7 +55,7 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
    {
     "t": 0.6,
     "type": "flash",
-    "alpha": 0.5,
+    "alpha": 0.3,
     "dur": 0.15,
     "color": "#ffffff"
    },
@@ -73,7 +74,7 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
     "t": 0.95,
     "type": "zoom",
     "to": 1,
-    "dur": 0.3,
+    "dur": 0.5,
     "focus": "caster"
    },
    {
@@ -99,14 +100,15 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
     "t": 0,
     "type": "banner",
     "text": "{skill}",
-    "dur": 1.2
+    "dur": 1.2,
+    "pos": "top"
    },
    {
     "t": 0,
     "type": "zoom",
-    "to": 1.35,
-    "dur": 0.35,
-    "focus": "target"
+    "to": 1.2,
+    "dur": 0.5,
+    "focus": "mid"
    },
    {
     "t": 0.1,
@@ -136,7 +138,7 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
    {
     "t": 0.7,
     "type": "flash",
-    "alpha": 0.7,
+    "alpha": 0.42,
     "dur": 0.2,
     "color": "#fff3b0"
    },
@@ -155,8 +157,8 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
     "t": 1.0,
     "type": "zoom",
     "to": 1,
-    "dur": 0.3,
-    "focus": "target"
+    "dur": 0.5,
+    "focus": "mid"
    },
    {
     "t": 1.0,
@@ -168,7 +170,7 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
  },
  "renkan": {
   "name": "연환권",
-  "dur": 1.4,
+  "dur": 1.6,
   "hit": 0.7,
   "steps": [
    {
@@ -181,14 +183,15 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
     "t": 0,
     "type": "banner",
     "text": "{skill}",
-    "dur": 1.0
+    "dur": 1.0,
+    "pos": "top"
    },
    {
     "t": 0,
     "type": "zoom",
-    "to": 1.25,
-    "dur": 0.25,
-    "focus": "target"
+    "to": 1.2,
+    "dur": 0.5,
+    "focus": "mid"
    },
    {
     "t": 0.2,
@@ -255,7 +258,7 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
    {
     "t": 0.72,
     "type": "flash",
-    "alpha": 0.6,
+    "alpha": 0.36,
     "dur": 0.18,
     "color": "#ffffff"
    },
@@ -268,8 +271,8 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
     "t": 1.0,
     "type": "zoom",
     "to": 1,
-    "dur": 0.3,
-    "focus": "target"
+    "dur": 0.5,
+    "focus": "mid"
    },
    {
     "t": 1.0,
@@ -281,7 +284,7 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
  },
  "pierce": {
   "name": "관통 사격",
-  "dur": 1.4,
+  "dur": 1.5,
   "hit": 0.5,
   "steps": [
    {
@@ -294,13 +297,14 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
     "t": 0,
     "type": "banner",
     "text": "{skill}",
-    "dur": 1.0
+    "dur": 1.0,
+    "pos": "top"
    },
    {
     "t": 0,
     "type": "zoom",
     "to": 1.2,
-    "dur": 0.25,
+    "dur": 0.5,
     "focus": "mid"
    },
    {
@@ -336,7 +340,7 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
    {
     "t": 0.5,
     "type": "flash",
-    "alpha": 0.5,
+    "alpha": 0.3,
     "dur": 0.15,
     "color": "#ffffff"
    },
@@ -355,7 +359,7 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
     "t": 0.9,
     "type": "zoom",
     "to": 1,
-    "dur": 0.3,
+    "dur": 0.5,
     "focus": "mid"
    },
    {
@@ -381,14 +385,15 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
     "t": 0,
     "type": "banner",
     "text": "{skill}",
-    "dur": 1.5
+    "dur": 1.2,
+    "pos": "top"
    },
    {
     "t": 0,
     "type": "zoom",
     "to": 1.15,
     "dur": 0.5,
-    "focus": "target"
+    "focus": "mid"
    },
    {
     "t": 0.6,
@@ -431,7 +436,7 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
    {
     "t": 1.0,
     "type": "flash",
-    "alpha": 0.8,
+    "alpha": 0.48,
     "dur": 0.25,
     "color": "#ffd9a0"
    },
@@ -456,8 +461,8 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
     "t": 1.4,
     "type": "zoom",
     "to": 1,
-    "dur": 0.3,
-    "focus": "target"
+    "dur": 0.5,
+    "focus": "mid"
    },
    {
     "t": 1.4,
@@ -469,7 +474,7 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
  },
  "sanctuary": {
   "name": "성역",
-  "dur": 1.6,
+  "dur": 1.7,
   "hit": 0.6,
   "steps": [
    {
@@ -482,13 +487,14 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
     "t": 0,
     "type": "banner",
     "text": "{skill}",
-    "dur": 1.2
+    "dur": 1.2,
+    "pos": "top"
    },
    {
     "t": 0,
     "type": "zoom",
     "to": 1.15,
-    "dur": 0.4,
+    "dur": 0.5,
     "focus": "caster"
    },
    {
@@ -515,7 +521,7 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
    {
     "t": 0.55,
     "type": "flash",
-    "alpha": 0.4,
+    "alpha": 0.24,
     "dur": 0.3,
     "color": "#d6ffe0"
    },
@@ -523,7 +529,7 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
     "t": 1.1,
     "type": "zoom",
     "to": 1,
-    "dur": 0.3,
+    "dur": 0.5,
     "focus": "caster"
    },
    {
@@ -536,7 +542,7 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
  },
  "assassinate": {
   "name": "암살",
-  "dur": 1.7,
+  "dur": 1.8,
   "hit": 0.8,
   "steps": [
    {
@@ -549,14 +555,15 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
     "t": 0,
     "type": "banner",
     "text": "{skill}",
-    "dur": 1.3
+    "dur": 1.2,
+    "pos": "top"
    },
    {
     "t": 0,
     "type": "zoom",
-    "to": 1.6,
-    "dur": 0.3,
-    "focus": "target"
+    "to": 1.3,
+    "dur": 0.5,
+    "focus": "mid"
    },
    {
     "t": 0.3,
@@ -595,7 +602,7 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
    {
     "t": 0.8,
     "type": "flash",
-    "alpha": 0.9,
+    "alpha": 0.5,
     "dur": 0.2,
     "color": "#ffffff"
    },
@@ -614,8 +621,8 @@ window.CINE_MANIFEST = Object.assign(window.CINE_MANIFEST || {}, /*DATA*/{
     "t": 1.2,
     "type": "zoom",
     "to": 1,
-    "dur": 0.3,
-    "focus": "target"
+    "dur": 0.5,
+    "focus": "mid"
    },
    {
     "t": 1.2,
