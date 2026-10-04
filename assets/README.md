@@ -58,7 +58,7 @@ slime(슬라임), goblin(고블린), gobarch(고블린 궁수), bat(큰박쥐), 
 - 전직 고유 스킬 등에 **시간표 연출**을 붙인다: `cine.js`(엔진, 게임·편집기 공용) + `assets/cine/cine_manifest.js`(`window.CINE_MANIFEST[스킬 id]`) + 편집기 `tools/cine_tool.html`(`http://localhost:8123/tools/cine_tool.html`).
 - 연출 = `{ dur, hit, steps: [{ t, type, … }] }`. 스텝: **dim**(타일만 암전, 유닛은 밝게) · **zoom**(초점 target/caster/mid) · **timescale**(슬로모션) · **flash**(화면 번쩍임) · **shake** · **fx**(이펙트 시트, 위치 target/caster, ox/oy/scale 덮어쓰기 가능) · **anim**(시전자 동작) · **freeze**(히트스톱) · **banner**(스킬 이름, `{skill}`, 기본은 화면 위쪽 얇은 띠 — `pos:'bottom'` 가능). 새 연출은 코드 수정 없이 데이터만 추가하면 된다.
 - 게임 동작(`render.js`): 스킬 이벤트의 `sid` 에 연출이 있으면 기본 동작·이펙트·이름 표시 대신 연출을 재생한다. 피해 숫자·피격·번쩍임은 **일격 시점(`hit`)** 에 나온다(연출 시계 기준이라 슬로모션과 무관). 배속이 빠르면 연출도 빨라지고, 흔들림 감소 설정에서는 연출을 건너뛴다. 연출 중 다른 연출은 시작하지 않는다.
-- 기본 데이터: kenki(검기 난무)·sacred(성스러운 일격)·renkan(연환권)·pierce(관통 사격)·meteor(메테오)·sanctuary(성역)·assassinate(암살). 쓰는 이펙트는 `assets/fx` 의 이름(slash, heavy, hit, fire, lightning, buff, heal, shockwave …).
+- **오의는 후반 스킬**: 전직(Lv20 이상 기본 직업 + 전직서 2,500G)한 용병의 고유 스킬이라 초반 저장에서는 나오지 않는다. 바로 보려면 주소에 `?sandbox`(기존 저장과 별도의 체험용 저장 — 용병 전원 Lv20 전직·골드 넉넉·스킬 사용 빈도 높음, `?sandbox&reset` 으로 새로 시작)를 쓴다. 기본 데이터: kenki(검기 난무)·sacred(성스러운 일격)·renkan(연환권)·pierce(관통 사격)·meteor(메테오)·sanctuary(성역)·assassinate(암살). 쓰는 이펙트는 `assets/fx` 의 이름(slash, heavy, hit, fire, lightning, buff, heal, shockwave …).
 
 ## 적용 예
 ```js

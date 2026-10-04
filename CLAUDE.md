@@ -24,6 +24,7 @@
 - 미완/보류: **밸런스 미조정**(시뮬 봇은 제작·조합·전직·분대를 쓰지 않아 회차가 참고용으로만 유효), 전직 전용 스킬은 임시 구성, 2-F 엑셀 일괄 업로드(스킬셋 제공 대기), 신규 범위 스킬.
 - 층 넓이: 미로 55×33(기존 39×23의 약 2배), 방·상자·함정·몹·정예 수도 약 2배.
 - 전투 규칙: 적은 **위협(어그로) 1위**를 노린다(`addThreat`/`aggroTarget`, 클래스 `taunt` 배율, 기사·전사 고유 스킬 `taunt`). 몬스터 특수 능력은 `ABIL`(분열·도둑질·쇠약·부활·관통·흡혈·격노·가시), 몬스터 하우스·함정 5종은 `placeEvents`/`triggerTrap`.
+- 체험용 저장: 주소에 `?sandbox` — 별도 저장 키(`esteru_dungeon_sandbox_v1`)라 진행 상황을 건드리지 않고, 용병 전원 Lv20 전직·골드 99999·스킬 빈도 높음으로 시작(오의 연출 확인용). `?sandbox&reset` 은 새로 시작.
 - 배속 규칙: 출시 빌드 ×1/×2/×4. **개발 모드는 주소에 `?dev`**(그 로딩에서만 켜짐, 저장되지 않음)로 ×8까지. 처음 가는 층(이번 원정 이전 최고 층보다 깊은 층)은 ×2로 제한. `TUNE.pace`(기본 1)를 키우면 모든 배속이 비례해 느려진다(플레이 시간 조정용).
 - 원정 구조(Phase 7): 맵 크기는 `dimsFor(f)`(깊이에 따라 증가, 활성 층 크기는 `MW/MH`+`useDims`), 보스층은 `withSeed` 고정맵, 방문한 층은 `e.floors` 에 보존(`setFloor(e,f,from)`/`descend`/`ascend`), 층을 오가는 목표는 `e.goal`(`questGoal`), 의뢰는 `offerQuest`/`acceptQuest`/`questComplete`, 장비 강화는 `enhanceItem`(`s.enh`). 시작 층은 `startFloors(s)`(1층+보스 후 지름길 6·11·16…), 가 본 층은 지도 공개+계단 직행(`opts.fastOld`). 진행 속도 기본값 `TUNE.pace`=6(약 45시간 기준). 아군 기본 공격 사거리 상한 `MAX_RANGE`=3(근접 1, 원거리 최대 3; 스킬 자체 사거리는 별개). 도적은 근접, 활은 엘프 중심.
 - 고용: **주점**(캠프 탭 🍺, `core.js` `refreshTavern`/`tavernHire`/`useTicket`, `render.js` `drawTavern`). 후보 5~7명은 귀환 때마다 갱신, 출현변경권(`s.tickets`)으로 재추첨. 전설은 고용이 확률(`legendChance`), 실패 5회면 떠남(`u.left`). 용병 상세는 장비창(`sheetModal`).

@@ -111,7 +111,7 @@ const Render = (function () {
   function cineOverlay() { // 화면 전체 번쩍임·스킬 이름 배너(확대와 무관하게 화면에 고정)
     const c = S.cine; if (!c || !c.cs) return; const cs = c.cs;
     for (const f of cs.flash) { ctx.fillStyle = f.color; ctx.globalAlpha = Math.max(0, Math.min(1, f.a)); ctx.fillRect(0, 0, W, H); } ctx.globalAlpha = 1;
-    if (cs.banner) { const b = cs.banner, p = b.p, a = p < 0.15 ? p / 0.15 : p > 0.8 ? (1 - p) / 0.2 : 1, slide = Math.pow(1 - Math.min(1, p / 0.2), 2) * 100, text = (b.text || '{skill}').replace('{skill}', c.name || ''), y0 = b.pos === 'bottom' ? H - 44 : 8; // 시전 장면(화면 가운데)을 가리지 않게 위쪽 얇은 띠(옵션: 아래)
+    if (cs.banner) { const b = cs.banner, p = b.p, a = p < 0.15 ? p / 0.15 : p > 0.8 ? (1 - p) / 0.2 : 1, slide = Math.pow(1 - Math.min(1, p / 0.2), 2) * 100, text = (b.text || '{skill}').replace('{skill}', c.name || ''), y0 = b.pos === 'bottom' ? H - 44 : 64; // 시전 장면(화면 가운데)을 가리지 않게 위쪽 얇은 띠 — 게임 HUD(배속·정지 막대) 바로 아래(옵션: 아래)
       ctx.save(); ctx.globalAlpha = Math.max(0, a); ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0, y0, W, 36); ctx.font = '900 24px "Malgun Gothic",sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 4; ctx.strokeStyle = '#000'; ctx.strokeText(text, W / 2 - slide, y0 + 27); ctx.fillStyle = '#ffe27a'; ctx.fillText(text, W / 2 - slide, y0 + 27); ctx.restore(); }
   }
   function procEvents(e) {

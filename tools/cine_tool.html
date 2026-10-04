@@ -144,7 +144,7 @@ function drawStage(c, t) {
     x.drawImage(im.im, f.fr * m.cell, 0, m.cell, m.cell, p[0] + lx + ox - sz / 2, p[1] + oy - sz / 2, sz, sz); }
   x.restore(); x.restore();
   for (const f of cs.flash) { x.fillStyle = f.color; x.globalAlpha = clamp(f.a, 0, 1); x.fillRect(0, 0, W, H); } x.globalAlpha = 1;
-  if (cs.banner) { const b = cs.banner, p = b.p, a = p < 0.15 ? p / 0.15 : p > 0.8 ? (1 - p) / 0.2 : 1, slide = Math.pow(1 - Math.min(1, p / 0.2), 2) * 100, text = (b.text || '{skill}').replace('{skill}', c.name || ''), y0 = b.pos === 'bottom' ? H - 44 : 8; x.save(); x.globalAlpha = clamp(a, 0, 1); x.fillStyle = 'rgba(0,0,0,.45)'; x.fillRect(0, y0, W, 36); x.font = '900 24px "Malgun Gothic",sans-serif'; x.textAlign = 'center'; x.lineWidth = 4; x.strokeStyle = '#000'; x.strokeText(text, W / 2 - slide, y0 + 27); x.fillStyle = '#ffe27a'; x.fillText(text, W / 2 - slide, y0 + 27); x.restore(); }
+  if (cs.banner) { const b = cs.banner, p = b.p, a = p < 0.15 ? p / 0.15 : p > 0.8 ? (1 - p) / 0.2 : 1, slide = Math.pow(1 - Math.min(1, p / 0.2), 2) * 100, text = (b.text || '{skill}').replace('{skill}', c.name || ''), y0 = b.pos === 'bottom' ? H - 44 : 64; x.save(); x.globalAlpha = clamp(a, 0, 1); x.fillStyle = 'rgba(0,0,0,.45)'; x.fillRect(0, y0, W, 36); x.font = '900 24px "Malgun Gothic",sans-serif'; x.textAlign = 'center'; x.lineWidth = 4; x.strokeStyle = '#000'; x.strokeText(text, W / 2 - slide, y0 + 27); x.fillStyle = '#ffe27a'; x.fillText(text, W / 2 - slide, y0 + 27); x.restore(); }
   $('tinfo').textContent = `${t.toFixed(2)} / ${c.dur.toFixed(2)}초${cs.ts < 0.99 ? ` · 슬로모션 ×${cs.ts.toFixed(2)}` : ''}${st.hold > 0 ? ' · 히트스톱' : ''}`;
 }
 function drawTimeline(c, t) {

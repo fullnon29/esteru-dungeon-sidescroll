@@ -1209,8 +1209,8 @@ const Core = (function () {
     e.battle = createBattle(e, g); e.phase = 'battle';
     const names = e.battle.units.filter(c => c.side === 'e').map(c => c.name + (c.abilTxt || ''));
     elog(e, g.boss ? `⚔️ 수호자 출현! ${names[0]} 외 ${names.length - 1}` : `⚔️ 적과 조우: ${names.join(', ')}`, g.boss ? 'warn' : '');
-    if (g.boss) ban(e, '⚔️', '수호자 출현!', names[0], 'bad');
-    ban(e, '⚔️', '전투 시작!', `적 ${names.length}기`, '', { force: true, dur: 900 });
+    if (g.boss) ban(e, '⚔️', '수호자 출현!', names[0], 'bad', { top: true });
+    ban(e, '⚔️', '전투 시작!', `적 ${names.length}기`, '', { force: true, dur: 900, top: true });
   }
   function openChest(e, big) {
     const f = e.floor, g = Math.round(rnd(0.8, 1.4) * (30 + f * 15) * (big ? 2 : 1) * TUNE.goldMul);
@@ -1354,7 +1354,7 @@ const Core = (function () {
   }
   /* ---------- 이벤트: 행상인 · 뽑기방 · 특수 동료 의뢰 · 기습 (+ 모든 이벤트는 중앙 배너로 알림) ---------- */
   // 중앙 배너: 기본은 부정 효과(kind 'bad')만 화면에 뜬다. o.force=항상 표시, o.prio=진행 중인 배너를 끊고 즉시 표시, o.dur=표시 시간(ms)
-  const ban = (e, icon, name, sub, kind, o) => { o = o || {}; e.events.push({ k: 'banner', icon, name, sub: sub || '', c: kind || '', force: !!o.force, prio: !!o.prio, dur: o.dur }); };
+  const ban = (e, icon, name, sub, kind, o) => { o = o || {}; e.events.push({ k: 'banner', icon, name, sub: sub || '', c: kind || '', force: !!o.force, prio: !!o.prio, dur: o.dur, top: !!o.top }); };
   const legendBan = (e, id) => { const i = ITEMS[id]; if (i && (i.rarity === 'L' || i.legend)) ban(e, '🌟', '전설 장비 획득!', i.name, 'good', { force: true, dur: 2000 }); }; // 전설 등급 이상만 중앙 표기
   const COMPANIONS = [
     { name: '리벨', cls: 'warrior', rar: 'H', q: 'kills', need: 20, intro: '떠돌이 검사 리벨이 길동무를 찾고 있다.' },
@@ -1698,13 +1698,13 @@ const Core = (function () {
       if (!b.result) return;
       if (e.bless > 0 && b.result !== 'retreat') e.bless--;
       if (b.result === 'escape') {
-        ban(e, '💨', '도주', '황금 몹이 도망쳤다', 'warn', { force: true, prio: true, dur: 1000 });
+        ban(e, '💨', '도주', '황금 몹이 도망쳤다', 'warn', { force: true, prio: true, dur: 1000, top: true });
         b.group.alive = false; e.phase = 'explore'; e.moveT = -0.4; e.battle = null;
         if (e.party.every(u => u.hp <= 0)) finish(e, 'wipe');
         return;
       }
       if (b.result === 'win') {
-        b.group.alive = false; elog(e, '🏆 승리!', 'good'); ban(e, '🏆', '승리!', b.fallen ? `전투불능 ${b.fallen}명` : '', 'good', { force: true, prio: true, dur: 1100 });
+        b.group.alive = false; elog(e, '🏆 승리!', 'good'); ban(e, '🏆', '승리!', b.fallen ? `전투불능 ${b.fallen}명` : '', 'good', { force: true, prio: true, dur: 1100, top: true });
         if (b.foodGain) elog(e, `🍳 요리사가 몹을 손질했다 (식량 +${Math.round(b.foodGain * 10) / 10})`, 'good');
         if (b.group.chest) { b.group.chest.open = true; openChest(e, true); }
         if (b.group.house) houseReward(e);
@@ -1713,8 +1713,8 @@ const Core = (function () {
         e.phase = 'explore'; e.moveT = -0.4; e.battle = null;
         if (b.group.boss && e.floor >= MAXF) { elog(e, '👑 흑왕을 쓰러뜨렸다! 50층 미궁 완전 정복!', 'good'); finish(e, 'clear'); return; }
         if (e.party.every(u => u.hp <= 0)) finish(e, 'wipe');
-      } else if (b.result === 'retreat') { ban(e, '🏃', '후퇴', '파티가 전장을 이탈했다', 'warn', { force: true, prio: true, dur: 1100 }); e.battle = null; finish(e, 'retreat'); }
-      else { ban(e, '💀', '패배', '파티가 전멸했다', 'bad', { force: true, prio: true, dur: 1300 }); e.battle = null; elog(e, '💀 파티가 전멸했다…', 'bad'); finish(e, 'wipe'); }
+      } else if (b.result === 'retreat') { ban(e, '🏃', '후퇴', '파티가 전장을 이탈했다', 'warn', { force: true, prio: true, dur: 1100, top: true }); e.battle = null; finish(e, 'retreat'); }
+      else { ban(e, '💀', '패배', '파티가 전멸했다', 'bad', { force: true, prio: true, dur: 1300, top: true }); e.battle = null; elog(e, '💀 파티가 전멸했다…', 'bad'); finish(e, 'wipe'); }
     }
   }
   function manualRetreat(e) { if (e.done) return; if (e.battle) e.battle = null; finish(e, 'retreat'); }

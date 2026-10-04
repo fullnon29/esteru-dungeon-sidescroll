@@ -1,7 +1,9 @@
 'use strict';
 (function () {
   const C = Core;
-  const SAVE_KEY = 'esteru_dungeon_save_v2', PREF_KEY = 'esteru_prefs_v1';
+  // 체험용 저장: 주소에 ?sandbox — 기존 저장과 별도 키를 쓰고(진행 상황을 건드리지 않음), 용병 전원이 Lv20 전직 상태로 시작해 오의를 바로 볼 수 있다. ?sandbox&reset 은 체험 저장을 새로 만든다.
+  const SANDBOX = /[?&]sandbox\b/.test(location.search);
+  const SAVE_KEY = SANDBOX ? 'esteru_dungeon_sandbox_v1' : 'esteru_dungeon_save_v2', PREF_KEY = 'esteru_prefs_v1';
   const $ = id => document.getElementById(id);
   const cv = $('cv');
   // 배속: 출시 빌드는 최대 ×4. 개발용(주소에 ?dev, 한 번 켜면 저장)은 ×8까지. 처음 가는 층(이번 원정 이전 최고 층보다 깊은 층)은 ×2 제한.
@@ -15,8 +17,14 @@
 
   /* ---------- 저장 ---------- */
   function load() {
-    try { const raw = localStorage.getItem(SAVE_KEY); if (raw) return fixSave(JSON.parse(raw)); } catch (e) { /* 무시 */ }
-    return C.newSave();
+    try { if (SANDBOX && /[?&]reset\b/.test(location.search)) localStorage.removeItem(SAVE_KEY); const raw = localStorage.getItem(SAVE_KEY); if (raw) return fixSave(JSON.parse(raw)); } catch (e) { /* 무시 */ }
+    return SANDBOX ? sandboxSave() : C.newSave();
+  }
+  function sandboxSave() { // 용병 전원 Lv20 → 전직(고유 스킬 습득), 골드 넉넉, 스킬 사용 빈도 높음
+    const s = C.newSave(); s.gold = 99999; s.policy.skill = 'high'; s.promo = 10;
+    for (const u of s.units) if (u.hired) u.lv = 20;
+    for (const u of s.units) if (u.hired && C.canPromote(u)) C.promote(s, u);
+    C.autoFormation(s); return s;
   }
   function fixSave(s) {
     s = C.migrateSave(s); if (!s) return C.newSave();
@@ -656,7 +664,7 @@
   function pumpBanner() {
     if (bBusy || !bq.length) return; const v = bq.shift(), el = $('eventBanner'), dur = v.dur || (v.c === 'bad' ? 2300 : 1900); bBusy = true;
     el.className = 'event-banner hidden'; el.innerHTML = `<span class="ic">${v.icon}</span><b>${esc(v.name)}</b>${v.sub ? `<small>${esc(v.sub)}</small>` : ''}`;
-    void el.offsetWidth; el.style.animationDuration = dur + 'ms'; el.className = 'event-banner ' + (v.c || '');
+    void el.offsetWidth; el.style.animationDuration = dur + 'ms'; el.className = 'event-banner ' + (v.c || '') + (v.top ? ' top' : ''); // top: 전투 시작·종료 같은 배너는 전투 화면을 가리지 않게 위쪽 얇은 띠로
     bTimer = setTimeout(() => { el.classList.add('hidden'); bBusy = false; pumpBanner(); }, dur);
   }
   function merchantSellHTML(s) { // 행상인에게 전리품 판매(시세 70%)
@@ -703,6 +711,7 @@
     requestAnimationFrame(frame);
   }
   renderCamp(); setHint('용병 카드를 전장의 <b>파란 칸</b>으로 끌어다 놓아 편성하세요.', 0);
+  if (SANDBOX) { document.title = '[체험] ' + document.title; toast('체험용 저장 — 용병 전원이 전직한 상태입니다. 출격하면 오의가 나옵니다(기존 저장과 별개)'); }
   if (!S.prefs.tutDone) tutorial(0);
   requestAnimationFrame(frame);
   window.__S = S;
