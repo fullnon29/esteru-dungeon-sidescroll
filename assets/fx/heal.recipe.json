@@ -13,7 +13,10 @@
   "hit": 4,
   "hitStop": 0,
   "shake": 0,
-  "flashFrames": 0
+  "flashFrames": 0,
+  "ox": 0,
+  "oy": -20,
+  "scale": 1
  },
  "layers": [
   {

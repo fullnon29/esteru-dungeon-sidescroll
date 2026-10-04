@@ -265,7 +265,8 @@ const Render = (function () {
       for (const x of S.fxs) { const m = x.f.m, fr = Math.floor(x.t * m.fps * k); x.t += dt;
         if (!x.hit && fr >= (m.hit || 0)) { x.hit = true; if (!reduced() && m.shake > 0) S.frameShake = { t: 0.14, d: 0.14, amp: m.shake * shakeK() }; if (x.big && !reduced() && m.hitStop > 0) S.freeze = Math.min(0.09, m.hitStop / m.fps / k); }
         if (fr >= m.n) { x.done = true; continue; }
-        const [sx, sy] = iso(x.gx, x.gy); ctx.drawImage(x.f.img, fr * m.cell, 0, m.cell, m.cell, sx - m.cell / 2, sy - elAt(x.gx, x.gy) - 34 - m.cell / 2, m.cell, m.cell); }
+        const [sx, sy] = iso(x.gx, x.gy), sz = m.cell * (m.scale || 1), ox = m.ox || 0, oy = m.oy === undefined ? -34 : m.oy; // 오프셋(ox, oy)은 타겟의 발 위치 기준 게임 px(기본: 발 위 34px), scale 은 크기 배율 — fx_tool 에서 이펙트별로 정한다
+        ctx.drawImage(x.f.img, fr * m.cell, 0, m.cell, m.cell, sx + ox - sz / 2, sy - elAt(x.gx, x.gy) + oy - sz / 2, sz, sz); }
       S.fxs = S.fxs.filter(x => !x.done); ctx.restore();
     }
     for (const f of S.floaters) {

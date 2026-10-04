@@ -9,6 +9,9 @@ window.FX_MANIFEST = Object.assign(window.FX_MANIFEST || {}, /*DATA*/{
   "hitStop": 2,
   "shake": 2,
   "flashFrames": 2,
+  "ox": 0,
+  "oy": -40,
+  "scale": 1,
   "anchor": [
    64,
    64
@@ -23,6 +26,9 @@ window.FX_MANIFEST = Object.assign(window.FX_MANIFEST || {}, /*DATA*/{
   "hitStop": 3,
   "shake": 4,
   "flashFrames": 2,
+  "ox": 0,
+  "oy": -40,
+  "scale": 1,
   "anchor": [
    64,
    64
@@ -37,6 +43,9 @@ window.FX_MANIFEST = Object.assign(window.FX_MANIFEST || {}, /*DATA*/{
   "hitStop": 2,
   "shake": 2,
   "flashFrames": 2,
+  "ox": 0,
+  "oy": -40,
+  "scale": 1,
   "anchor": [
    64,
    64
@@ -51,6 +60,9 @@ window.FX_MANIFEST = Object.assign(window.FX_MANIFEST || {}, /*DATA*/{
   "hitStop": 2,
   "shake": 4,
   "flashFrames": 1,
+  "ox": 0,
+  "oy": -6,
+  "scale": 1,
   "anchor": [
    64,
    64
@@ -65,6 +77,9 @@ window.FX_MANIFEST = Object.assign(window.FX_MANIFEST || {}, /*DATA*/{
   "hitStop": 2,
   "shake": 2,
   "flashFrames": 2,
+  "ox": 0,
+  "oy": -30,
+  "scale": 1,
   "anchor": [
    64,
    64
@@ -79,6 +94,9 @@ window.FX_MANIFEST = Object.assign(window.FX_MANIFEST || {}, /*DATA*/{
   "hitStop": 2,
   "shake": 3,
   "flashFrames": 2,
+  "ox": 0,
+  "oy": -30,
+  "scale": 1,
   "anchor": [
    64,
    64
@@ -93,6 +111,9 @@ window.FX_MANIFEST = Object.assign(window.FX_MANIFEST || {}, /*DATA*/{
   "hitStop": 2,
   "shake": 3,
   "flashFrames": 3,
+  "ox": 0,
+  "oy": -30,
+  "scale": 1,
   "anchor": [
    64,
    64
@@ -107,6 +128,9 @@ window.FX_MANIFEST = Object.assign(window.FX_MANIFEST || {}, /*DATA*/{
   "hitStop": 0,
   "shake": 0,
   "flashFrames": 0,
+  "ox": 0,
+  "oy": -20,
+  "scale": 1,
   "anchor": [
    64,
    64
@@ -121,6 +145,9 @@ window.FX_MANIFEST = Object.assign(window.FX_MANIFEST || {}, /*DATA*/{
   "hitStop": 0,
   "shake": 0,
   "flashFrames": 0,
+  "ox": 0,
+  "oy": -6,
+  "scale": 1,
   "anchor": [
    64,
    64
@@ -135,6 +162,9 @@ window.FX_MANIFEST = Object.assign(window.FX_MANIFEST || {}, /*DATA*/{
   "hitStop": 3,
   "shake": 5,
   "flashFrames": 2,
+  "ox": 0,
+  "oy": -20,
+  "scale": 1,
   "anchor": [
    64,
    64
