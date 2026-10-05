@@ -149,20 +149,38 @@
   const hash = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
   function ridge(par, base, amp, col, f1, f2) { const px = -(S.cam.c * TILE_W * par); ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(0, FAR_Y + 4); for (let x = 0; x <= W; x += 8) { const wx = x - px; ctx.lineTo(x, base - amp * (0.55 + 0.3 * Math.sin(wx * f1) + 0.15 * Math.sin(wx * f2 + 1.3))); } ctx.lineTo(W, FAR_Y + 4); ctx.fill(); }
   function pines(par, sz, col, gap, seed) { const px = -(S.cam.c * TILE_W * par), i0 = Math.floor(-px / gap) - 1, i1 = i0 + Math.ceil(W / gap) + 2; ctx.fillStyle = col; for (let i = i0; i <= i1; i++) { const x = i * gap + px + hash(i + seed) * gap * 0.7, h = sz * (0.7 + hash(i * 3 + seed) * 0.8); for (let k = 0; k < 3; k++) { const w = h * (0.34 - k * 0.07), y = FAR_Y + 2 - h * (0.22 + k * 0.28); ctx.beginPath(); ctx.moveTo(x - w, y); ctx.lineTo(x + w, y); ctx.lineTo(x, y - h * 0.42); ctx.fill(); } ctx.fillRect(x - 2, FAR_Y - 6, 4, 8); } }
+  /* ---------- 에셋 이미지(없으면 아래 절차 생성 그림으로 대체) ---------- */
+  const THEME = new URLSearchParams(location.search).get('theme') || 'dusk', sideImgs = {};
+  function sideImg(kind, name) { /* assets/side/{bg|tile}/{THEME}_{name}.png — 규격은 assets/README.md */
+    const key = kind + '/' + name; let o = sideImgs[key]; if (!o) { o = sideImgs[key] = { img: new Image(), ok: false }; o.img.onload = () => { o.ok = true; }; o.img.onerror = () => { o.fail = true; }; o.img.src = `assets/side/${kind}/${THEME}_${name}.png`; }
+    return o.ok ? o.img : null;
+  }
+  function tileLayer(name, par, bottom) { /* 가로로 되풀이되는 배경 레이어를 시차로 흘려 그린다(그려지면 true) */
+    const im = sideImg('bg', name); if (!im) return false; const k = W / 1920, w = im.naturalWidth * k, h = im.naturalHeight * k; let x = -((S.cam.c * TILE_W * par) % w); if (x > 0) x -= w;
+    for (; x < W; x += w) ctx.drawImage(im, x, bottom - h, w + 1, h); return true;
+  }
+  function texQuad(a, b, c, d, im, dim) { /* 사다리꼴 안에 타일 질감 이미지를 그린다(어파인 근사: 외접 사각형을 잘라 채움) */
+    if (!im) return; const x0 = Math.min(a.x, b.x, c.x, d.x), x1 = Math.max(a.x, b.x, c.x, d.x), y0 = Math.min(a.y, b.y, c.y, d.y), y1 = Math.max(a.y, b.y, c.y, d.y);
+    ctx.save(); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(c.x, c.y); ctx.lineTo(d.x, d.y); ctx.closePath(); ctx.clip(); ctx.drawImage(im, x0, y0, x1 - x0, y1 - y0); if (dim > 0) { ctx.fillStyle = 'rgba(0,0,0,' + dim + ')'; ctx.fill(); } ctx.restore();
+  }
   function drawBackground(dim) {
+    const imSky = sideImg('bg', 'sky'); if (imSky) ctx.drawImage(imSky, 0, 0, W, FAR_Y + 40); else {
     const g = ctx.createLinearGradient(0, 0, 0, FAR_Y); g.addColorStop(0, '#2b2a5c'); g.addColorStop(0.45, '#8a4f6e'); g.addColorStop(0.78, '#e0814f'); g.addColorStop(1, '#f6bd72'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     const sx = W * 0.6 - S.cam.c * 2, sy = FAR_Y - 70, sg = ctx.createRadialGradient(sx, sy, 8, sx, sy, 300); sg.addColorStop(0, 'rgba(255,240,190,1)'); sg.addColorStop(0.12, 'rgba(255,214,140,.9)'); sg.addColorStop(0.4, 'rgba(255,170,100,.35)'); sg.addColorStop(1, 'rgba(255,150,90,0)'); ctx.fillStyle = sg; ctx.fillRect(0, 0, W, FAR_Y + 10);
     ctx.fillStyle = '#fff4cf'; ctx.beginPath(); ctx.arc(sx, sy, 34, 0, 7); ctx.fill();
-    ridge(0.04, FAR_Y - 30, 120, '#a8607a', 0.011, 0.031); ridge(0.09, FAR_Y - 16, 100, '#7f4a68', 0.016, 0.043);
+    }
+    if (!tileLayer('far', 0.06, FAR_Y + 6)) {ridge(0.04, FAR_Y - 30, 120, '#a8607a', 0.011, 0.031); ridge(0.09, FAR_Y - 16, 100, '#7f4a68', 0.016, 0.043);}
+    if (!tileLayer('mid', 0.2, FAR_Y + 8)) {
     const px = f => -((S.cam.c * TILE_W * f) % 7200); ctx.fillStyle = '#5b4358';
     for (let i = 0; i < 40; i++) { const x = i * 190 + 40 + hash(i) * 80 + px(0.16), w = 44 + hash(i + 9) * 40, h = 60 + hash(i + 5) * 110; if (x < -120 || x > W + 120 || hash(i + 2) < 0.35) continue; ctx.fillRect(x, FAR_Y - h, w, h + 8); if (hash(i + 7) < 0.5) { ctx.fillRect(x - 5, FAR_Y - h - 10, w + 10, 10); for (let k = 0; k < 3; k++) ctx.fillRect(x - 5 + k * (w / 2), FAR_Y - h - 19, 7, 9); } else { ctx.fillStyle = '#e0814f'; ctx.beginPath(); ctx.ellipse(x + w / 2, FAR_Y - h * 0.45, w * 0.22, h * 0.22, 0, Math.PI, 0); ctx.fill(); ctx.fillStyle = '#5b4358'; } }
-    pines(0.26, 52, '#3f3252', 58, 11); pines(0.42, 74, '#2d2644', 84, 53);
+    }
+    if (!tileLayer('near', 0.42, FAR_Y + 10)) {pines(0.26, 52, '#3f3252', 58, 11); pines(0.42, 74, '#2d2644', 84, 53);}
     const eg = ctx.createLinearGradient(0, FAR_Y - 4, 0, H); eg.addColorStop(0, '#5b4a3a'); eg.addColorStop(1, '#2c2330'); ctx.fillStyle = eg; ctx.fillRect(0, FAR_Y, W, H - FAR_Y);
     if (dim > 0) { ctx.fillStyle = 'rgba(0,0,0,' + dim + ')'; ctx.fillRect(0, 0, W, H); }
   }
   function drawForeground() { /* 전경 풀·꽃 (카메라보다 빠르게 흐르는 가까운 층) */
-    const par = 1.35, px = -(S.cam.c * TILE_W * par), gap = 46, i0 = Math.floor(-px / gap) - 1, i1 = i0 + Math.ceil(W / gap) + 2;
-    for (let i = i0; i <= i1; i++) { const x = i * gap + px + hash(i) * gap, h = 18 + hash(i + 4) * 26, y = H + 2;
+    const hasFore = tileLayer('fore', 1.35, H + 2), par = 1.35, px = -(S.cam.c * TILE_W * par), gap = 46, i0 = Math.floor(-px / gap) - 1, i1 = i0 + Math.ceil(W / gap) + 2;
+    for (let i = i0; !hasFore && i <= i1; i++) { const x = i * gap + px + hash(i) * gap, h = 18 + hash(i + 4) * 26, y = H + 2;
       ctx.strokeStyle = hash(i + 8) < 0.5 ? '#1d2a22' : '#26362a'; ctx.lineWidth = 3; for (let k = -1; k <= 1; k++) { ctx.beginPath(); ctx.moveTo(x + k * 5, y); ctx.quadraticCurveTo(x + k * 9, y - h * 0.6, x + k * 14 + 3, y - h); ctx.stroke(); }
       if (hash(i + 13) < 0.28) { ctx.fillStyle = hash(i + 6) < 0.5 ? '#ffd2e6' : '#fff6c8'; ctx.beginPath(); ctx.arc(x + 5, y - h - 3, 3.5, 0, 7); ctx.fill(); ctx.fillStyle = '#e8a43c'; ctx.beginPath(); ctx.arc(x + 5, y - h - 3, 1.4, 0, 7); ctx.fill(); } }
     const vg = ctx.createRadialGradient(W / 2, H * 0.55, H * 0.35, W / 2, H * 0.55, H * 0.95); vg.addColorStop(0, 'rgba(20,10,30,0)'); vg.addColorStop(1, 'rgba(20,10,30,.45)'); ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
@@ -173,10 +191,10 @@
   function drawTile(c, r, dim) {
     const h = Hh(c, r), p00 = proj(c, r, h), p10 = proj(c + 1, r, h), p11 = proj(c + 1, r + 1, h), p01 = proj(c, r + 1, h);
     const hn = r + 1 < ROWS ? Hh(c, r + 1) : -4; // 앞(가까운) 줄 이웃보다 높으면 앞면이 보인다
-    if (h > hn) quad(p01, p11, proj(c + 1, r + 1, hn), proj(c, r + 1, hn), mixc(FACE, dim), 'rgba(0,0,0,.35)');
-    if (c >= S.cam.c) { const hl = Hh(c - 1, r); if (h > hl) quad(p00, p01, proj(c, r + 1, hl), proj(c, r, hl), mixc(FACE2, dim), 'rgba(0,0,0,.35)'); } // 카메라 중심 기준 보이는 옆면
-    if (c + 1 <= S.cam.c) { const hr = Hh(c + 1, r); if (h > hr) quad(p10, p11, proj(c + 1, r + 1, hr), proj(c + 1, r, hr), mixc(FACE2, dim), 'rgba(0,0,0,.35)'); }
-    quad(p00, p10, p11, p01, mixc(TOP[h] || TOP[3], dim), 'rgba(0,0,0,.3)'); // 윗면(사다리꼴) + 격자선
+    if (h > hn) { const q = [p01, p11, proj(c + 1, r + 1, hn), proj(c, r + 1, hn)]; quad(...q, mixc(FACE, dim), 'rgba(0,0,0,.35)'); texQuad(...q, sideImg('tile', 'front'), dim); }
+    if (c >= S.cam.c) { const hl = Hh(c - 1, r); if (h > hl) { const q = [p00, p01, proj(c, r + 1, hl), proj(c, r, hl)]; quad(...q, mixc(FACE2, dim), 'rgba(0,0,0,.35)'); texQuad(...q, sideImg('tile', 'side'), dim); } } // 카메라 중심 기준 보이는 옆면
+    if (c + 1 <= S.cam.c) { const hr = Hh(c + 1, r); if (h > hr) { const q = [p10, p11, proj(c + 1, r + 1, hr), proj(c + 1, r, hr)]; quad(...q, mixc(FACE2, dim), 'rgba(0,0,0,.35)'); texQuad(...q, sideImg('tile', 'side'), dim); } }
+    quad(p00, p10, p11, p01, mixc(TOP[h] || TOP[3], dim), 'rgba(0,0,0,.3)'); texQuad(p00, p10, p11, p01, sideImg('tile', 'top' + h) || sideImg('tile', 'top'), dim); // 윗면(사다리꼴, 질감이 있으면 덮는다) + 격자선
     const hz = 0.34 * Math.pow(1 - (r + 0.5) / ROWS, 1.3) * (PERSP / 0.12); if (hz > 0.01) quad(p00, p10, p11, p01, `rgba(244,150,104,${Math.min(0.5, hz)})`); /* 먼 줄은 노을빛 안개로 흐려져 깊이가 느껴진다 */
     if (h > 0) { ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.beginPath(); ctx.moveTo(p00.x, p00.y); ctx.lineTo(p10.x, p10.y); ctx.stroke(); }
   }
