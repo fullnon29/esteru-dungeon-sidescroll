@@ -11,7 +11,7 @@
 (function () {
   const $ = id => document.getElementById(id);
   const cv = $('cv'), ctx = cv.getContext('2d'), W = cv.width, H = cv.height;
-  const TILE_W = 88, LV = 34, FAR_Y = 288, NEAR_Y = 486, S_FAR = 0.62, USC = 0.78, DT = 1 / 120, STEP_BASE = 0.36;
+  let LV = 12, FAR_Y = 170, NEAR_Y = 508; const TILE_W = 120, S_FAR = 0.62, USC = 2.3, TILTS = { 0: [34, 262, 492], 1: [20, 200, 502], 2: [12, 170, 508] }, /* 시점: [높이 한 단계의 화면 높이, 먼 줄 y, 가까운 줄 y] */ DT = 1 / 120, STEP_BASE = 0.36;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v)), lerp = (a, b, t) => a + (b - a) * t, rnd = (a, b) => a + Math.random() * (b - a), sgn = v => v >= 0 ? 1 : -1;
   const ANIM = () => Assets.animEnemy({ tplId: 'knight' }); // 기사 시트(128px, 8방향, 동작별 15프레임) — 좌/우(0/4)만 사용
   const FPS = { idle: 10, walk: 14, atk: 18, heavy: 16, hurt: 15, die: 12, dodge: 20 }, HITF = { atk: 8 };
@@ -19,14 +19,15 @@
   /* ---------- 격자·원근 ---------- */
   let ROWS = 4, ys = [];
   /* 줄 배율: 가운데 줄 = 100%, 한 줄 위로 갈수록 10%p씩 작아지고 한 줄 아래로 갈수록 10%p씩 커진다 */
-  let PERSP = 0.1; /* 줄당 배율 차이(원근 강도) */
+  let PERSP = 0.12; /* 줄당 배율 차이(원근 강도) */
   const sAt = b => 1 + PERSP * (b - ROWS / 2);
   function layout() { const w = Array.from({ length: ROWS }, (_, r) => sAt(r + 0.5)), tot = w.reduce((a, b) => a + b, 0); ys = [FAR_Y]; w.forEach(x => ys.push(ys[ys.length - 1] + (NEAR_Y - FAR_Y) * x / tot)); }
   const yAt = b => { const i = clamp(Math.floor(b), 0, ROWS - 1); return lerp(ys[i], ys[i + 1], b - i); };
-  const S = { units: [], proj: [], fxs: [], floaters: [], occ: new Map(), t: 0, acc: 0, speed: 1, paused: false, follow: true, cine: null, freezeT: 0, result: null, resultT: 0, wave: 0, waveT: 0, cam: { c: 4 }, metrics: { maxFramePx: 0, frames: 0, overlap: 0, simSteps: 0, kills: 0 } };
+  const S = { units: [], proj: [], fxs: [], floaters: [], occ: new Map(), t: 0, acc: 0, speed: 1, paused: false, follow: true, cine: null, freezeT: 0, result: null, resultT: 0, wave: 0, waveT: 0, cam: { c: 4 }, shake: 0, metrics: { maxFramePx: 0, frames: 0, overlap: 0, simSteps: 0, kills: 0 } };
   // 높이: 열 구간마다 고원(plateau) + 줄마다 작은 요철. 무한히 이어지는 결정적 함수.
   const hCache = new Map();
-  function Hh(c, r) { const k = c * 8 + r; let v = hCache.get(k); if (v === undefined) { const seg = Math.floor(c / 5), base = Math.round(1.6 + 1.3 * Math.sin(seg * 1.7) + 0.8 * Math.sin(seg * 0.6 + 1)), bump = ((c * 7 + r * 13 + seg * 3) % 11 === 0) ? 1 : 0; v = clamp(base + bump, 0, 3); hCache.set(k, v); } return v; }
+  const LOOP = 40; /* 전장은 LOOP 열이 되풀이되는 고리 — 던전 조우 전투에서만 쓰이므로 타일 높이를 한 바퀴 분량만 만들어 재사용한다 */
+  function Hh(c0, r) { const c = ((c0 % LOOP) + LOOP) % LOOP, k = c * 8 + r; let v = hCache.get(k); if (v === undefined) { const seg = Math.floor(c / 5), a = seg * 2 * Math.PI / (LOOP / 5), base = Math.round(1.6 + 1.3 * Math.sin(a + 0.5) + 0.8 * Math.sin(2 * a + 1)), bump = ((c * 7 + r * 13 + seg * 3) % 11 === 0) ? 1 : 0; v = clamp(base + bump, 0, 3); hCache.set(k, v); } return v; }
   // 타일 경계 좌표(c: 열, rf: 줄 경계 0~ROWS, h: 높이 단계) → 화면
   function proj(c, rf, h) { const s = sAt(rf); return { x: W / 2 + (c - S.cam.c) * TILE_W * s, y: yAt(rf) - h * LV * s, s }; }
 
@@ -50,7 +51,10 @@
     S.occ.set(key(c, r), u); return u;
   }
   function freeTile(c, r) { return !S.occ.has(key(c, r)); }
+  let rowsMode = 'var'; /* 'var' = 조우마다 3~4줄 중 무작위 */
   function reset() {
+    if (rowsMode === 'var') ROWS = Math.random() < 0.5 ? 3 : 4; else ROWS = rowsMode;
+    document.querySelectorAll('[data-rows]').forEach(b => b.classList.toggle('on', b.dataset.rows === String(rowsMode)));
     S.units = []; S.proj = []; S.fxs = []; S.floaters = []; S.occ.clear(); S.t = 0; S.acc = 0; S.cine = null; S.freezeT = 0; S.result = null; S.resultT = 0; S.wave = 0; S.waveT = 0; layout();
     const lanes = i => Math.round(i * (ROWS - 1) / 3);
     [['warrior', 4, 1], ['thief', 3, 2], ['elf', 1, 0], ['priest', 2, 3]].forEach(([k, c, i]) => S.units.push(mkUnit('p', k, c, clamp(lanes(i), 0, ROWS - 1))));
@@ -86,7 +90,8 @@
   function hit(att, tgt, mult, opt) {
     if (!tgt.alive) return; opt = opt || {};
     const dmg = Math.max(1, Math.round(att.atk * rnd(0.9, 1.1) * mult - tgt.def * 0.4)), crit = Math.random() < 0.1, v = crit ? Math.round(dmg * 1.5) : dmg;
-    tgt.hp -= v; tgt.flash = 0.1; tgt.kx = sgn(tgt.c - att.c || 1) * (opt.big ? 0.22 : 0.1); if (att.side === 'p') att.sp = Math.min(100, att.sp + 9); else tgt.sp = Math.min(100, tgt.sp + 6);
+    tgt.hp -= v; tgt.flash = 0.12; tgt.kx = sgn(tgt.c - att.c || 1) * (opt.big ? 0.45 : crit ? 0.3 : 0.16); if (!att.ranged && !opt.big) att.kx += sgn(tgt.c - att.c || 1) * 0.1; /* 타격 반동·돌진 */
+    S.freezeT = Math.max(S.freezeT, opt.big ? 0.09 : crit ? 0.07 : 0.03); S.shake = Math.max(S.shake || 0, opt.big ? 9 : crit ? 7 : 2.5); /* 히트스톱·화면 흔들림 */ if (att.side === 'p') att.sp = Math.min(100, att.sp + 9); else tgt.sp = Math.min(100, tgt.sp + 6);
     S.floaters.push({ c: tgt.cf, r: tgt.r + 0.5, h: tgt.hf, text: (crit ? '💥' : '') + v, col: tgt.side === 'p' ? '#ff8a8a' : '#fff', t: 0, big: crit });
     if (!opt.noFx) spawnFx(opt.fx || 'hit', tgt);
     const armored = tgt.act && tgt.act.type === 'atk' && tgt.act.t < tgt.act.hitAt;
@@ -172,7 +177,7 @@
     if (c >= S.cam.c) { const hl = Hh(c - 1, r); if (h > hl) quad(p00, p01, proj(c, r + 1, hl), proj(c, r, hl), mixc(FACE2, dim), 'rgba(0,0,0,.35)'); } // 카메라 중심 기준 보이는 옆면
     if (c + 1 <= S.cam.c) { const hr = Hh(c + 1, r); if (h > hr) quad(p10, p11, proj(c + 1, r + 1, hr), proj(c + 1, r, hr), mixc(FACE2, dim), 'rgba(0,0,0,.35)'); }
     quad(p00, p10, p11, p01, mixc(TOP[h] || TOP[3], dim), 'rgba(0,0,0,.3)'); // 윗면(사다리꼴) + 격자선
-    const hz = 0.34 * Math.pow(1 - (r + 0.5) / ROWS, 1.3) * (PERSP / 0.1); if (hz > 0.01) quad(p00, p10, p11, p01, `rgba(244,150,104,${Math.min(0.5, hz)})`); /* 먼 줄은 노을빛 안개로 흐려져 깊이가 느껴진다 */
+    const hz = 0.34 * Math.pow(1 - (r + 0.5) / ROWS, 1.3) * (PERSP / 0.12); if (hz > 0.01) quad(p00, p10, p11, p01, `rgba(244,150,104,${Math.min(0.5, hz)})`); /* 먼 줄은 노을빛 안개로 흐려져 깊이가 느껴진다 */
     if (h > 0) { ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.beginPath(); ctx.moveTo(p00.x, p00.y); ctx.lineTo(p10.x, p10.y); ctx.stroke(); }
   }
 
@@ -201,7 +206,7 @@
     if (S.cine && S.cine.cs) for (const x of S.cine.cs.fx) { const o = Assets.fx(x.name); if (!o) continue; const m = o.m, u = x.at === 'caster' ? S.cine.caster : S.cine.tgt; fxDraw(x.name, footOf(u), x.fr, x.ox !== undefined ? x.ox : (m.ox || 0), x.oy !== undefined ? x.oy : (m.oy === undefined ? -34 : m.oy), x.scale !== undefined ? x.scale : (m.scale || 1)); }
   }
   function drawProj() { for (const p of S.proj) { const f = proj(p.cf, p.rf, p.hf), d = sgn(p.tgt.cf - p.cf); ctx.strokeStyle = '#ffe8a0'; ctx.lineWidth = 3 * f.s; ctx.beginPath(); ctx.moveTo(f.x, f.y); ctx.lineTo(f.x - d * 26 * f.s, f.y); ctx.stroke(); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(f.x, f.y, 3 * f.s, 0, 7); ctx.fill(); } }
-  function drawFloaters() { for (const fl of S.floaters) { const a = 1 - fl.t / 1.0; if (a <= 0) continue; const f = proj(fl.c, fl.r, fl.h); ctx.globalAlpha = a; ctx.font = (fl.big ? '900 24px' : '700 18px') + ' "Malgun Gothic",sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 4; ctx.strokeStyle = '#000'; const y = f.y - 118 * f.s * USC - fl.t * 40; ctx.strokeText(fl.text, f.x, y); ctx.fillStyle = fl.col; ctx.fillText(fl.text, f.x, y); ctx.globalAlpha = 1; } }
+  function drawFloaters() { for (const fl of S.floaters) { const a = 1 - fl.t / 1.0; if (a <= 0) continue; const f = proj(fl.c, fl.r, fl.h); ctx.globalAlpha = a; ctx.font = (fl.big ? '900 40px' : '800 27px') + ' "Malgun Gothic",sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 5; ctx.strokeStyle = '#000'; const y = f.y - 118 * f.s * USC - fl.t * 40; ctx.strokeText(fl.text, f.x, y); ctx.fillStyle = fl.col; ctx.fillText(fl.text, f.x, y); ctx.globalAlpha = 1; } }
   function drawHud() {
     const ps = S.units.filter(u => u.side === 'p'); ps.forEach((u, i) => { const x = 8, y = 8 + i * 56; ctx.fillStyle = 'rgba(14,12,26,.72)'; ctx.fillRect(x, y, 172, 50); ctx.strokeStyle = u.alive ? 'rgba(255,200,140,.35)' : '#552'; ctx.strokeRect(x + .5, y + .5, 171, 49);
       ctx.font = '700 13px "Malgun Gothic",sans-serif'; ctx.textAlign = 'left'; ctx.fillStyle = u.alive ? '#fff' : '#777'; ctx.fillText(u.name, x + 8, y + 17); ctx.fillStyle = '#cfd6ee'; ctx.font = '11px sans-serif'; ctx.textAlign = 'right'; ctx.fillText(`${Math.max(0, Math.round(u.hp))}/${u.max}`, x + 164, y + 17); if (u.sp >= 100) { ctx.fillStyle = '#ffd24a'; ctx.fillText('오의 ✦', x + 164, y + 46); }
@@ -218,6 +223,7 @@
     ctx.save(); ctx.clearRect(0, 0, W, H); const cs = S.cine && S.cine.cs, dim = cs ? cs.dim : 0;
     if (cs && cs.shake > 0) ctx.translate(rnd(-1, 1) * cs.shake, rnd(-1, 1) * cs.shake);
     if (cs && cs.zoom !== 1) { const c = S.cine, pt = u => { const f = footOf(u); return [f.x, f.y - 50 * f.s]; }, a = pt(c.caster), b = pt(c.tgt), fc = cs.focus === 'caster' ? a : cs.focus === 'mid' ? [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] : b; ctx.translate(fc[0], fc[1]); ctx.scale(cs.zoom, cs.zoom); ctx.translate(-fc[0], -fc[1]); }
+    if (S.shake > 0.3) ctx.translate(rnd(-1, 1) * S.shake, rnd(-1, 1) * S.shake * 0.7);
     drawBackground(dim);
     const c0 = Math.floor(S.cam.c - (W / 2) / (TILE_W * 0.7)) - 2, c1 = Math.ceil(S.cam.c + (W / 2) / (TILE_W * 0.7)) + 2, cols = []; for (let c = c0; c <= c1; c++) cols.push(c); cols.sort((a, b) => Math.abs(b + 0.5 - S.cam.c) - Math.abs(a + 0.5 - S.cam.c)); // 바깥 → 카메라 중심(옆면 겹침 순서)
     for (let r = 0; r < ROWS; r++) { // 먼 줄부터: 타일 → 그 줄의 유닛 (가까운 줄의 높은 타일이 먼 줄 유닛을 가린다)
@@ -230,7 +236,7 @@
   /* ---------- 메인 루프 ---------- */
   function frame(dtReal) {
     dtReal = Math.min(dtReal, 0.1); const before = new Map(S.units.map(u => { const f = footOf(u); return [u, [f.x, f.y]]; }));
-    if (S.freezeT > 0) S.freezeT -= dtReal;
+    S.shake *= Math.pow(0.0005, dtReal); if (S.freezeT > 0) S.freezeT -= dtReal;
     else if (S.cine) cineTick(dtReal * Math.min(3, S.speed));
     else if (!S.paused) { S.acc += dtReal * S.speed; let n = 0; while (S.acc >= DT && n++ < 4000 && !S.cine) { tick(DT); S.acc -= DT; S.metrics.simSteps++; } }
     for (const u of S.units) { if (!u.alive) continue; const f = footOf(u), b = before.get(u); if (!b) continue; const d = Math.hypot(f.x - b[0], f.y - b[1]); /* 이번 프레임에 새로 나타난 유닛(웨이브)은 제외 */ if (d > S.metrics.maxFramePx) S.metrics.maxFramePx = d; }
@@ -244,9 +250,10 @@
   /* ---------- UI ---------- */
   let last = performance.now(); const loop = now => { frame((now - last) / 1000); last = now; requestAnimationFrame(loop); };
   const setSpeed = k => { S.speed = k; document.querySelectorAll('[data-sp]').forEach(b => b.classList.toggle('on', +b.dataset.sp === k)); };
-  const setRows = n => { ROWS = n; document.querySelectorAll('[data-rows]').forEach(b => b.classList.toggle('on', +b.dataset.rows === n)); reset(); };
+  const setRows = n => { rowsMode = n; reset(); };
   $('bPause').onclick = () => { S.paused = !S.paused; $('bPause').textContent = S.paused ? '▶ 재생' : '⏸ 일시정지'; };
-  document.querySelectorAll('[data-sp]').forEach(b => b.onclick = () => setSpeed(+b.dataset.sp)); document.querySelectorAll('[data-rows]').forEach(b => b.onclick = () => setRows(+b.dataset.rows));
+  document.querySelectorAll('[data-sp]').forEach(b => b.onclick = () => setSpeed(+b.dataset.sp)); document.querySelectorAll('[data-rows]').forEach(b => b.onclick = () => setRows(b.dataset.rows === 'var' ? 'var' : +b.dataset.rows));
+  document.querySelectorAll('[data-tilt]').forEach(b => b.onclick = () => { [LV, FAR_Y, NEAR_Y] = TILTS[b.dataset.tilt]; layout(); document.querySelectorAll('[data-tilt]').forEach(x => x.classList.toggle('on', x === b)); });
   document.querySelectorAll('[data-persp]').forEach(b => b.onclick = () => { PERSP = +b.dataset.persp; layout(); document.querySelectorAll('[data-persp]').forEach(x => x.classList.toggle('on', x === b)); });
   $('bNew').onclick = reset; $('bCam').onclick = () => { S.follow = !S.follow; $('bCam').classList.toggle('on', S.follow); };
   const forceSpecial = () => { const u = S.units.filter(o => o.side === 'p' && o.alive && o.special).sort((a, b) => b.sp - a.sp)[0], t = u && foesOf(u).sort((a, b) => Math.abs(a.c - u.c) - Math.abs(b.c - u.c))[0]; if (u && t && !S.cine) { u.sp = 100; startSpecial(u, t); } };
