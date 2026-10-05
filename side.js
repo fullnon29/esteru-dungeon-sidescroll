@@ -11,7 +11,7 @@
 (function () {
   const $ = id => document.getElementById(id);
   const cv = $('cv'), ctx = cv.getContext('2d'), W = cv.width, H = cv.height;
-  let LV = 12, FAR_Y = 170, NEAR_Y = 508; const TILE_W = 120, S_FAR = 0.62, USC = 2.3, TILTS = { 0: [34, 262, 492], 1: [20, 200, 502], 2: [12, 170, 508] }, /* 시점: [높이 한 단계의 화면 높이, 먼 줄 y, 가까운 줄 y] */ DT = 1 / 120, STEP_BASE = 0.36;
+  let LV = 12, FAR_Y = 170, NEAR_Y = 508, TILE_W = 150; const S_FAR = 0.62, USC = 2.3, TILTS = { 0: [34, 262, 492], 1: [20, 200, 502], 2: [12, 170, 508] }, /* 시점: [높이 한 단계의 화면 높이, 먼 줄 y, 가까운 줄 y] */ DT = 1 / 120, STEP_BASE = 0.36;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v)), lerp = (a, b, t) => a + (b - a) * t, rnd = (a, b) => a + Math.random() * (b - a), sgn = v => v >= 0 ? 1 : -1;
   const ANIM = () => Assets.animEnemy({ tplId: 'knight' }); // 기사 시트(128px, 8방향, 동작별 15프레임) — 좌/우(0/4)만 사용
   const FPS = { idle: 10, walk: 14, atk: 18, heavy: 16, hurt: 15, die: 12, dodge: 20 }, HITF = { atk: 8 };
@@ -46,8 +46,8 @@
   const key = (c, r) => c + ',' + r;
   function mkUnit(side, k, c, r) {
     const d = (side === 'p' ? ROLES : FOES)[k];
-    const u = { id: S.units.length, side, key: k, name: d.name, c, r, cf: c + 0.5, hf: Hh(c, r), hp: d.hp, max: d.hp, atk: d.atk, def: d.def, spd: d.spd, range: d.range, ranged: !!d.ranged, cdMax: d.cdMax, cd: rnd(0, 0.4), special: d.special || null, sp: side === 'p' ? rnd(35, 70) : 0,
-      tint: d.tint || '', scale: d.scale || 1, face: side === 'p' ? 0 : 4, act: null, stun: 0, flash: 0, kx: 0, wp: 0, alive: true, deathT: 0, ov: null, idleT: Math.random() * 3 };
+    const u = { id: S.units.length, side, key: k, name: d.name, c, r, cf: c + 0.5, hf: Hh(c, r), hp: d.hp, max: d.hp, atk: d.atk, def: d.def, spd: d.spd, range: d.range, ranged: !!d.ranged, cdMax: d.cdMax, cd: rnd(0, 0.4), laneCd: 0, special: d.special || null, sp: side === 'p' ? rnd(35, 70) : 0,
+      tint: d.tint || '', scale: d.scale || 1, face: side === 'p' ? 0 : 4, faceH: side === 'p' ? 0 : 4, act: null, stun: 0, flash: 0, kx: 0, wp: 0, alive: true, deathT: 0, ov: null, idleT: Math.random() * 3 };
     S.occ.set(key(c, r), u); return u;
   }
   function freeTile(c, r) { return !S.occ.has(key(c, r)); }
@@ -75,17 +75,23 @@
     const r1 = u.r + dr; if (r1 < 0 || r1 >= ROWS || !freeTile(u.c, r1)) return false; S.occ.set(key(u.c, r1), u);
     u.act = { type: 'step', t: 0, dur: STEP_BASE * 150 / u.spd, c0: u.c, c1: u.c, r0: u.r, r1, h0: Hh(u.c, u.r), h1: Hh(u.c, r1) }; return true;
   }
+  /* 방향 시트 번호(화면 기준): 0 E · 1 SE(오른쪽 아래) · 2 S(정면) · 3 SW · 4 W · 5 NW · 6 N(뒷모습) · 7 NE. 위쪽 줄(먼 줄) = 화면 위. */
+  function faceTo(u, t) { const dc = t.c - u.c, dr = t.r - u.r; if (!dc && !dr) return u.faceH; return ((Math.round(Math.atan2(dr * 120, dc * TILE_W) / (Math.PI / 4)) % 8) + 8) % 8; }
   function decide(u) {
     const foes = foesOf(u);
     if (!foes.length) { if (u.side === 'p') { u.face = 0; startStep(u, 1); } return; } // 적이 없으면 아군은 앞으로 행군
     /* 사거리: 열 거리 ≤ 사거리 이고 줄 차이 ≤ 1(바로 앞뒤 + 대각선까지). 닿는 적 중 가장 가까운 적을 우선, 없으면 열이 가장 가까운 적 쪽으로 이동 */
     const reach = (o, rg) => Math.abs(o.c - u.c) <= rg && (rg >= 99 || Math.abs(o.r - u.r) <= 1), score = o => Math.abs(o.c - u.c) * 10 + Math.abs(o.r - u.r);
     let tgt = null, inR = foes.filter(o => reach(o, u.range)); if (inR.length) { tgt = inR[0]; for (const o of inR) if (score(o) < score(tgt)) tgt = o; } else { const near = foes.filter(o => Math.abs(o.r - u.r) <= 1), pool = near.length ? near : foes; tgt = pool[0]; for (const o of pool) if (score(o) < score(tgt)) tgt = o; }
-    const dc = tgt.c - u.c, dist = Math.abs(dc); if (dc !== 0) u.face = dc > 0 ? 0 : 4;
+    const dc = tgt.c - u.c, dist = Math.abs(dc); if (dc !== 0) u.faceH = dc > 0 ? 0 : 4; const fa = faceTo(u, tgt); u.face = fa; /* 공격·대기 중에는 적 방향(8방향)을 본다 */
     if (u.special && u.sp >= 100 && !S.cine && u.side === 'p') { const st = foes.filter(o => reach(o, u.special.range)); if (st.length || u.special.mode === 'heal') { let t2 = st[0] || tgt; for (const o of st) if (score(o) < score(t2)) t2 = o; startSpecial(u, t2); return; } }
     if (reach(tgt, u.range)) { if (u.cd <= 0) u.act = { type: 'atk', t: 0, dur: 15 / FPS.atk, hitAt: HITF.atk / FPS.atk, target: tgt, done: false }; return; } /* 사거리 안: 쿨다운 끝나면 공격 */
     if (Math.abs(tgt.r - u.r) > 1 && !foes.some(o => Math.abs(o.r - u.r) <= 1)) { startLane(u, sgn(tgt.r - u.r)); return; } /* 닿는 줄에 적이 하나도 없을 때만(교착 방지) 한 줄 옮겨 선다 */
-    if (!startStep(u, dc !== 0 ? sgn(dc) : (u.side === 'p' ? 1 : -1)) && tgt.r !== u.r) startLane(u, sgn(tgt.r - u.r)); /* 앞이 막히면 적이 있는 쪽 줄로 비껴 선다 */ // 앞뒤 이동만(줄 바꿈 없음). 앞 칸이 막히면 대기
+    u.face = u.faceH; /* 열 방향으로 걸을 때는 옆모습 */
+    const dirc = dc !== 0 ? sgn(dc) : (u.side === 'p' ? 1 : -1);
+    if (!startStep(u, dirc) && u.laneCd <= 0) { /* 앞이 막혔으면 앞이 비어 있는 옆줄로 우회해 전열을 돌아 나온다(적 줄에 가까운 쪽 우선) */
+      const cands = [u.r - 1, u.r + 1].filter(r => r >= 0 && r < ROWS && freeTile(u.c, r) && freeTile(u.c + dirc, r)).sort((a, b) => Math.abs(a - tgt.r) - Math.abs(b - tgt.r));
+      if (cands.length) { u.face = fa; if (startLane(u, cands[0] - u.r)) u.laneCd = 0.8; } } /* 앞이 막히면 적이 있는 쪽 줄로 비껴 선다 */ // 앞뒤 이동만(줄 바꿈 없음). 앞 칸이 막히면 대기
   }
   function hit(att, tgt, mult, opt) {
     if (!tgt.alive) return; opt = opt || {};
@@ -100,7 +106,7 @@
   }
   const spawnFx = (name, u) => { if (Assets.fx(name)) S.fxs.push({ name, u, t: 0 }); };
   function updateUnit(u, dt) {
-    u.cd = Math.max(0, u.cd - dt); u.flash = Math.max(0, u.flash - dt); u.kx *= Math.pow(0.0004, dt); u.idleT += dt; if (u.ov) { u.ov.t += dt; if (u.ov.t >= u.ov.dur) u.ov = null; }
+    u.cd = Math.max(0, u.cd - dt); u.laneCd = Math.max(0, u.laneCd - dt); u.flash = Math.max(0, u.flash - dt); u.kx *= Math.pow(0.0004, dt); u.idleT += dt; if (u.ov) { u.ov.t += dt; if (u.ov.t >= u.ov.dur) u.ov = null; }
     if (u.side === 'p') u.sp = Math.min(100, u.sp + dt * 2.2);
     if (u.stun > 0) { u.stun -= dt; return; }
     if (!u.act) decide(u); if (!u.act) return; const a = u.act; a.t += dt;
@@ -125,7 +131,7 @@
   }
 
   /* ---------- 오의 연출 ---------- */
-  function startSpecial(u, tgt) { const sp = u.special, def = window.CINE_MANIFEST && window.CINE_MANIFEST[sp.cine]; if (!def) return; u.sp = 0; u.face = tgt.c >= u.c ? 0 : 4; S.cine = { def, t: 0, prev: -1, caster: u, tgt, name: sp.name, cs: null, done: false, ts: 1 }; }
+  function startSpecial(u, tgt) { const sp = u.special, def = window.CINE_MANIFEST && window.CINE_MANIFEST[sp.cine]; if (!def) return; u.sp = 0; u.face = u.faceH = tgt.c >= u.c ? 0 : 4; S.cine = { def, t: 0, prev: -1, caster: u, tgt, name: sp.name, cs: null, done: false, ts: 1 }; }
   const fxInfo = name => { const f = Assets.fx(name); return f ? { fps: f.m.fps, n: f.m.n } : null; };
   function applySpecial(c) {
     const u = c.caster, sp = u.special, foes = foesOf(u);
@@ -136,7 +142,7 @@
   }
   function cineTick(dtc) {
     const c = S.cine, t0 = c.prev; c.t += dtc;
-    for (const st of Cine.events(c.def, t0, c.t)) { if (st.type === 'freeze') S.freezeT = Math.min(0.25, st.dur || 0.1); else if (st.type === 'anim') c.caster.ov = { act: st.act in FPS ? st.act : 'heavy', t: 0, dur: st.dur || 0.4 }; }
+    for (const st of Cine.events(c.def, t0, c.t)) { if (st.type === 'freeze') S.freezeT = Math.min(0.25, st.dur || 0.1); else if (st.type === 'anim') c.caster.ov = { act: hasAct(c.caster, st.act) ? st.act : 'heavy', t: 0, dur: st.dur || 0.4 }; }
     if (!c.done && c.t >= c.def.hit) { c.done = true; applySpecial(c); }
     c.cs = Cine.sample(c.def, c.t, fxInfo); c.ts = c.cs.ts; c.prev = c.t;
     if (c.t >= c.def.dur) { if (!c.done) applySpecial(c); S.cine = null; }
@@ -212,9 +218,13 @@
   /* 횡스크롤 전용 캐릭터 시트: assets/side/anim/{키}/{동작}_{0:E|1:W}.png — 가로 스트립, 칸은 정사각(높이=칸 크기), 없으면 기사 시트로 대체 */
   const sheets = {};
   function sheet(key, act, dir) { const k = key + '/' + act + '_' + dir; let o = sheets[k]; if (!o) { o = sheets[k] = { img: new Image(), ok: false }; o.img.onload = () => { o.ok = true; }; o.img.onerror = () => { o.fail = true; }; o.img.src = `assets/side/anim/${key}/${act}_${dir}.png`; } return o.ok ? o.img : null; }
+  const PRE_ACTS = ['idle', 'walk', 'atk', 'heavy', 'sweep', 'combo', 'shoot', 'cast', 'hurt', 'die', 'dodge'], preDone = {}, FALL = { sweep: 'heavy', combo: 'heavy', shoot: 'atk', heavy: 'atk', cast: 'heavy' };
+  function hasAct(u, act) { /* 연출 동작을 쓸 수 있는가: 전용 시트(또는 기사 시트)에 그 동작이 있으면 그대로, 없으면 heavy */
+    if (act in FPS) return true; const A = ANIM(); return !!((A && A.img[act]) || sheet(u.key, act, 0) || sheet(u.key, act, 1)); }
   function sideSheet(u, act) { /* {img, flip} — W 시트가 없으면 E 시트를 뒤집어 쓴다. 동작 시트가 없으면 idle, 그것도 없으면 null(기사 시트 사용) */
-    if (!sheet(u.key, 'idle', 0)) return null; const d = u.face === 4 ? 1 : 0;
-    for (const a of [act, 'idle']) { const im = sheet(u.key, a, d); if (im) return { im, flip: false }; const e = d === 1 && sheet(u.key, a, 0); if (e) return { im: e, flip: true }; }
+    if (!sheet(u.key, 'idle', 0)) return null; const d = (u.face >= 3 && u.face <= 5) ? 1 : (u.face === 2 || u.face === 6) ? (u.faceH === 4 ? 1 : 0) : 0; /* 좌우 2방향 시트: 왼쪽 계열(3~5)은 W */
+    if (!preDone[u.key]) { preDone[u.key] = 1; PRE_ACTS.forEach(a => [0, 1].forEach(x => sheet(u.key, a, x))); }
+    for (const a of [act, FALL[act], 'idle']) { if (!a) continue; const im = sheet(u.key, a, d); if (im) return { im, flip: false }; const e = d === 1 && sheet(u.key, a, 0); if (e) return { im: e, flip: true }; }
     return null;
   }
   function drawUnit(u) {
@@ -286,12 +296,13 @@
   $('bPause').onclick = () => { S.paused = !S.paused; $('bPause').textContent = S.paused ? '▶ 재생' : '⏸ 일시정지'; };
   document.querySelectorAll('[data-sp]').forEach(b => b.onclick = () => setSpeed(+b.dataset.sp)); document.querySelectorAll('[data-rows]').forEach(b => b.onclick = () => setRows(b.dataset.rows === 'var' ? 'var' : +b.dataset.rows));
   document.querySelectorAll('[data-tilt]').forEach(b => b.onclick = () => { [LV, FAR_Y, NEAR_Y] = TILTS[b.dataset.tilt]; layout(); document.querySelectorAll('[data-tilt]').forEach(x => x.classList.toggle('on', x === b)); });
+  document.querySelectorAll('[data-tw]').forEach(b => b.onclick = () => { TILE_W = +b.dataset.tw; document.querySelectorAll('[data-tw]').forEach(x => x.classList.toggle('on', x === b)); }); /* 칸 폭(=같은 줄 유닛 사이의 최소 간격) */
   document.querySelectorAll('[data-persp]').forEach(b => b.onclick = () => { PERSP = +b.dataset.persp; layout(); document.querySelectorAll('[data-persp]').forEach(x => x.classList.toggle('on', x === b)); });
   $('bNew').onclick = reset; $('bCam').onclick = () => { S.follow = !S.follow; $('bCam').classList.toggle('on', S.follow); };
   const forceSpecial = () => { const u = S.units.filter(o => o.side === 'p' && o.alive && o.special).sort((a, b) => b.sp - a.sp)[0], t = u && foesOf(u).sort((a, b) => Math.abs(a.c - u.c) - Math.abs(b.c - u.c))[0]; if (u && t && !S.cine) { u.sp = 100; startSpecial(u, t); } };
   $('bSpecial').onclick = forceSpecial;
   window.addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); $('bPause').click(); } else if (/^[1-4]$/.test(e.key)) setSpeed([1, 2, 4, 8][+e.key - 1]); else if (e.key === 's' || e.key === 'S') forceSpecial(); else if (e.key === 'r' || e.key === 'R') reset(); else if (/^[!@#]$/.test(e.key)) setRows({ '!': 3, '@': 4, '#': 5 }[e.key]); });
   setInterval(() => { const m = S.metrics; $('metrics').textContent = `전투 ${S.t.toFixed(1)}초 · 웨이브 ${S.wave} · 처치 ${m.kills} · 한 프레임 최대 이동 ${m.maxFramePx.toFixed(1)}px · 고정 시간 단계 ${m.simSteps}`; }, 500);
-  layout(); reset(); window.__side = { S, frame, render, reset, tick, Hh, setSpeed, setRows, forceSpecial, proj, footOf };
+  layout(); reset(); window.__side = { S, frame, render, reset, tick, Hh, setSpeed, setRows, forceSpecial, proj, footOf, sideSheet, unitAnim };
   requestAnimationFrame(loop);
 })();
