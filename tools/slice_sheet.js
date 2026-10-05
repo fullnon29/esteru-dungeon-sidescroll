@@ -39,7 +39,16 @@ for (let i = 0; i < N; i++) { const x = i % W, y = (i / W) | 0; let a;
 /* 4) 줄마다 프레임 나누기: 발 위치(밑 22% 띠의 가로 덩어리)로 프레임 수만큼 묶고, 연결된 덩어리(망토·칼끝 포함)는 발이 같은 프레임에 소속.
  *    두 프레임이 맞닿은 덩어리는 발 중심 사이의 가운데에서 가른다. owner[i] = 프레임 번호(줄 안에서). */
 const owner = new Int16Array(N).fill(-1);
+function autoCuts(band, n) { /* 프레임 사이의 빈 틈(가로 투영이 0인 구간) 중 가장 넓은 n-1개의 가운데. 모자라면 투영이 낮은 골짜기로 채운다 */
+  const [a, b] = band, proj = new Int32Array(W); for (let x = 0; x < W; x++) { let c = 0; for (let y = a; y <= b; y++) if (alpha[y * W + x] > 0.4) c++; proj[x] = c; }
+  let first = 0, last = W - 1; while (first < W && !proj[first]) first++; while (last > 0 && !proj[last]) last--;
+  const gaps = []; for (let x = first; x <= last;) { if (proj[x]) { x++; continue; } let e = x; while (e <= last && !proj[e]) e++; if (e - x >= 3) gaps.push({ x: Math.round((x + e - 1) / 2), w: e - x }); x = e; }
+  gaps.sort((p, q) => q.w - p.w); let cuts = gaps.slice(0, n - 1).map(g => g.x);
+  if (cuts.length < n - 1) { const sm = Array.from(proj, (_, x) => { let t = 0, c = 0; for (let k = -3; k <= 3; k++) if (proj[x + k] !== undefined) { t += proj[x + k]; c++; } return t / c; }), minSp = Math.max(30, (last - first) / n * 0.5), cand = []; for (let x = first + 10; x < last - 10; x++) { let ok = true; for (let k = -12; k <= 12; k++) if (sm[x + k] < sm[x]) { ok = false; break; } if (ok) cand.push({ x, v: sm[x] }); } cand.sort((p, q) => p.v - q.v); for (const c of cand) { if (cuts.length >= n - 1) break; if (cuts.every(u => Math.abs(u - c.x) >= minSp)) cuts.push(c.x); } }
+  return cuts.sort((p, q) => p - q);
+}
 function split(band, n, rowIdx, cuts) {
+  if (cuts === 'auto') { cuts = autoCuts(band, n); if (cuts.length !== n - 1) console.warn(`  ⚠ 줄 ${rowIdx + 1}: 자동 경계 ${cuts.length}개 (필요 ${n - 1}개)`); if (process.env.SLICE_DEBUG) console.log('  auto cuts row ' + (rowIdx + 1) + ':', JSON.stringify(cuts)); }
   const [a, b] = band, bh = b - a + 1, zoneY = b - Math.round(bh * 0.22);
   const colCnt = new Int32Array(W); for (let x = 0; x < W; x++) { let c = 0; for (let y = zoneY; y <= b; y++) if (alpha[y * W + x] > 0.4) c++; colCnt[x] = c; }
   let cl = []; { let st = -1, last = -100; for (let x = 0; x < W; x++) { if (colCnt[x] > 0) { if (st < 0) st = x; last = x; } else if (st >= 0 && x - last > cfg.footGap) { cl.push([st, last]); st = -1; } } if (st >= 0) cl.push([st, last]); }
@@ -67,16 +76,16 @@ function split(band, n, rowIdx, cuts) {
   return fc.map((c, k) => ({ k, fc: c }));
 }
 const frames = []; /* {act, i, x0,x1,y0,y1, cx, ground, id, row} */
-cfg.rows.forEach((row, r) => { const band = bands[r], segs = split(band, row.n, r, row.cuts); segs.forEach((sg, i) => { const id = r * 100 + i; let y0 = 1e9, y1 = -1, x0 = 1e9, x1 = -1; for (let y = band[0]; y <= band[1]; y++) for (let x = 0; x < W; x++) { const ix = y * W + x; if (owner[ix] === i && alpha[ix] > 0.4) { if (y < y0) y0 = y; if (y > y1) y1 = y; if (x < x0) x0 = x; if (x > x1) x1 = x; } }
+cfg.rows.forEach((row, r) => { if (row.act === 'skip' && r !== (cfg.standRow || 0)) return; const band = bands[r], segs = split(band, row.n, r, row.cuts); segs.forEach((sg, i) => { const id = r * 100 + i; let y0 = 1e9, y1 = -1, x0 = 1e9, x1 = -1; for (let y = band[0]; y <= band[1]; y++) for (let x = 0; x < W; x++) { const ix = y * W + x; if (owner[ix] === i && alpha[ix] > 0.4) { if (y < y0) y0 = y; if (y > y1) y1 = y; if (x < x0) x0 = x; if (x > x1) x1 = x; } }
   const ground = Math.max(y1, lineY[r] - 1);
   let sx = 0, sn = 0; for (let y = Math.max(y0, y1 - Math.round((y1 - y0) * 0.3)); y <= y1; y++) for (let x = x0; x <= x1; x++) if (owner[y * W + x] === i && alpha[y * W + x] > 0.4) { sx += x; sn++; } /* 다리 중심 */
   frames.push({ act: row.act, i, x0, x1, y0, y1, cx: sn ? sx / sn : sg.fc, ground: Math.min(ground, y1 + 3), row: r, id, rowIdx: r }); }); console.log(`${row.act}: ${segs.length}프레임 (줄 ${band[0]}~${band[1]}, 지면선 y=${lineY[r]})`); });
 
 /* 5) 같은 배율로 칸에 배치 (서 있는 첫 줄의 키 → targetH, 가장 넓은 프레임도 칸 안에 들어오게 제한) */
 const C = cfg.cell, footY = Math.round(C * cfg.foot), half = C / 2 - cfg.margin;
-const standH = (() => { const hs = frames.filter(f => f.row === 0).map(f => f.y1 - f.y0 + 1).sort((a, b) => a - b); return hs[hs.length >> 1]; })();
-let extent = 0; for (const f of frames) extent = Math.max(extent, f.cx - f.x0, f.x1 - f.cx);
-const sc = Math.min(cfg.targetH / standH, half / extent), headRoom = frames.reduce((m, f) => Math.max(m, f.ground - f.y0), 0) * sc;
+const standH = (() => { const hs = frames.filter(f => f.row === (cfg.standRow || 0)).map(f => f.y1 - f.y0 + 1).sort((a, b) => a - b); return hs[hs.length >> 1]; })();
+let extent = 0; for (const f of frames.filter(f => f.act !== 'skip')) extent = Math.max(extent, f.cx - f.x0, f.x1 - f.cx);
+const sc = Math.min(cfg.targetH / standH, half / extent), headRoom = frames.filter(f => f.act !== 'skip').reduce((m, f) => Math.max(m, f.ground - f.y0), 0) * sc;
 console.log(`기준 키 ${standH}px → 배율 ${sc.toFixed(3)} (가로 한계 ${(half / extent).toFixed(3)}, 키 한계 ${(footY - cfg.margin) / (headRoom / sc || 1) | 0}); 가장 높은 프레임 ${Math.round(headRoom)}px / 허용 ${footY - cfg.margin}px`);
 const scale2 = Math.min(sc, (footY - cfg.margin) / (headRoom / sc)), S = scale2;
 function render(f, vs) { /* 한 프레임을 C×C RGBA 로. vs = 세로 배율 보정(숨쉬기) */
@@ -87,6 +96,6 @@ function render(f, vs) { /* 한 프레임을 C×C RGBA 로. vs = 세로 배율 �
   return out; }
 function strip(list) { const w = C * list.length, buf = Buffer.alloc(w * C * 4); list.forEach((fr, k) => { for (let y = 0; y < C; y++) fr.copy(buf, (y * w + k * C) * 4, y * C * 4, (y + 1) * C * 4); }); return { w, h: C, data: buf }; }
 const outDir = path.resolve(cfg.out || `assets/side/anim/${cfg.key}`); fs.mkdirSync(outDir, { recursive: true });
-const byAct = {}; for (const f of frames) (byAct[f.act] = byAct[f.act] || []).push(f);
+const byAct = {}; for (const f of frames.filter(f => f.act !== 'skip')) (byAct[f.act] = byAct[f.act] || []).push(f);
 for (const act of Object.keys(byAct)) { const list = byAct[act].map(f => render(f, 1)); PNG.write(path.join(outDir, act + '_0.png'), strip(list)); console.log('저장', act + '_0.png', list.length + '프레임'); }
 if (cfg.idle && byAct[cfg.idle.from]) { const base = byAct[cfg.idle.from][cfg.idle.frame || 0], n = cfg.idle.n || 6, bob = cfg.idle.bob || 0.012, list = []; for (let k = 0; k < n; k++) list.push(render(base, 1 + bob * Math.sin(k / n * Math.PI * 2))); PNG.write(path.join(outDir, 'idle_0.png'), strip(list)); console.log('저장 idle_0.png', n + '프레임 (' + cfg.idle.from + ' ' + (cfg.idle.frame || 0) + '번을 숨쉬는 흉내)'); }

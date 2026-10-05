@@ -1,0 +1,3 @@
+{ "key":"warrior","out":"assets/side/anim/warrior","cell":384,"foot":0.8,"targetH":150,"standRow":0,
+  "rows":[{"act":"atk","n":7,"cuts":"auto"},{"act":"skip","n":9},{"act":"skip","n":10}],
+  "idle":{"from":"atk","frame":0,"n":6,"bob":0.012} }
