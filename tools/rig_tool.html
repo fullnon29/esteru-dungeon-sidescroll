@@ -29,7 +29,8 @@
 <main>
   <section>
     <h2>1. 그림과 관절</h2>
-    <div class="row"><button id="bFile">그림 파일 열기</button><select id="sSrc"></select><span class="dim">프레임</span><input type="number" id="nFrame" min="0" value="0" style="width:64px"></span><button id="bSrc">게임 시트에서 불러오기</button></div>
+    <div class="dim" style="margin-bottom:6px"><b>순서</b> ① 기본 그림이 올라오면 색 점(관절)이 몸에 맞는지 봅니다. 어긋난 점은 끌어서 맞춥니다(주황=앞쪽 팔다리, 파랑=뒤쪽, 흰색=몸통·머리). ② 오른쪽에서 동작을 눌러 확인합니다. ③ 마음에 들면 "게임에 바로 적용"을 누릅니다.</div>
+    <div class="row"><span class="dim">캐릭터 키</span><input type="text" id="ckey" value="warrior" size="10" style="background:#252b40;color:#e4e8f5;border:1px solid #2c3350;border-radius:6px;padding:5px 8px"><button id="bBase">기본 그림 불러오기</button><button id="bFile">다른 그림 파일 열기</button></div>
     <canvas id="stage" width="440" height="520"></canvas>
     <div class="row"><button id="bAuto">관절 자동 배치 다시</button><span class="dim">점을 끌어서 몸에 맞추세요. 앞(가까운 쪽) 팔다리 = F, 뒤(먼 쪽) = B. 투명 배경 PNG, 오른쪽을 보는 옆모습이어야 합니다.</span></div>
     <div class="row"><span class="dim">메시 간격</span><select id="sStep"><option value="4">촘촘(4px)</option><option value="5" selected>보통(5px)</option><option value="7">성기게(7px)</option></select><span class="dim">가중치 거리 지수</span><select id="sPow"><option value="2">부드럽게</option><option value="3" selected>보통</option><option value="5">또렷하게</option></select></div>
@@ -42,8 +43,9 @@
     <div class="row" id="animBtns"></div>
     <div class="row"><button id="bPlay" class="on">⏸</button><input type="range" id="frame" min="0" max="0" value="0" style="flex:1"><span id="fl" class="dim"></span></div>
     <div class="row"><span class="dim">진폭</span><input type="range" id="amp" min="30" max="160" value="100" style="width:120px"><span id="ampv" class="dim">100%</span><span class="dim">속도</span><select id="sFps"><option value="8">느리게</option><option value="12" selected>보통</option><option value="18">빠르게</option></select><span class="dim">화면 배경</span><button id="bBg">어둡게/격자</button></div>
-    <div class="row"><button id="bExp">이 동작 PNG 스트립 저장</button><button id="bExpAll">전부 저장</button><span class="dim" id="meta"></span></div>
-    <div class="dim">저장한 <code>동작_0.png</code> 를 <code>assets/side/anim/{키}/</code> 에 두면 게임이 읽습니다. 타격 프레임은 <code>assets/side/anim/meta.js</code> 에 적습니다.</div>
+    <div class="row"><button id="bApply" style="background:#2f5d3f;border-color:#6fd08c">▶ 게임에 바로 적용 (이 동작)</button><button id="bApplyAll" style="background:#2f5d3f;border-color:#6fd08c">▶ 게임에 전부 적용</button><span class="dim" id="meta"></span></div>
+    <div class="dim">적용하면 <code>assets/side/anim/{키}/동작_0.png</code> 가 바로 바뀌고, 이전 파일은 <code>assets/side/anim/_backup/</code> 에 시각이 붙어 보관됩니다. 적용 후 게임(<a href="../side.html" target="_blank" style="color:#6aa8ff">side.html</a>)을 새로고침하면 반영됩니다(공격 타격 프레임도 자동 기록).</div>
+    <div class="row"><button id="bExp">이 동작 PNG 내려받기</button><button id="bExpAll">전부 내려받기</button></div>
   </section>
 </main>
 <script src="../rig.js"></script>
@@ -55,7 +57,6 @@ const CELL = 256, FOOT = 0.8, TARGET_H = 150;
 let src = null, J = null, rig = null, anim = 'walk', cur = 0, playing = true, fps = 12, amp = 1, bgDark = false, drag = null, tPrev = performance.now(), acc = 0, view = { s: 1, ox: 0, oy: 0 };
 const log = m => { $('log').textContent = m || ''; };
 /* 프리셋 불러오기 목록: 게임 시트 */
-['idle', 'walk', 'atk', 'die', 'heavy'].forEach(a => { const o = document.createElement('option'); o.value = a; o.textContent = 'warrior/' + a + '_0.png'; $('sSrc').appendChild(o); });
 Object.entries(RigAnim.ANIMS).forEach(([k, a]) => { const b = document.createElement('button'); b.textContent = a.label; b.dataset.a = k; if (k === anim) b.classList.add('on'); b.onclick = () => { anim = k; cur = 0; document.querySelectorAll('#animBtns button').forEach(x => x.classList.toggle('on', x === b)); $('frame').max = a.n - 1; showMeta(); drawView(); }; $('animBtns').appendChild(b); });
 function showMeta() { const a = RigAnim.ANIMS[anim]; $('meta').textContent = a.n + '프레임' + (a.hit !== undefined ? ' · 타격 프레임 ' + a.hit : '') + (a.loop ? ' · 반복' : ''); $('frame').max = a.n - 1; }
 
@@ -95,14 +96,19 @@ $('bAuto').onclick = () => { if (!src) return; J = Rig.autoJoints(src); rebuild(
 $('bFile').onclick = () => $('file').click();
 $('file').onchange = async () => { const f = $('file').files[0]; if (!f) return; const im = await loadImg(URL.createObjectURL(f)); const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight; c.getContext('2d').drawImage(im, 0, 0); setImage(c); };
 function loadImg(u) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('불러오지 못함: ' + u)); i.src = u; }); }
-$('bSrc').onclick = async () => { const act = $('sSrc').value, fr = +$('nFrame').value; try { const im = await loadImg(`../assets/side/anim/warrior/${act}_0.png?t=${Date.now()}`), cell = im.naturalHeight, n = Math.round(im.naturalWidth / cell), c = document.createElement('canvas'); c.width = c.height = cell; c.getContext('2d').drawImage(im, Math.min(fr, n - 1) * cell, 0, cell, cell, 0, 0, cell, cell); setImage(c); } catch (e) { log(e.message); } };
+async function loadBase() { const key = $('ckey').value.trim() || 'warrior'; try { const im = await loadImg(`../assets/side/anim/_src/${key}.png?t=${Date.now()}`), c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight; c.getContext('2d').drawImage(im, 0, 0); setImage(c); } catch (e) { log(`assets/side/anim/_src/${key}.png 가 없습니다. "다른 그림 파일 열기"로 투명 PNG 를 올려 주세요.`); } }
+$('bBase').onclick = loadBase;
 const dl = (blob, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); };
 function stripOf(k) { const a = RigAnim.ANIMS[k], save = anim; anim = k; const out = document.createElement('canvas'); out.width = CELL * a.n; out.height = CELL; const tmp = document.createElement('canvas'); tmp.width = tmp.height = CELL; for (let f = 0; f < a.n; f++) { renderFrame(f, tmp); out.getContext('2d').drawImage(tmp, f * CELL, 0); } anim = save; return out; }
 const ACT_FILE = { walk: 'walk', idle: 'idle', atk: 'atk', hurt: 'hurt', die: 'die' };
 $('bExp').onclick = () => { if (!rig) return; stripOf(anim).toBlob(b => dl(b, ACT_FILE[anim] + '_0.png')); log(`${ACT_FILE[anim]}_0.png 저장 (${RigAnim.ANIMS[anim].n}프레임)`); };
 $('bExpAll').onclick = async () => { if (!rig) return; for (const k of Object.keys(RigAnim.ANIMS)) { await new Promise(r => stripOf(k).toBlob(b => { dl(b, ACT_FILE[k] + '_0.png'); setTimeout(r, 400); })); } log('전부 저장했습니다.'); };
+const keyOf = () => $('ckey').value.trim() || 'warrior';
+async function applyAct(k) { const key = keyOf(), a = RigAnim.ANIMS[k], blob = await new Promise(r => stripOf(k).toBlob(r, 'image/png')); let r; try { r = await fetch(`/api/save?file=assets/side/anim/${key}/${ACT_FILE[k]}_0.png`, { method: 'POST', body: blob }); } catch (e) { throw new Error('개발 서버가 아닙니다. 터미널에서 node tools/devserver.js 로 서버를 켜 주세요.'); } const j = await r.json(); if (!r.ok) throw new Error(j.error || '저장 실패'); if (k === 'atk' && a.hit !== undefined) await fetch('/api/meta', { method: 'POST', body: JSON.stringify({ key, act: 'atk', n: a.n, hit: a.hit }) }); return j; }
+$('bApply').onclick = async () => { if (!rig) return; try { const j = await applyAct(anim); log(`적용됨: ${j.saved} (${RigAnim.ANIMS[anim].n}프레임)` + (j.backup ? `\n이전 파일 백업: ${j.backup}` : '') + '\n게임을 새로고침하면 보입니다.'); } catch (e) { log('적용 실패: ' + e.message); } };
+$('bApplyAll').onclick = async () => { if (!rig) return; const out = []; try { for (const k of Object.keys(RigAnim.ANIMS)) { const j = await applyAct(k); out.push(j.saved.split('/').pop()); } log('전부 적용됨: ' + out.join(', ') + '\n이전 파일은 assets/side/anim/_backup/ 에 보관되었습니다. 게임을 새로고침하면 보입니다.'); } catch (e) { log('적용 실패: ' + e.message + (out.length ? '\n(이미 적용: ' + out.join(', ') + ')' : '')); } };
 function loop(now) { const dt = (now - tPrev) / 1000; tPrev = now; if (rig && playing) { acc += dt; const st = 1 / fps, a = RigAnim.ANIMS[anim]; let moved = false; while (acc >= st) { acc -= st; cur = (cur + 1) % a.n; moved = true; } if (moved) drawView(); } requestAnimationFrame(loop); }
-showMeta(); requestAnimationFrame(loop);
+showMeta(); requestAnimationFrame(loop); loadBase();
 window.__rig = { cell: (k, f) => { const save = anim; anim = k; const c = document.createElement('canvas'); c.width = c.height = CELL; renderFrame(f, c); anim = save; return c; }, setImage, get rig() { return rig; }, get J() { return J; }, drawView, step: n => { cur = (cur + (n || 1)) % RigAnim.ANIMS[anim].n; drawView(); }, setAnim: k => { document.querySelector(`#animBtns button[data-a="${k}"]`).click(); }, get src() { return src; } };
 </script>
 </body>

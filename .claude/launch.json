@@ -24,10 +24,9 @@
     },
     {
       "name": "side-proto",
-      "runtimeExecutable": "python",
+      "runtimeExecutable": "node",
       "runtimeArgs": [
-        "-m",
-        "http.server",
+        "tools/devserver.js",
         "8125"
       ],
       "port": 8125
