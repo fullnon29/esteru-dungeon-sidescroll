@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>횡스크롤 시트 점검</title>
+<style>
+  :root { --bg:#0e1118; --panel:#1a1f2e; --line:#2c3350; --txt:#e4e8f5; --dim:#8d96b4; --acc:#6aa8ff; --ok:#6fd08c; --warn:#ffb48a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:14px/1.5 "Malgun Gothic",system-ui,sans-serif; }
+  header { padding:10px 18px; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:baseline; flex-wrap:wrap; }
+  h1 { margin:0; font-size:17px; } header small { color:var(--dim); }
+  main { padding:14px 18px; max-width:1200px; margin:0 auto; display:grid; grid-template-columns:minmax(280px,420px) 1fr; gap:14px; }
+  @media (max-width:820px) { main { grid-template-columns:1fr; } }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; }
+  h2 { margin:0 0 8px; font-size:14px; color:var(--acc); }
+  button, select, input[type=text] { background:#252b40; color:var(--txt); border:1px solid var(--line); border-radius:6px; padding:5px 11px; font:inherit; cursor:pointer; } button:hover { border-color:var(--acc); } button.on { background:#3b4a78; border-color:var(--acc); }
+  #drop { border:2px dashed var(--line); border-radius:8px; padding:18px; text-align:center; color:var(--dim); } #drop.over { border-color:var(--acc); color:var(--txt); }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:6px 0; }
+  .dim { color:var(--dim); font-size:12px; }
+  table { border-collapse:collapse; width:100%; font-size:12px; } th, td { padding:3px 6px; border-bottom:1px solid var(--line); text-align:left; } tr.sel { background:#27304f; cursor:pointer; } tr { cursor:pointer; } tr:hover { background:#222a44; }
+  .ok { color:var(--ok); } .warn { color:var(--warn); }
+  #stage { background:repeating-conic-gradient(#2a2f45 0 25%, #20243a 0 50%) 0 0/16px 16px; border:1px solid var(--line); border-radius:6px; image-rendering:auto; display:block; max-width:100%; }
+</style>
+</head>
+<body>
+<header><h1>횡스크롤 시트 점검</h1><small>규격: <code>assets/side/anim/README.md</code> · 파일 이름 <code>동작_방향.png</code> (예: idle_0.png, walk_0.png) · 칸=시트 높이, 발바닥 기준선=칸 높이의 80%</small></header>
+<main>
+  <section>
+    <h2>시트 불러오기</h2>
+    <div id="drop">PNG 파일을 여기로 끌어다 놓거나 클릭해서 선택<br><span class="dim">여러 개를 한 번에 (같은 캐릭터)</span><input type="file" id="files" accept="image/png" multiple hidden></div>
+    <div class="row"><span class="dim">게임 폴더에서 불러오기</span><input type="text" id="key" size="10" placeholder="warrior" value="warrior"><button id="bLoad">불러오기</button></div>
+    <h2 style="margin-top:12px">점검 결과 (줄을 누르면 재생)</h2>
+    <table id="tbl"><thead><tr><th>시트</th><th>칸</th><th>프레임</th><th>발바닥(80%=기준)</th><th>흔들림</th><th>상태</th></tr></thead><tbody></tbody></table>
+    <div id="sum" class="dim" style="margin-top:8px"></div>
+  </section>
+  <section>
+    <h2>재생</h2>
+    <canvas id="stage" width="512" height="512"></canvas>
+    <div class="row"><button id="bPlay" class="on">⏸</button><input type="range" id="frame" min="0" max="0" value="0" style="flex:1"><span id="fl" class="dim">0/0</span></div>
+    <div class="row"><span class="dim">속도</span><button data-fps="6">느리게</button><button data-fps="12" class="on">보통</button><button data-fps="18">빠르게</button><span class="dim">보기</span><button id="bGuide" class="on">기준선</button><button id="bFlip">좌우 반전</button><button id="bBg">배경</button></div>
+    <div class="dim">초록 가로선 = 발바닥 기준(80%), 세로선 = 가로 중심, 노란 선 = 이 프레임의 실제 발바닥. 프레임마다 노란 선이 크게 오르내리면 발이 떠 보이거나 미끄러진다.</div>
+  </section>
+</main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const sheets = {}; /* 'walk_0' → {img, cell, n, bot:[], cx:[], top:[]} */
+let curKey = null, cur = 0, playing = true, fps = 12, guide = true, flip = false, bgDark = false, tPrev = performance.now(), acc = 0;
+async function loadImg(url) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('불러오지 못함: ' + url)); i.src = url; }); }
+function analyze(name, img) {
+  const cell = img.naturalHeight, n = Math.max(1, Math.round(img.naturalWidth / cell)), c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = cell; const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
+  const bot = [], top = [], cx = []; for (let f = 0; f < n; f++) { const d = g.getImageData(f * cell, 0, cell, cell).data; let b = -1, t = 1e9, sx = 0, cn = 0; for (let y = 0; y < cell; y++) for (let x = 0; x < cell; x++) if (d[(y * cell + x) * 4 + 3] > 60) { if (y > b) b = y; if (y < t) t = y; if (y > cell * .7) { sx += x; cn++; } } bot.push(b); top.push(t === 1e9 ? -1 : t); cx.push(cn ? sx / cn : -1); }
+  sheets[name] = { img, cell, n, bot, top, cx, aspectOk: Math.abs(img.naturalWidth / cell - n) < .02 };
+}
+const med = a => { const s = a.filter(v => v >= 0).slice().sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : -1; };
+function render() {
+  const tb = $('tbl').tBodies[0]; tb.innerHTML = ''; const names = Object.keys(sheets).sort();
+  let problems = 0;
+  for (const nm of names) { const s = sheets[nm], base = s.cell * .8, mb = med(s.bot), spread = Math.max(...s.bot) - Math.min(...s.bot.filter(v => v >= 0)), drift = Math.max(...s.cx.filter(v => v >= 0)) - Math.min(...s.cx.filter(v => v >= 0)), notes = [];
+    if (!s.aspectOk) notes.push('가로가 칸의 정수배가 아님'); if (s.cell < 128) notes.push('칸이 작음(권장 256)'); if (Math.abs(mb - base) > s.cell * .06) notes.push('발바닥이 기준선에서 ' + Math.round(mb - base) + 'px'); if (/^(idle|walk)_/.test(nm) && spread > s.cell * .1) notes.push('발 높이 편차 큼'); if (/^(idle|walk)_/.test(nm) && drift > s.cell * .18) notes.push('가로 흔들림 큼'); if (s.top.some(t => t === 0)) notes.push('머리가 칸 위에 닿음(잘림)');
+    if (notes.length) problems++; const tr = document.createElement('tr'); if (nm === curKey) tr.classList.add('sel');
+    tr.innerHTML = `<td>${nm}</td><td>${s.cell}</td><td>${s.n}</td><td>${mb} (${Math.round(base)})</td><td>발 ${spread}px · 중심 ${drift.toFixed(0)}px</td><td class="${notes.length ? 'warn' : 'ok'}">${notes.length ? notes.join(', ') : '좋음'}</td>`; tr.onclick = () => select(nm); tb.appendChild(tr); }
+  $('sum').textContent = names.length ? (names.some(n => /^idle_0/.test(n)) ? '' : '⚠ idle_0 이 없으면 게임이 전용 시트로 인식하지 않습니다. ') + names.length + '개 시트 · ' + (problems ? problems + '개에 확인할 점' : '모두 규격 안') : '';
+}
+function select(nm) { curKey = nm; cur = 0; const s = sheets[nm]; $('frame').max = s.n - 1; render(); draw(); }
+function draw() {
+  const s = sheets[curKey]; const cv = $('stage'), g = cv.getContext('2d'); const S = 512; cv.width = cv.height = S; g.clearRect(0, 0, S, S); if (bgDark) { g.fillStyle = '#10131c'; g.fillRect(0, 0, S, S); } if (!s) return;
+  const z = S / s.cell; g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; g.save(); if (flip) { g.translate(S, 0); g.scale(-1, 1); } g.drawImage(s.img, cur * s.cell, 0, s.cell, s.cell, 0, 0, S, S); g.restore();
+  if (guide) { g.strokeStyle = 'rgba(111,208,140,.9)'; g.lineWidth = 1; g.beginPath(); g.moveTo(0, S * .8); g.lineTo(S, S * .8); g.moveTo(S / 2, 0); g.lineTo(S / 2, S); g.stroke(); const b = s.bot[cur]; if (b >= 0) { g.strokeStyle = 'rgba(255,224,90,.95)'; g.beginPath(); g.moveTo(0, (b + 1) * z); g.lineTo(S, (b + 1) * z); g.stroke(); } }
+  $('fl').textContent = cur + 1 + '/' + s.n; $('frame').value = cur;
+}
+async function addFiles(list) { for (const f of list) { const m = f.name.match(/^([a-z]+)_([01])\.png$/i); if (!m) continue; const url = URL.createObjectURL(f); try { const img = await loadImg(url); analyze(m[1] + '_' + m[2], img); } catch (e) { } } render(); const first = Object.keys(sheets).sort()[0]; if (first && !curKey) select(first); else if (curKey) draw(); }
+$('drop').onclick = () => $('files').click(); $('files').onchange = () => addFiles($('files').files);
+['dragover', 'dragenter'].forEach(e => $('drop').addEventListener(e, ev => { ev.preventDefault(); $('drop').classList.add('over'); })); ['dragleave', 'drop'].forEach(e => $('drop').addEventListener(e, ev => { ev.preventDefault(); $('drop').classList.remove('over'); }));
+$('drop').addEventListener('drop', ev => addFiles(ev.dataTransfer.files));
+async function loadFolder(key) { const acts = ['idle', 'walk', 'atk', 'hurt', 'die', 'heavy', 'sweep', 'combo', 'shoot', 'cast']; let n = 0; for (const a of acts) for (const d of [0, 1]) { try { const img = await loadImg(`../assets/side/anim/${key}/${a}_${d}.png?x=${Date.now()}`); analyze(a + '_' + d, img); n++; } catch (e) { } } render(); const first = Object.keys(sheets).sort()[0]; if (first) select(first); else $('sum').textContent = 'assets/side/anim/' + key + ' 에 시트가 없습니다.'; }
+$('bLoad').onclick = () => loadFolder($('key').value.trim() || 'warrior');
+$('bPlay').onclick = () => { playing = !playing; $('bPlay').textContent = playing ? '⏸' : '▶'; $('bPlay').classList.toggle('on', playing); };
+$('frame').oninput = () => { cur = +$('frame').value; playing = false; $('bPlay').textContent = '▶'; $('bPlay').classList.remove('on'); draw(); };
+document.querySelectorAll('[data-fps]').forEach(b => b.onclick = () => { fps = +b.dataset.fps; document.querySelectorAll('[data-fps]').forEach(x => x.classList.toggle('on', x === b)); });
+$('bGuide').onclick = () => { guide = !guide; $('bGuide').classList.toggle('on', guide); draw(); }; $('bFlip').onclick = () => { flip = !flip; $('bFlip').classList.toggle('on', flip); draw(); }; $('bBg').onclick = () => { bgDark = !bgDark; draw(); };
+function loop(now) { const dt = (now - tPrev) / 1000; tPrev = now; const s = sheets[curKey]; if (s && playing) { acc += dt; const st = 1 / fps; while (acc >= st) { acc -= st; cur = (cur + 1) % s.n; } draw(); } requestAnimationFrame(loop); }
+requestAnimationFrame(loop);
+window.__sp = { sheets, addUrl: async (name, url) => { analyze(name, await loadImg(url)); render(); if (!curKey) select(name); } };
+</script>
+</body>
+</html>

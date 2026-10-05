@@ -53,3 +53,7 @@
 - **게임 연결**: `assets/fxpxf/이름.pxf.json` → `node tools/build_fxpxf.js` 가 `assets/fxpxf/manifest.js`(window.PXF_FX)로 묶음 → `side.js` 가 로딩 때 렌더해 `assets/fx` 시트보다 우선해서 쓴다(이름이 같을 때). 현재 우리 이펙트 7종(hit·slash·shockwave·buff·lightning·fire·heal)은 `node tools/gen_fxpxf.js` 가 만든다(손으로 고쳐 저장해도 됨).
 - **연출 위계(영상 3:50~4:20 참고)**: 일반 타격 = 히트스톱·흔들림 / 크리티컬 = 작은 포커스(확대 ×1.1 + 약한 어둠, `S.mini`) / 스킬(오의) = `cine.js` 연출 + 스포트라이트(관련 유닛만 밝게 + 비네트) + 카메라 이동(`zoom` 스텝의 `pan`, 기본 0.6) + 일격 순간 슬로모션(`timescale`, `withTier`).
 
+## 전용 캐릭터 시트 제작 (진행 중)
+- 화풍(사용자 확정): 별이 되어라 · 드래곤즈 크라운 · 브라운더스트 · 던전 앤 드래곤: 섀도 오브 미스트라 계열 — 진한 파스텔 톤, 굵은 외곽선, 손으로 칠한 듯한 2D. **기사(레온, 키 `warrior`)부터 시범 제작**, 이후 캐릭터별로 확장.
+- 규격·제작 순서·프롬프트 예시: `assets/side/anim/README.md`. 점검 도구: `tools/side_preview.html`(시트를 끌어다 놓으면 칸 크기·프레임 수·발바닥 기준선 80%·가로 흔들림·머리 잘림을 검사하고 재생). 기존 기사 시트(쿼터뷰 3D 렌더)는 순수한 옆모습이 없고 방향 번호가 화면 모습과 달라 `KNIGHT_DIR` 표로 보정해 쓰고 있다.
+
