@@ -21,6 +21,16 @@
         "8123"
       ],
       "port": 8123
+    },
+    {
+      "name": "side-proto",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8125"
+      ],
+      "port": 8125
     }
   ]
 }
