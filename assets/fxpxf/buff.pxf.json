@@ -1,0 +1,189 @@
+{
+ "format": "pxf.graph@1",
+ "name": "강화",
+ "settings": {
+  "size": 64,
+  "frames": 16,
+  "fps": 20,
+  "loop": false
+ },
+ "nodes": [
+  {
+   "id": "base",
+   "type": "Shape",
+   "x": 40,
+   "y": 40,
+   "params": {
+    "shape": "ring",
+    "y": 0.78,
+    "aspect": 0.35,
+    "size": {
+     "k": [
+      [
+       0,
+       6,
+       "out"
+      ],
+      [
+       6,
+       20
+      ],
+      [
+       15,
+       22
+      ]
+     ]
+    },
+    "size2": 0.2,
+    "intensity": {
+     "k": [
+      [
+       0,
+       0
+      ],
+      [
+       3,
+       0.9
+      ],
+      [
+       12,
+       0.5,
+       "in"
+      ],
+      [
+       15,
+       0
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "id": "rise",
+   "type": "Particles",
+   "x": 240,
+   "y": 40,
+   "params": {
+    "count": 30,
+    "seed": 33,
+    "emit": "stream",
+    "start": 0,
+    "span": 0.75,
+    "life": 0.5,
+    "lifeVar": 0.3,
+    "area": "box",
+    "x": 0.5,
+    "y": 0.82,
+    "aw": 28,
+    "ah": 4,
+    "dirMode": "fixed",
+    "angle": -90,
+    "spread": 24,
+    "speed": 1.1,
+    "speedVar": 0.4,
+    "drag": 0.02,
+    "sizeA": 3,
+    "sizeB": 1.2,
+    "pshape": "plus",
+    "fade": "out",
+    "bright": 0.85
+   }
+  },
+  {
+   "id": "b",
+   "type": "Blend",
+   "x": 440,
+   "y": 40,
+   "params": {
+    "mode": "max"
+   }
+  },
+  {
+   "id": "pal",
+   "type": "Palette",
+   "x": 640,
+   "y": 40,
+   "params": {
+    "colors": [
+     "#6a3a0a",
+     "#e8a020",
+     "#ffe070",
+     "#fffbe0"
+    ],
+    "cutoff": 0.06
+   }
+  },
+  {
+   "id": "fade",
+   "type": "Tint",
+   "x": 840,
+   "y": 40,
+   "params": {
+    "amount": 0,
+    "opacity": {
+     "k": [
+      [
+       0,
+       1
+      ],
+      [
+       9,
+       1,
+       "in"
+      ],
+      [
+       15,
+       0
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "id": "out",
+   "type": "Output",
+   "x": 40,
+   "y": 200,
+   "params": {
+    "alpha": "soft",
+    "threshold": 0.1
+   }
+  }
+ ],
+ "links": [
+  {
+   "f": "base",
+   "t": "b",
+   "p": 0
+  },
+  {
+   "f": "rise",
+   "t": "b",
+   "p": 1
+  },
+  {
+   "f": "b",
+   "t": "pal",
+   "p": 0
+  },
+  {
+   "f": "pal",
+   "t": "fade",
+   "p": 0
+  },
+  {
+   "f": "fade",
+   "t": "out",
+   "p": 0
+  }
+ ],
+ "game": {
+  "pivot": [
+   0.5,
+   0.5
+  ],
+  "logicalSize": 64,
+  "blend": "normal",
+  "impactFrame": 2
+ }
+}

@@ -1,0 +1,211 @@
+{
+ "format": "pxf.graph@1",
+ "name": "타격",
+ "settings": {
+  "size": 64,
+  "frames": 10,
+  "fps": 24,
+  "loop": false
+ },
+ "nodes": [
+  {
+   "id": "star",
+   "type": "Shape",
+   "x": 40,
+   "y": 40,
+   "params": {
+    "shape": "star",
+    "points": 6,
+    "size": {
+     "k": [
+      [
+       0,
+       4,
+       "out3"
+      ],
+      [
+       2,
+       15
+      ],
+      [
+       6,
+       7
+      ],
+      [
+       9,
+       0
+      ]
+     ]
+    },
+    "size2": 0.3,
+    "rot": 12
+   }
+  },
+  {
+   "id": "ring",
+   "type": "Shape",
+   "x": 240,
+   "y": 40,
+   "params": {
+    "shape": "ring",
+    "size": {
+     "k": [
+      [
+       0,
+       2,
+       "out"
+      ],
+      [
+       3,
+       11
+      ],
+      [
+       9,
+       19
+      ]
+     ]
+    },
+    "size2": 0.18,
+    "intensity": 0.7
+   }
+  },
+  {
+   "id": "sparks",
+   "type": "Particles",
+   "x": 440,
+   "y": 40,
+   "params": {
+    "count": 11,
+    "seed": 21,
+    "start": 0,
+    "life": 0.65,
+    "lifeVar": 0.25,
+    "area": "circle",
+    "aw": 4,
+    "dirMode": "outward",
+    "speed": 1.7,
+    "speedVar": 0.35,
+    "drag": 0.09,
+    "sizeA": 2,
+    "sizeB": 0.6,
+    "pshape": "square",
+    "bright": 0.9
+   }
+  },
+  {
+   "id": "b1",
+   "type": "Blend",
+   "x": 640,
+   "y": 40,
+   "params": {
+    "mode": "max"
+   }
+  },
+  {
+   "id": "b2",
+   "type": "Blend",
+   "x": 840,
+   "y": 40,
+   "params": {
+    "mode": "max"
+   }
+  },
+  {
+   "id": "pal",
+   "type": "Palette",
+   "x": 40,
+   "y": 200,
+   "params": {
+    "colors": [
+     "#6e2410",
+     "#e0561c",
+     "#ffc23a",
+     "#fff6c8"
+    ],
+    "cutoff": 0.06
+   }
+  },
+  {
+   "id": "fade",
+   "type": "Tint",
+   "x": 240,
+   "y": 200,
+   "params": {
+    "amount": 0,
+    "opacity": {
+     "k": [
+      [
+       0,
+       1
+      ],
+      [
+       5,
+       1,
+       "in"
+      ],
+      [
+       9,
+       0
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "id": "out",
+   "type": "Output",
+   "x": 440,
+   "y": 200,
+   "params": {
+    "alpha": "soft",
+    "threshold": 0.1
+   }
+  }
+ ],
+ "links": [
+  {
+   "f": "star",
+   "t": "b1",
+   "p": 0
+  },
+  {
+   "f": "ring",
+   "t": "b1",
+   "p": 1
+  },
+  {
+   "f": "b1",
+   "t": "b2",
+   "p": 0
+  },
+  {
+   "f": "sparks",
+   "t": "b2",
+   "p": 1
+  },
+  {
+   "f": "b2",
+   "t": "pal",
+   "p": 0
+  },
+  {
+   "f": "pal",
+   "t": "fade",
+   "p": 0
+  },
+  {
+   "f": "fade",
+   "t": "out",
+   "p": 0
+  }
+ ],
+ "game": {
+  "pivot": [
+   0.5,
+   0.5
+  ],
+  "logicalSize": 64,
+  "blend": "normal",
+  "impactFrame": 1
+ }
+}

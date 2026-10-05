@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>노드 이펙트 공방 (pxf.graph)</title>
+<style>
+  :root { --bg:#0e1118; --panel:#1a1f2e; --line:#2c3350; --txt:#e4e8f5; --dim:#8d96b4; --acc:#6aa8ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:14px/1.5 "Malgun Gothic",system-ui,sans-serif; }
+  header { padding:10px 18px; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:baseline; flex-wrap:wrap; }
+  h1 { margin:0; font-size:17px; } header small { color:var(--dim); }
+  main { display:grid; grid-template-columns:minmax(300px,1fr) minmax(320px,1fr); gap:14px; padding:14px 18px; max-width:1300px; margin:0 auto; }
+  @media (max-width:820px) { main { grid-template-columns:1fr; } }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; }
+  h2 { margin:0 0 8px; font-size:14px; color:var(--acc); }
+  button, select { background:#252b40; color:var(--txt); border:1px solid var(--line); border-radius:6px; padding:5px 11px; font:inherit; cursor:pointer; } button:hover { border-color:var(--acc); } button.on { background:#3b4a78; border-color:var(--acc); }
+  textarea { width:100%; height:300px; background:#0b0e16; color:#cfe2ff; border:1px solid var(--line); border-radius:6px; font:12px/1.4 Consolas,monospace; padding:8px; resize:vertical; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:6px 0; }
+  .dim { color:var(--dim); font-size:12px; }
+  #stage { background:repeating-conic-gradient(#2a2f45 0 25%, #20243a 0 50%) 0 0/16px 16px; border:1px solid var(--line); border-radius:6px; image-rendering:pixelated; display:block; margin:auto; max-width:100%; }
+  #strip { image-rendering:pixelated; max-width:100%; background:#10131c; border:1px solid var(--line); border-radius:6px; }
+  #nodes { max-height:220px; overflow:auto; font-size:12px; }
+  #nodes div { padding:2px 6px; border-radius:4px; cursor:pointer; } #nodes div:hover { background:#252b40; } #nodes div.sel { background:#3b4a78; }
+  #log { color:#ffb48a; font-size:12px; white-space:pre-wrap; min-height:18px; }
+</style>
+</head>
+<body>
+<header><h1>노드 이펙트 공방</h1><small>pxf.graph@1 호환 · 그래프 JSON을 렌더해서 미리보고 게임용 PNG 스트립/등록 파일로 저장 · 엔진은 <code>fxgraph.js</code></small></header>
+<main>
+  <section>
+    <h2>그래프 JSON</h2>
+    <div class="row"><button id="bOpen">파일 열기</button><select id="sSample"><option value="">샘플…</option></select><button id="bRender">▶ 렌더</button><span class="dim" id="info"></span></div>
+    <textarea id="json" spellcheck="false"></textarea>
+    <div id="log"></div>
+    <h2 style="margin-top:10px">노드 (클릭 → 파라미터 JSON 편집)</h2>
+    <div id="nodes"></div>
+    <textarea id="nodeParams" style="height:120px" spellcheck="false" placeholder="노드를 선택하면 params 가 보입니다. 수정 후 '적용'"></textarea>
+    <div class="row"><button id="bApply">노드 파라미터 적용</button><span class="dim">연결(links)은 위 JSON에서 직접 고칩니다.</span></div>
+  </section>
+  <section>
+    <h2>미리보기</h2>
+    <canvas id="stage" width="256" height="256"></canvas>
+    <div class="row"><button id="bPlay" class="on">⏸ 재생</button><input type="range" id="frame" min="0" max="0" value="0" style="flex:1"><span id="fl" class="dim">0/0</span></div>
+    <div class="row"><span class="dim">배율</span><button data-z="2">×2</button><button data-z="4" class="on">×4</button><button data-z="6">×6</button><span class="dim">해상도</span><button data-k="1">×1</button><button data-k="2">×2</button><button data-k="3" class="on">×3</button><span class="dim">배경</span><button data-bg="check" class="on">격자</button><button data-bg="dark">어둡게</button><button data-bg="light">밝게</button></div>
+    <img id="strip" alt="">
+    <div class="row"><button id="bPng">스트립 PNG 저장</button><button id="bJson">그래프 JSON 저장</button><button id="bCopy">게임 메타 복사</button></div>
+    <div class="dim">게임 등록: JSON을 <code>assets/fxpxf/이름.pxf.json</code> 으로 저장 → <code>node tools/build_fxpxf.js</code> → 전투에서 같은 이름(hit·slash·shockwave·buff·lightning·fire·heal …)이면 이 이펙트가 우선 쓰인다. 그래프의 <code>game.impactFrame</code> 이 타격 프레임.</div>
+  </section>
+</main>
+<script src="../fxgraph.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const SAMPLES = {
+  '민트 충격 파동': { format: 'pxf.graph@1', name: '민트 충격 파동', settings: { size: 64, frames: 24, fps: 24, loop: false }, nodes: [
+    { id: 'ring', type: 'Shape', params: { shape: 'ring', size: { k: [[0, 3, 'out3'], [4, 12, 'out'], [16, 24], [23, 26]] }, size2: { k: [[0, .35], [8, .1], [23, .08]] }, falloff: .35, intensity: .8 } },
+    { id: 'core', type: 'Shape', params: { shape: 'star', size: { k: [[0, 0, 'out3'], [2, 8], [4, 5, 'in'], [7, 0]] }, size2: .25, points: 4, rot: 22 } },
+    { id: 'sparks', type: 'Particles', params: { count: 8, seed: 173, start: .12, life: .45, lifeVar: .2, area: 'ring', aw: 3, ah: 3, dirMode: 'outward', speed: 1.1, speedVar: .2, drag: .07, sizeA: 1.5, sizeB: .5, pshape: 'diamond', bright: .65 } },
+    { id: 'impact', type: 'Blend', params: { mode: 'max' } }, { id: 'layers', type: 'Blend', params: { mode: 'max' } },
+    { id: 'color', type: 'Palette', params: { colors: ['#165947', '#35b993', '#9bf4ce', '#effff6'], cutoff: .05 } },
+    { id: 'fade', type: 'Tint', params: { amount: 0, opacity: { k: [[0, 0], [2, 1], [12, 1, 'in'], [23, 0]] } } },
+    { id: 'out', type: 'Output', params: { alpha: 'soft', threshold: .1 } }],
+    links: [{ f: 'ring', t: 'impact', p: 0 }, { f: 'core', t: 'impact', p: 1 }, { f: 'impact', t: 'layers', p: 0 }, { f: 'sparks', t: 'layers', p: 1 }, { f: 'layers', t: 'color', p: 0 }, { f: 'color', t: 'fade', p: 0 }, { f: 'fade', t: 'out', p: 0 }], game: { pivot: [.5, .5], logicalSize: 64, blend: 'normal', impactFrame: 2 } },
+};
+for (const k in SAMPLES) { const o = document.createElement('option'); o.value = k; o.textContent = k; $('sSample').appendChild(o); }
+// assets/fxpxf 의 등록된 이펙트도 샘플로 보여준다
+if (window.PXF_FX_LOCAL) { }
+let K = 3, graph = null, res = null, cur = 0, playing = true, zoom = 4, bg = 'check', selNode = null, tPrev = performance.now(), acc = 0;
+const log = m => { $('log').textContent = m || ''; };
+function parse() { try { graph = JSON.parse($('json').value); return true; } catch (e) { log('JSON 문법 오류: ' + e.message); return false; } }
+function validate(g) { if (!g || g.format !== 'pxf.graph@1') throw new Error('format 이 pxf.graph@1 이어야 합니다'); const s = g.settings || {}; if (![32, 48, 64, 96, 128].includes(s.size)) throw new Error('settings.size 는 32/48/64/96/128'); if (!(s.frames >= 1 && s.frames <= 32)) throw new Error('settings.frames 는 1~32'); if (!(s.fps >= 1 && s.fps <= 60)) throw new Error('settings.fps 는 1~60'); if (!Array.isArray(g.nodes) || !Array.isArray(g.links)) throw new Error('nodes/links 가 필요합니다'); }
+function renderNow() {
+  if (!parse()) return;
+  try { validate(graph); const t0 = performance.now(); res = FXGraph.render(graph, { scale: K }); const ms = Math.round(performance.now() - t0);
+    log((res.warnings.length ? '⚠ 미지원 노드(빈 레이어로 대체): ' + res.warnings.join(', ') + '\n' : '') + '렌더 ' + ms + 'ms');
+    $('info').textContent = res.size + '×' + res.size + ' · ' + res.frames + '프레임 · ' + res.fps + 'fps' + (res.loop ? ' · 반복' : '');
+    const sc = FXGraph.strip(res, document); $('strip').src = sc.toDataURL(); $('frame').max = res.frames - 1; cur = Math.min(cur, res.frames - 1); listNodes(); draw();
+  } catch (e) { res = null; log('렌더 실패: ' + e.message); }
+}
+function draw() {
+  if (!res) return; const cv = $('stage'), g = cv.getContext('2d'), z = zoom, S = (res.baseSize || res.size) * z; cv.width = cv.height = S; cv.style.width = S + 'px'; g.imageSmoothingEnabled = res.scale > 1; g.imageSmoothingQuality = 'high';
+  if (bg === 'dark') { g.fillStyle = '#0a0c14'; g.fillRect(0, 0, S, S); } else if (bg === 'light') { g.fillStyle = '#d8dcea'; g.fillRect(0, 0, S, S); } else g.clearRect(0, 0, S, S);
+  const t = document.createElement('canvas'); t.width = t.height = res.size; t.getContext('2d').putImageData(new ImageData(res.data[cur], res.size, res.size), 0, 0); g.drawImage(t, 0, 0, S, S);
+  $('fl').textContent = cur + 1 + '/' + res.frames; $('frame').value = cur;
+}
+function listNodes() { const box = $('nodes'); box.innerHTML = ''; (graph.nodes || []).forEach(n => { const d = document.createElement('div'); d.textContent = n.id + ' · ' + n.type; if (n.id === selNode) d.classList.add('sel'); d.onclick = () => { selNode = n.id; $('nodeParams').value = JSON.stringify(n.params || {}, null, 1); listNodes(); }; box.appendChild(d); }); }
+$('bRender').onclick = renderNow;
+$('bApply').onclick = () => { if (!parse()) return; const n = graph.nodes.find(x => x.id === selNode); if (!n) { log('선택된 노드가 없습니다'); return; } try { n.params = JSON.parse($('nodeParams').value); } catch (e) { log('파라미터 JSON 오류: ' + e.message); return; } $('json').value = JSON.stringify(graph, null, 1); renderNow(); };
+$('sSample').onchange = () => { const k = $('sSample').value; if (k && SAMPLES[k]) { $('json').value = JSON.stringify(SAMPLES[k], null, 1); selNode = null; renderNow(); } };
+$('bOpen').onclick = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = '.json'; i.onchange = async () => { $('json').value = await i.files[0].text(); selNode = null; renderNow(); }; i.click(); };
+$('bPlay').onclick = () => { playing = !playing; $('bPlay').textContent = playing ? '⏸ 재생' : '▶ 재생'; $('bPlay').classList.toggle('on', playing); };
+$('frame').oninput = () => { cur = +$('frame').value; playing = false; $('bPlay').textContent = '▶ 재생'; $('bPlay').classList.remove('on'); draw(); };
+document.querySelectorAll('[data-z]').forEach(b => b.onclick = () => { zoom = +b.dataset.z; document.querySelectorAll('[data-z]').forEach(x => x.classList.toggle('on', x === b)); draw(); });
+document.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { K = +b.dataset.k; document.querySelectorAll('[data-k]').forEach(x => x.classList.toggle('on', x === b)); renderNow(); });
+document.querySelectorAll('[data-bg]').forEach(b => b.onclick = () => { bg = b.dataset.bg; document.querySelectorAll('[data-bg]').forEach(x => x.classList.toggle('on', x === b)); draw(); });
+const dl = (blob, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); };
+const safe = s => String(s || 'effect').replace(/[^\w가-힣\-]+/g, '_').replace(/^_+|_+$/g, '') || 'effect';
+$('bPng').onclick = () => { if (!res) return; FXGraph.strip(res, document).toBlob(b => dl(b, safe(graph.name) + '.png')); };
+$('bJson').onclick = () => { if (!parse()) return; dl(new Blob([JSON.stringify(graph, null, 1)], { type: 'application/json' }), safe(graph.name) + '.pxf.json'); };
+$('bCopy').onclick = () => { if (!res) return; const m = { cell: res.size, n: res.frames, fps: res.fps, hit: (graph.game && graph.game.impactFrame) || 0, scale: 128 / res.size, smooth: true }; navigator.clipboard.writeText(JSON.stringify(m)).then(() => log('게임 메타를 복사했습니다: ' + JSON.stringify(m))); };
+function loop(now) { const dt = (now - tPrev) / 1000; tPrev = now; if (res && playing) { acc += dt; const step = 1 / res.fps; while (acc >= step) { acc -= step; cur++; if (cur >= res.frames) { cur = 0; acc = Math.min(acc, step); } } draw(); } requestAnimationFrame(loop); }
+$('json').value = JSON.stringify(SAMPLES['민트 충격 파동'], null, 1); renderNow(); requestAnimationFrame(loop);
+window.__pxf = { renderNow, get res() { return res; }, step: n => { cur = (cur + (n || 1)) % (res ? res.frames : 1); draw(); } };
+</script>
+</body>
+</html>

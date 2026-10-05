@@ -1,0 +1,216 @@
+{
+ "format": "pxf.graph@1",
+ "name": "번개",
+ "settings": {
+  "size": 64,
+  "frames": 12,
+  "fps": 24,
+  "loop": false
+ },
+ "nodes": [
+  {
+   "id": "bolt",
+   "type": "Lightning",
+   "x": 40,
+   "y": 40,
+   "params": {
+    "x0": 0.56,
+    "y0": 0,
+    "x1": 0.5,
+    "y1": 0.78,
+    "detail": 5,
+    "jag": 0.32,
+    "branch": 0.35,
+    "branchLen": 0.3,
+    "seed": 7,
+    "rate": 2,
+    "thick": 2,
+    "grow": {
+     "k": [
+      [
+       0,
+       0,
+       "out3"
+      ],
+      [
+       2,
+       1
+      ]
+     ]
+    },
+    "intensity": {
+     "k": [
+      [
+       0,
+       1
+      ],
+      [
+       8,
+       1
+      ],
+      [
+       11,
+       0.2
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "id": "flash",
+   "type": "Shape",
+   "x": 240,
+   "y": 40,
+   "params": {
+    "shape": "circle",
+    "y": 0.78,
+    "aspect": 0.55,
+    "size": {
+     "k": [
+      [
+       1,
+       4,
+       "out3"
+      ],
+      [
+       3,
+       17
+      ],
+      [
+       11,
+       10
+      ]
+     ]
+    },
+    "falloff": 0.7,
+    "intensity": {
+     "k": [
+      [
+       1,
+       0
+      ],
+      [
+       2,
+       1
+      ],
+      [
+       11,
+       0
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "id": "b",
+   "type": "Blend",
+   "x": 440,
+   "y": 40,
+   "params": {
+    "mode": "max"
+   }
+  },
+  {
+   "id": "glow",
+   "type": "Glow",
+   "x": 640,
+   "y": 40,
+   "params": {
+    "radius": 2,
+    "strength": 0.8
+   }
+  },
+  {
+   "id": "pal",
+   "type": "Palette",
+   "x": 840,
+   "y": 40,
+   "params": {
+    "colors": [
+     "#262a78",
+     "#5f6dff",
+     "#c2d2ff",
+     "#ffffff"
+    ],
+    "cutoff": 0.07
+   }
+  },
+  {
+   "id": "fade",
+   "type": "Tint",
+   "x": 40,
+   "y": 200,
+   "params": {
+    "amount": 0,
+    "opacity": {
+     "k": [
+      [
+       0,
+       1
+      ],
+      [
+       6,
+       1,
+       "in"
+      ],
+      [
+       11,
+       0
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "id": "out",
+   "type": "Output",
+   "x": 240,
+   "y": 200,
+   "params": {
+    "alpha": "soft",
+    "threshold": 0.1
+   }
+  }
+ ],
+ "links": [
+  {
+   "f": "bolt",
+   "t": "b",
+   "p": 0
+  },
+  {
+   "f": "flash",
+   "t": "b",
+   "p": 1
+  },
+  {
+   "f": "b",
+   "t": "glow",
+   "p": 0
+  },
+  {
+   "f": "glow",
+   "t": "pal",
+   "p": 0
+  },
+  {
+   "f": "pal",
+   "t": "fade",
+   "p": 0
+  },
+  {
+   "f": "fade",
+   "t": "out",
+   "p": 0
+  }
+ ],
+ "game": {
+  "pivot": [
+   0.5,
+   0.5
+  ],
+  "logicalSize": 64,
+  "blend": "normal",
+  "impactFrame": 2
+ }
+}

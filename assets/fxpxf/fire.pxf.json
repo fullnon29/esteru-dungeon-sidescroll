@@ -1,0 +1,258 @@
+{
+ "format": "pxf.graph@1",
+ "name": "화염",
+ "settings": {
+  "size": 64,
+  "frames": 16,
+  "fps": 20,
+  "loop": false
+ },
+ "nodes": [
+  {
+   "id": "noise",
+   "type": "Noise",
+   "x": 40,
+   "y": 40,
+   "params": {
+    "type": "fbm",
+    "scaleX": 4,
+    "scaleY": 5,
+    "octaves": 3,
+    "seed": 12,
+    "scrollY": -1,
+    "contrast": 1.8,
+    "bias": 0.05
+   }
+  },
+  {
+   "id": "body",
+   "type": "Shape",
+   "x": 240,
+   "y": 40,
+   "params": {
+    "shape": "circle",
+    "y": 0.56,
+    "size": {
+     "k": [
+      [
+       0,
+       5,
+       "out3"
+      ],
+      [
+       4,
+       19,
+       "out"
+      ],
+      [
+       11,
+       21
+      ],
+      [
+       15,
+       12
+      ]
+     ]
+    },
+    "falloff": 0.85
+   }
+  },
+  {
+   "id": "mask",
+   "type": "Mask",
+   "x": 440,
+   "y": 40,
+   "params": {
+    "mode": "multiply",
+    "strength": 1
+   }
+  },
+  {
+   "id": "core",
+   "type": "Shape",
+   "x": 640,
+   "y": 40,
+   "params": {
+    "shape": "circle",
+    "y": 0.56,
+    "size": {
+     "k": [
+      [
+       0,
+       3,
+       "out3"
+      ],
+      [
+       3,
+       12
+      ],
+      [
+       10,
+       7
+      ],
+      [
+       14,
+       0
+      ]
+     ]
+    },
+    "falloff": 0.5
+   }
+  },
+  {
+   "id": "b1",
+   "type": "Blend",
+   "x": 840,
+   "y": 40,
+   "params": {
+    "mode": "add"
+   }
+  },
+  {
+   "id": "embers",
+   "type": "Particles",
+   "x": 40,
+   "y": 200,
+   "params": {
+    "count": 14,
+    "seed": 41,
+    "emit": "stream",
+    "start": 0.1,
+    "span": 0.6,
+    "life": 0.5,
+    "area": "circle",
+    "x": 0.5,
+    "y": 0.6,
+    "aw": 18,
+    "dirMode": "fixed",
+    "angle": -90,
+    "spread": 70,
+    "speed": 1,
+    "gravity": -0.015,
+    "drag": 0.03,
+    "sizeA": 2,
+    "sizeB": 0.6,
+    "pshape": "square",
+    "fade": "out",
+    "bright": 0.8
+   }
+  },
+  {
+   "id": "b2",
+   "type": "Blend",
+   "x": 240,
+   "y": 200,
+   "params": {
+    "mode": "max"
+   }
+  },
+  {
+   "id": "pal",
+   "type": "Palette",
+   "x": 440,
+   "y": 200,
+   "params": {
+    "colors": [
+     "#4a0d12",
+     "#a3231b",
+     "#e8591c",
+     "#ffb030",
+     "#fff1b8"
+    ],
+    "cutoff": 0.12
+   }
+  },
+  {
+   "id": "fade",
+   "type": "Tint",
+   "x": 640,
+   "y": 200,
+   "params": {
+    "amount": 0,
+    "opacity": {
+     "k": [
+      [
+       0,
+       1
+      ],
+      [
+       8,
+       1,
+       "in"
+      ],
+      [
+       15,
+       0
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "id": "out",
+   "type": "Output",
+   "x": 840,
+   "y": 200,
+   "params": {
+    "alpha": "soft",
+    "threshold": 0.1
+   }
+  }
+ ],
+ "links": [
+  {
+   "f": "noise",
+   "t": "mask",
+   "p": 0
+  },
+  {
+   "f": "body",
+   "t": "mask",
+   "p": 1
+  },
+  {
+   "f": "mask",
+   "t": "b1",
+   "p": 0
+  },
+  {
+   "f": "core",
+   "t": "b1",
+   "p": 1
+  },
+  {
+   "f": "b1",
+   "t": "b2",
+   "p": 0
+  },
+  {
+   "f": "embers",
+   "t": "b2",
+   "p": 1
+  },
+  {
+   "f": "b2",
+   "t": "pal",
+   "p": 0
+  },
+  {
+   "f": "pal",
+   "t": "fade",
+   "p": 0
+  },
+  {
+   "f": "fade",
+   "t": "out",
+   "p": 0
+  }
+ ],
+ "game": {
+  "pivot": [
+   0.5,
+   0.5
+  ],
+  "logicalSize": 64,
+  "blend": "normal",
+  "impactFrame": 3
+ }
+}
