@@ -1,0 +1,6 @@
+{ "key":"warrior", "out":"assets/side/anim/warrior", "cell":256, "foot":0.8, "targetH":150,
+  "rows":[{"act":"walk","n":9},
+          {"act":"atk","n":8,"cuts":[141,263,379,540,645,781,891]},
+          {"act":"die","n":3},
+          {"act":"heavy","n":9,"cuts":[99,184,282,362,456,556,675,870]}],
+  "idle":{"from":"walk","frame":0,"n":6,"bob":0.012} }
