@@ -78,6 +78,9 @@ G.heal = graph('회복', 16, 20, 2, [
   fade(15, 9), OUT,
 ], [['cross', 'b1', 0], ['ring', 'b1', 1], ['b1', 'b2', 0], ['rise', 'b2', 1], ['b2', 'pal'], ['pal', 'fade'], ['fade', 'out']]);
 
+/* 화면에서 이펙트 크기 배율(game.scale): 캐릭터가 커진 만큼 이펙트가 화면을 덮지 않게 */
+const GAME_SCALE = { hit: 0.5, slash: 0.75, shockwave: 0.75, buff: 0.65, lightning: 0.8, fire: 0.75, heal: 0.6 };
+for (const [k, v] of Object.entries(GAME_SCALE)) G[k].game.scale = v;
 fs.mkdirSync(dir, { recursive: true });
 for (const [name, g] of Object.entries(G)) {
   const r = FX.render(g), alpha = r.data.map(d => { let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++; return n; });

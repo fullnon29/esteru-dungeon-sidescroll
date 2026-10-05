@@ -253,6 +253,7 @@
   ],
   "logicalSize": 64,
   "blend": "normal",
-  "impactFrame": 3
+  "impactFrame": 3,
+  "scale": 0.75
  }
 }

@@ -211,6 +211,7 @@
   ],
   "logicalSize": 64,
   "blend": "normal",
-  "impactFrame": 2
+  "impactFrame": 2,
+  "scale": 0.8
  }
 }
