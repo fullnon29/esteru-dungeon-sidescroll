@@ -228,7 +228,9 @@
   const footOf = u => proj(u.cf + u.kx, u.rf || u.r + 0.5, u.hf);
   /* 횡스크롤 전용 캐릭터 시트: assets/side/anim/{키}/{동작}_{0:E|1:W}.png — 가로 스트립, 칸은 정사각(높이=칸 크기), 없으면 기사 시트로 대체 */
   const unitDim = u => fzLit && fzDim > 0.02 && !fzLit.has(u) ? `brightness(${(1 - fzDim * 0.7).toFixed(2)})` : 'none'; /* 스포트라이트: 관련 없는 유닛은 어두워진다 */
-  const sheets = {};
+  /* 기사 시트의 방향 번호는 화면 모습과 다르다(실측): 0은 우상향 뒷모습에 가깝고, 1이 오른쪽, 2 정면, 3 왼쪽 아래, 4 왼쪽, 5 왼쪽 위, 6 뒷모습, 7 오른쪽 위.
+   논리 방향(0 E·1 SE·2 S·3 SW·4 W·5 NW·6 N·7 NE) → 시트 번호 대응과 방향별 발바닥 y(128칸 기준, idle 실측) */
+  const KNIGHT_DIR = [1, 2, 2, 3, 4, 5, 6, 0], KNIGHT_FOOT = [97, 99, 104, 102, 94, 96, 102, 103], sheets = {};
   function sheet(key, act, dir) { const k = key + '/' + act + '_' + dir; let o = sheets[k]; if (!o) { o = sheets[k] = { img: new Image(), ok: false }; o.img.onload = () => { o.ok = true; }; o.img.onerror = () => { o.fail = true; }; o.img.src = `assets/side/anim/${key}/${act}_${dir}.png`; } return o.ok ? o.img : null; }
   const PRE_ACTS = ['idle', 'walk', 'atk', 'heavy', 'sweep', 'combo', 'shoot', 'cast', 'hurt', 'die', 'dodge'], preDone = {}, FALL = { sweep: 'heavy', combo: 'heavy', shoot: 'atk', heavy: 'atk', cast: 'heavy' };
   function hasAct(u, act) { /* 연출 동작을 쓸 수 있는가: 전용 시트(또는 기사 시트)에 그 동작이 있으면 그대로, 없으면 heavy */
@@ -249,7 +251,7 @@
       const cell = ss.im.naturalHeight, n = Math.max(1, Math.round(ss.im.naturalWidth / cell)), fr = Math.min(n - 1, Math.floor(an.fr * n / 15)), sz = cell * sc * 0.5, foot = 0.8 * sz;
       ctx.save(); if (!u.alive) ctx.globalAlpha = fade; ctx.filter = u.flash > 0 ? 'brightness(4) saturate(0)' : unitDim(u); ctx.translate(f.x, f.y - foot); if (ss.flip) ctx.scale(-1, 1); ctx.drawImage(ss.im, fr * cell, 0, cell, cell, -sz / 2, 0, sz, sz); ctx.restore();
     } else {
-    const im = (A.img[an.act] || A.img.idle)[u.face]; if (!im) return; const sz = 128 * sc, foot = (A.m.foot || 102) * sz / 128;
+    const kd = KNIGHT_DIR[u.face], im = (A.img[an.act] || A.img.idle)[kd]; if (!im) return; const sz = 128 * sc, foot = KNIGHT_FOOT[kd] * sz / 128; /* 기사 시트의 발바닥 y(128칸 기준, 실측 idle 94~97 · walk 90~94) */
     ctx.save(); if (!u.alive) ctx.globalAlpha = clamp(1 - (u.deathT - 0.9) / 0.8, 0, 1); ctx.filter = u.flash > 0 ? 'brightness(4) saturate(0)' : ((u.tint || '') + ' ' + unitDim(u)).trim() || 'none'; ctx.imageSmoothingEnabled = false; ctx.drawImage(im, an.fr * 128, 0, 128, 128, f.x - sz / 2, f.y - foot, sz, sz); ctx.restore();
     }
     if (u.alive) { const w = 40 * f.s, p = u.hp / u.max, y = f.y - 112 * sc; ctx.fillStyle = '#000a'; ctx.fillRect(f.x - w / 2, y, w, 5); ctx.fillStyle = u.side === 'p' ? (p < 0.3 ? '#ef6b6b' : '#6fd08c') : '#e07a5a'; ctx.fillRect(f.x - w / 2, y, w * p, 5); if (u.side === 'p') { ctx.fillStyle = '#000a'; ctx.fillRect(f.x - w / 2, y + 6, w, 3); ctx.fillStyle = u.sp >= 100 ? '#ffd24a' : '#6aa8ff'; ctx.fillRect(f.x - w / 2, y + 6, w * u.sp / 100, 3); } }
