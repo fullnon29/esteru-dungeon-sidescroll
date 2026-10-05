@@ -44,3 +44,12 @@
 ## 주의
 - `assets/anim/knight` 시트는 SmallScaleInt 원본이라 재배포 금지. 저장소를 공개할 때는 제외한다.
 - 원본의 에셋·연출 도구(`tools/asset_tool.html`, `fx_tool.html`, `cine_tool.html`)는 그대로 쓸 수 있다.
+- **PXF 공방(이펙트 도구) 사용 방침**: https://suile-21173.web.app/hero-inc/pxf (용사주식회사 영상 `PqMle_luNX0` 에서 공유). 영상·사이트에는 명시적 라이선스 문구가 없다(약관은 SUILE 서비스 전반용). 사용자가 "공유 = 사용 가능"으로 판단해 **비상업 단계에서** 이펙트와 노드 구조를 참조·차용하기로 결정. **상업 공개 전에 작품 제작자/운영자에게 재확인**하고 출처를 적는다. 사이트 약관상 자동 대량 수집은 하지 않는다.
+- **PXF JSON 형식(`pxf.graph@1`)**: `settings{size,frames,fps,loop}`, `nodes[{id,type,x,y,params}]`, `links[{f,t,p}]`(출력 노드 f → 입력 노드 t의 p번 포트), `game`. 파라미터는 상수이거나 키프레임 `{k:[[프레임,값,보간]...]}`. 확인된 노드: Arc·Shape·Palette·Blend·Outline·Tint·Output·Particles·Blur·Noise·Mask·Levels. 공방의 작품은 64×64(일부 128×128) 24프레임이 많다.
+
+## 노드 이펙트 시스템 (PXF 계약 호환)
+- **엔진 `fxgraph.js`**: `pxf.graph@1` 그래프(settings{size,frames,fps,loop} + nodes + links, 파라미터는 상수/키프레임/구간)를 프레임별 RGBA로 렌더. 브라우저·Node 공용(`FXGraph.render(graph)`, `FXGraph.strip(result)`). 노드 28종 중 AuraShell·Revolve 제외 전부 구현(Shape·Noise·Gradient·Particles·Lightning·Arc·Stroke·Spike·Checker·Grid / Transform·Repeat·Echo·Blur·Glow·Levels·Dither·Displace·Polar·Pixelate / Blend·Mask·Palette·Tint·Outline·Quantize / Output). 계약서(공방 `claude-prompt.txt`)의 의미를 보고 새로 구현했다.
+- **도구 `tools/pxf_tool.html`**: JSON 열기/붙여넣기 → 렌더 → 재생·스크럽·스트립 미리보기, 노드별 params 편집, PNG 스트립/JSON 저장. 연결 편집은 JSON에서.
+- **게임 연결**: `assets/fxpxf/이름.pxf.json` → `node tools/build_fxpxf.js` 가 `assets/fxpxf/manifest.js`(window.PXF_FX)로 묶음 → `side.js` 가 로딩 때 렌더해 `assets/fx` 시트보다 우선해서 쓴다(이름이 같을 때). 현재 우리 이펙트 7종(hit·slash·shockwave·buff·lightning·fire·heal)은 `node tools/gen_fxpxf.js` 가 만든다(손으로 고쳐 저장해도 됨).
+- **연출 위계(영상 3:50~4:20 참고)**: 일반 타격 = 히트스톱·흔들림 / 크리티컬 = 작은 포커스(확대 ×1.1 + 약한 어둠, `S.mini`) / 스킬(오의) = `cine.js` 연출 + 스포트라이트(관련 유닛만 밝게 + 비네트) + 카메라 이동(`zoom` 스텝의 `pan`, 기본 0.6) + 일격 순간 슬로모션(`timescale`, `withTier`).
+

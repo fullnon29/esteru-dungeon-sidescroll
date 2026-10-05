@@ -55,7 +55,7 @@
   function reset() {
     if (rowsMode === 'var') ROWS = Math.random() < 0.5 ? 3 : 4; else ROWS = rowsMode;
     document.querySelectorAll('[data-rows]').forEach(b => b.classList.toggle('on', b.dataset.rows === String(rowsMode)));
-    S.units = []; S.proj = []; S.fxs = []; S.floaters = []; S.occ.clear(); S.t = 0; S.acc = 0; S.cine = null; S.freezeT = 0; S.result = null; S.resultT = 0; S.wave = 0; S.waveT = 0; layout();
+    S.units = []; S.proj = []; S.fxs = []; S.floaters = []; S.occ.clear(); S.t = 0; S.acc = 0; S.cine = null; S.mini = null; S.freezeT = 0; S.result = null; S.resultT = 0; S.wave = 0; S.waveT = 0; layout();
     const lanes = i => Math.round(i * (ROWS - 1) / 3);
     [['warrior', 4, 1], ['thief', 3, 2], ['elf', 1, 0], ['priest', 2, 3]].forEach(([k, c, i]) => S.units.push(mkUnit('p', k, c, clamp(lanes(i), 0, ROWS - 1))));
     spawnWave(); S.cam.c = 7;
@@ -97,6 +97,7 @@
     if (!tgt.alive) return; opt = opt || {};
     const dmg = Math.max(1, Math.round(att.atk * rnd(0.9, 1.1) * mult - tgt.def * 0.4)), crit = Math.random() < 0.1, v = crit ? Math.round(dmg * 1.5) : dmg;
     tgt.hp -= v; tgt.flash = 0.12; tgt.kx = sgn(tgt.c - att.c || 1) * (opt.big ? 0.45 : crit ? 0.3 : 0.16); if (!att.ranged && !opt.big) att.kx += sgn(tgt.c - att.c || 1) * 0.1; /* 타격 반동·돌진 */
+    if (crit && !opt.big && !S.cine) S.mini = { t: 0, dur: 0.55, a: att, b: tgt }; /* 중간 단계: 크리티컬은 작은 포커스 */
     S.freezeT = Math.max(S.freezeT, opt.big ? 0.09 : crit ? 0.07 : 0.03); S.shake = Math.max(S.shake || 0, opt.big ? 9 : crit ? 7 : 2.5); /* 히트스톱·화면 흔들림 */ if (att.side === 'p') att.sp = Math.min(100, att.sp + 9); else tgt.sp = Math.min(100, tgt.sp + 6);
     S.floaters.push({ c: tgt.cf, r: tgt.r + 0.5, h: tgt.hf, text: (crit ? '💥' : '') + v, col: tgt.side === 'p' ? '#ff8a8a' : '#fff', t: 0, big: crit });
     if (!opt.noFx) spawnFx(opt.fx || 'hit', tgt);
@@ -104,7 +105,11 @@
     if (tgt.hp <= 0) { tgt.alive = false; tgt.deathT = 0; S.metrics.kills++; S.occ.delete(key(tgt.c, tgt.r)); if (tgt.act && tgt.act.type === 'step') S.occ.delete(key(tgt.act.c1, tgt.act.r1 !== undefined ? tgt.act.r1 : tgt.r)); if (tgt.act && tgt.act.r0 !== undefined) tgt.r = tgt.act.r0; tgt.rf = null; tgt.act = null; return; } /* 쓰러지면 점유한 칸(걷던 중이면 예약 칸도)을 비운다 — 시체가 길을 막아 교착되던 문제 */
     if (!armored && !(tgt.act && tgt.act.type === 'step')) { tgt.stun = Math.max(tgt.stun, opt.big ? 0.45 : 0.28); tgt.act = null; } // 걷는 중이면 경직 없이 이어 걷는다(동작 끊김 방지)
   }
-  const spawnFx = (name, u) => { if (Assets.fx(name)) S.fxs.push({ name, u, t: 0 }); };
+  /* 노드 그래프 이펙트(assets/fxpxf, fxgraph.js): 로딩 때 한 번 렌더해 스트립으로 만들어 두고, 같은 이름의 assets/fx 시트보다 우선해서 쓴다 */
+  const pxfFx = {}, FX_SCALE = Math.max(1, +(new URLSearchParams(location.search).get('fxscale') || 3)); /* 이펙트 렌더 해상도 배율(64px 그래프 → 192px). 각진 도트 대신 부드러운 확대 */
+  (function () { const src = window.PXF_FX, FXG = window.FXGraph; if (!src || !FXG) return; for (const name in src) { try { const g = src[name], r = FXG.render(g, { scale: FX_SCALE }); pxfFx[name] = { smooth: true, img: FXG.strip(r, document), m: { cell: r.size, n: r.frames, fps: r.fps, hit: (g.game && g.game.impactFrame) || 0, scale: 128 / r.size, ox: 0, oy: -34 } }; } catch (e) { console.warn('이펙트 그래프 실패:', name, e.message); } } })();
+  const fxGet = name => pxfFx[name] || Assets.fx(name);
+  const spawnFx = (name, u) => { if (fxGet(name)) S.fxs.push({ name, u, t: 0 }); };
   function updateUnit(u, dt) {
     u.cd = Math.max(0, u.cd - dt); u.laneCd = Math.max(0, u.laneCd - dt); u.flash = Math.max(0, u.flash - dt); u.kx *= Math.pow(0.0004, dt); u.idleT += dt; if (u.ov) { u.ov.t += dt; if (u.ov.t >= u.ov.dur) u.ov = null; }
     if (u.side === 'p') u.sp = Math.min(100, u.sp + dt * 2.2);
@@ -131,8 +136,14 @@
   }
 
   /* ---------- 오의 연출 ---------- */
-  function startSpecial(u, tgt) { const sp = u.special, def = window.CINE_MANIFEST && window.CINE_MANIFEST[sp.cine]; if (!def) return; u.sp = 0; u.face = u.faceH = tgt.c >= u.c ? 0 : 4; S.cine = { def, t: 0, prev: -1, caster: u, tgt, name: sp.name, cs: null, done: false, ts: 1 }; }
-  const fxInfo = name => { const f = Assets.fx(name); return f ? { fps: f.m.fps, n: f.m.n } : null; };
+  /* 연출 위계의 맨 위 단계(스킬): 연출 정의에 카메라 이동(pan)과 일격 순간 슬로모션이 없으면 기본값을 덧붙인다(원본 정의는 건드리지 않는다) */
+  function withTier(def) {
+    const d = Object.assign({}, def, { steps: def.steps.map(s => s.type === 'zoom' && s.pan === undefined && s.to > 1 ? Object.assign({}, s, { pan: 0.6 }) : s) });
+    if (!d.steps.some(s => s.type === 'timescale') && d.hit > 0.15) d.steps.push({ t: d.hit - 0.1, type: 'timescale', to: 0.3, dur: 0.08 }, { t: d.hit + 0.2, type: 'timescale', to: 1, dur: 0.15 });
+    return d;
+  }
+  function startSpecial(u, tgt) { const sp = u.special, def0 = window.CINE_MANIFEST && window.CINE_MANIFEST[sp.cine], def = def0 && withTier(def0); if (!def) return; u.sp = 0; u.face = u.faceH = tgt.c >= u.c ? 0 : 4; S.cine = { def, t: 0, prev: -1, caster: u, tgt, name: sp.name, cs: null, done: false, ts: 1 }; }
+  const fxInfo = name => { const f = fxGet(name); return f ? { fps: f.m.fps, n: f.m.n } : null; };
   function applySpecial(c) {
     const u = c.caster, sp = u.special, foes = foesOf(u);
     if (sp.mode === 'aoe') foes.filter(o => Math.abs(o.c - u.c) <= sp.radius).forEach(o => hit(u, o, sp.mult, { big: true, noFx: true }));
@@ -216,6 +227,7 @@
   }
   const footOf = u => proj(u.cf + u.kx, u.rf || u.r + 0.5, u.hf);
   /* 횡스크롤 전용 캐릭터 시트: assets/side/anim/{키}/{동작}_{0:E|1:W}.png — 가로 스트립, 칸은 정사각(높이=칸 크기), 없으면 기사 시트로 대체 */
+  const unitDim = u => fzLit && fzDim > 0.02 && !fzLit.has(u) ? `brightness(${(1 - fzDim * 0.7).toFixed(2)})` : 'none'; /* 스포트라이트: 관련 없는 유닛은 어두워진다 */
   const sheets = {};
   function sheet(key, act, dir) { const k = key + '/' + act + '_' + dir; let o = sheets[k]; if (!o) { o = sheets[k] = { img: new Image(), ok: false }; o.img.onload = () => { o.ok = true; }; o.img.onerror = () => { o.fail = true; }; o.img.src = `assets/side/anim/${key}/${act}_${dir}.png`; } return o.ok ? o.img : null; }
   const PRE_ACTS = ['idle', 'walk', 'atk', 'heavy', 'sweep', 'combo', 'shoot', 'cast', 'hurt', 'die', 'dodge'], preDone = {}, FALL = { sweep: 'heavy', combo: 'heavy', shoot: 'atk', heavy: 'atk', cast: 'heavy' };
@@ -235,17 +247,17 @@
     const ss = sideSheet(u, an.act);
     if (ss) { /* 전용 시트: 칸 = 높이, 화면 크기는 칸이 256이면 기사 시트(128)와 같게 맞춘다 */
       const cell = ss.im.naturalHeight, n = Math.max(1, Math.round(ss.im.naturalWidth / cell)), fr = Math.min(n - 1, Math.floor(an.fr * n / 15)), sz = cell * sc * 0.5, foot = 0.8 * sz;
-      ctx.save(); if (!u.alive) ctx.globalAlpha = fade; ctx.filter = u.flash > 0 ? 'brightness(4) saturate(0)' : 'none'; ctx.translate(f.x, f.y - foot); if (ss.flip) ctx.scale(-1, 1); ctx.drawImage(ss.im, fr * cell, 0, cell, cell, -sz / 2, 0, sz, sz); ctx.restore();
+      ctx.save(); if (!u.alive) ctx.globalAlpha = fade; ctx.filter = u.flash > 0 ? 'brightness(4) saturate(0)' : unitDim(u); ctx.translate(f.x, f.y - foot); if (ss.flip) ctx.scale(-1, 1); ctx.drawImage(ss.im, fr * cell, 0, cell, cell, -sz / 2, 0, sz, sz); ctx.restore();
     } else {
     const im = (A.img[an.act] || A.img.idle)[u.face]; if (!im) return; const sz = 128 * sc, foot = (A.m.foot || 102) * sz / 128;
-    ctx.save(); if (!u.alive) ctx.globalAlpha = clamp(1 - (u.deathT - 0.9) / 0.8, 0, 1); ctx.filter = u.flash > 0 ? 'brightness(4) saturate(0)' : (u.tint || 'none'); ctx.imageSmoothingEnabled = false; ctx.drawImage(im, an.fr * 128, 0, 128, 128, f.x - sz / 2, f.y - foot, sz, sz); ctx.restore();
+    ctx.save(); if (!u.alive) ctx.globalAlpha = clamp(1 - (u.deathT - 0.9) / 0.8, 0, 1); ctx.filter = u.flash > 0 ? 'brightness(4) saturate(0)' : ((u.tint || '') + ' ' + unitDim(u)).trim() || 'none'; ctx.imageSmoothingEnabled = false; ctx.drawImage(im, an.fr * 128, 0, 128, 128, f.x - sz / 2, f.y - foot, sz, sz); ctx.restore();
     }
     if (u.alive) { const w = 40 * f.s, p = u.hp / u.max, y = f.y - 112 * sc; ctx.fillStyle = '#000a'; ctx.fillRect(f.x - w / 2, y, w, 5); ctx.fillStyle = u.side === 'p' ? (p < 0.3 ? '#ef6b6b' : '#6fd08c') : '#e07a5a'; ctx.fillRect(f.x - w / 2, y, w * p, 5); if (u.side === 'p') { ctx.fillStyle = '#000a'; ctx.fillRect(f.x - w / 2, y + 6, w, 3); ctx.fillStyle = u.sp >= 100 ? '#ffd24a' : '#6aa8ff'; ctx.fillRect(f.x - w / 2, y + 6, w * u.sp / 100, 3); } }
   }
-  function fxDraw(name, f, fr, ox, oy, scl) { const o = Assets.fx(name); if (!o) return; const m = o.m, sz = m.cell * scl * f.s * USC; ctx.imageSmoothingEnabled = false; ctx.drawImage(o.img, fr * m.cell, 0, m.cell, m.cell, f.x + ox * f.s * USC - sz / 2, f.y + oy * f.s * USC - sz / 2, sz, sz); }
+  function fxDraw(name, f, fr, ox, oy, scl) { const o = fxGet(name); if (!o) return; const m = o.m, sz = m.cell * scl * f.s * USC; ctx.imageSmoothingEnabled = !!o.smooth; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(o.img, fr * m.cell, 0, m.cell, m.cell, f.x + ox * f.s * USC - sz / 2, f.y + oy * f.s * USC - sz / 2, sz, sz); }
   function drawFx() {
-    for (const x of S.fxs) { const o = Assets.fx(x.name); if (!o) continue; const fr = Math.floor(x.t * o.m.fps); if (fr >= o.m.n) { x.done = true; continue; } fxDraw(x.name, footOf(x.u), fr, o.m.ox || 0, o.m.oy === undefined ? -34 : o.m.oy, o.m.scale || 1); }
-    if (S.cine && S.cine.cs) for (const x of S.cine.cs.fx) { const o = Assets.fx(x.name); if (!o) continue; const m = o.m, u = x.at === 'caster' ? S.cine.caster : S.cine.tgt; fxDraw(x.name, footOf(u), x.fr, x.ox !== undefined ? x.ox : (m.ox || 0), x.oy !== undefined ? x.oy : (m.oy === undefined ? -34 : m.oy), x.scale !== undefined ? x.scale : (m.scale || 1)); }
+    for (const x of S.fxs) { const o = fxGet(x.name); if (!o) continue; const fr = Math.floor(x.t * o.m.fps); if (fr >= o.m.n) { x.done = true; continue; } fxDraw(x.name, footOf(x.u), fr, o.m.ox || 0, o.m.oy === undefined ? -34 : o.m.oy, o.m.scale || 1); }
+    if (S.cine && S.cine.cs) for (const x of S.cine.cs.fx) { const o = fxGet(x.name); if (!o) continue; const m = o.m, u = x.at === 'caster' ? S.cine.caster : S.cine.tgt; fxDraw(x.name, footOf(u), x.fr, x.ox !== undefined ? x.ox : (m.ox || 0), x.oy !== undefined ? x.oy : (m.oy === undefined ? -34 : m.oy), x.scale !== undefined ? x.scale : (m.scale || 1)); }
   }
   function drawProj() { for (const p of S.proj) { const f = proj(p.cf, p.rf, p.hf), d = sgn(p.tgt.cf - p.cf); ctx.strokeStyle = '#ffe8a0'; ctx.lineWidth = 3 * f.s; ctx.beginPath(); ctx.moveTo(f.x, f.y); ctx.lineTo(f.x - d * 26 * f.s, f.y); ctx.stroke(); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(f.x, f.y, 3 * f.s, 0, 7); ctx.fill(); } }
   function drawFloaters() { for (const fl of S.floaters) { const a = 1 - fl.t / 1.0; if (a <= 0) continue; const f = proj(fl.c, fl.r, fl.h); ctx.globalAlpha = a; ctx.font = (fl.big ? '900 40px' : '800 27px') + ' "Malgun Gothic",sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 5; ctx.strokeStyle = '#000'; const y = f.y - 118 * f.s * USC - fl.t * 40; ctx.strokeText(fl.text, f.x, y); ctx.fillStyle = fl.col; ctx.fillText(fl.text, f.x, y); ctx.globalAlpha = 1; } }
@@ -261,10 +273,24 @@
     for (const f of cs.flash) { ctx.fillStyle = f.color; ctx.globalAlpha = clamp(f.a, 0, 1); ctx.fillRect(0, 0, W, H); } ctx.globalAlpha = 1;
     if (cs.banner) { const b = cs.banner, p = b.p, a = p < 0.15 ? p / 0.15 : p > 0.8 ? (1 - p) / 0.2 : 1, slide = Math.pow(1 - Math.min(1, p / 0.2), 2) * 100, text = (b.text || '{skill}').replace('{skill}', c.name || ''), y0 = b.pos === 'bottom' ? H - 100 : 44; ctx.save(); ctx.globalAlpha = clamp(a, 0, 1); ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0, y0, W, 38); ctx.font = '900 26px "Malgun Gothic",sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 4; ctx.strokeStyle = '#000'; ctx.strokeText(text, W / 2 - slide, y0 + 28); ctx.fillStyle = '#ffe27a'; ctx.fillText(text, W / 2 - slide, y0 + 28); ctx.restore(); }
   }
+  /* 연출 위계: 일반 타격(히트스톱) < 크리티컬(작은 포커스) < 스킬(연출). 포커스 상태 = 확대·어둡게·초점·카메라 이동·밝게 남는 유닛 */
+  let fzLit = null, fzDim = 0;
+  function focusState() {
+    const pt = u => { const f = footOf(u); return [f.x, f.y - 50 * f.s]; }, cs = S.cine && S.cine.cs;
+    if (cs) {
+      const c = S.cine, a = pt(c.caster), b = pt(c.tgt), sp = c.caster.special || {}, lit = new Set([c.caster, c.tgt]);
+      if (sp.mode === 'aoe') foesOf(c.caster).forEach(o => { if (Math.abs(o.c - c.caster.c) <= sp.radius) lit.add(o); });
+      else if (sp.mode === 'line') foesOf(c.caster).forEach(o => { if (sgn(o.c - c.caster.c) === sgn(c.tgt.c - c.caster.c) && Math.abs(o.c - c.caster.c) <= sp.len) lit.add(o); });
+      else if (sp.mode === 'heal') alliesOf(c.caster).forEach(o => lit.add(o));
+      return { zoom: cs.zoom, dim: cs.dim, pan: cs.pan || 0, lit, fc: cs.focus === 'caster' ? a : cs.focus === 'mid' ? [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] : b };
+    }
+    if (S.mini) { const m = S.mini, k = Math.sin(Math.PI * Math.min(1, m.t / m.dur)), a = pt(m.a), b = pt(m.b); return { zoom: 1 + 0.1 * k, dim: 0.35 * k, pan: 0.5, lit: new Set([m.a, m.b]), fc: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] }; }
+    return null;
+  }
   function render() {
-    ctx.save(); ctx.clearRect(0, 0, W, H); const cs = S.cine && S.cine.cs, dim = cs ? cs.dim : 0;
+    ctx.save(); ctx.clearRect(0, 0, W, H); const cs = S.cine && S.cine.cs, fz = focusState(), dim = fz ? fz.dim : 0; fzLit = fz && fz.lit; fzDim = dim;
     if (cs && cs.shake > 0) ctx.translate(rnd(-1, 1) * cs.shake, rnd(-1, 1) * cs.shake);
-    if (cs && cs.zoom !== 1) { const c = S.cine, pt = u => { const f = footOf(u); return [f.x, f.y - 50 * f.s]; }, a = pt(c.caster), b = pt(c.tgt), fc = cs.focus === 'caster' ? a : cs.focus === 'mid' ? [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] : b; ctx.translate(fc[0], fc[1]); ctx.scale(cs.zoom, cs.zoom); ctx.translate(-fc[0], -fc[1]); }
+    if (fz && fz.zoom !== 1) { const k = fz.pan * clamp((fz.zoom - 1) / 0.2, 0, 1); ctx.translate((W / 2 - fz.fc[0]) * k, (H / 2 - fz.fc[1]) * k); ctx.translate(fz.fc[0], fz.fc[1]); ctx.scale(fz.zoom, fz.zoom); ctx.translate(-fz.fc[0], -fz.fc[1]); }
     if (S.shake > 0.3) ctx.translate(rnd(-1, 1) * S.shake, rnd(-1, 1) * S.shake * 0.7);
     drawBackground(dim);
     const c0 = Math.floor(S.cam.c - (W / 2) / (TILE_W * 0.7)) - 2, c1 = Math.ceil(S.cam.c + (W / 2) / (TILE_W * 0.7)) + 2, cols = []; for (let c = c0; c <= c1; c++) cols.push(c); cols.sort((a, b) => Math.abs(b + 0.5 - S.cam.c) - Math.abs(a + 0.5 - S.cam.c)); // 바깥 → 카메라 중심(옆면 겹침 순서)
@@ -272,18 +298,21 @@
       for (const c of cols) drawTile(c, r, dim);
       for (const u of S.units.filter(o => o.r === r).sort((a, b) => a.cf - b.cf)) if (u.cf > c0 - 1 && u.cf < c1 + 1) drawUnit(u);
     }
-    drawProj(); drawFx(); drawFloaters(); drawForeground(); ctx.restore(); drawHud(); drawOverlay();
+    drawProj(); drawFx(); drawFloaters(); drawForeground();
+    if (fz && fz.dim > 0.02) { const vg = ctx.createRadialGradient(fz.fc[0], fz.fc[1], 70, fz.fc[0], fz.fc[1], 430); vg.addColorStop(0, 'rgba(6,4,16,0)'); vg.addColorStop(1, 'rgba(6,4,16,' + Math.min(0.75, fz.dim * 0.8) + ')'); ctx.fillStyle = vg; ctx.fillRect(-W, -H, W * 3, H * 3); } /* 스포트라이트 비네트 */
+    ctx.restore(); drawHud(); drawOverlay();
   }
 
   /* ---------- 메인 루프 ---------- */
   function frame(dtReal) {
     dtReal = Math.min(dtReal, 0.1); const before = new Map(S.units.map(u => { const f = footOf(u); return [u, [f.x, f.y]]; }));
-    S.shake *= Math.pow(0.0005, dtReal); if (S.freezeT > 0) S.freezeT -= dtReal;
-    else if (S.cine) cineTick(dtReal * Math.min(3, S.speed));
+    if (S.mini) { S.mini.t += dtReal; if (S.mini.t >= S.mini.dur) S.mini = null; }
+    S.shake *= Math.pow(0.0005, dtReal); if (S.freezeT > 0) S.freezeT = Math.max(0, S.freezeT - dtReal);
+    else if (S.cine) cineTick(dtReal * Math.min(3, S.speed) * Math.max(0.05, S.cine.ts || 1));
     else if (!S.paused) { S.acc += dtReal * S.speed; let n = 0; while (S.acc >= DT && n++ < 4000 && !S.cine) { tick(DT); S.acc -= DT; S.metrics.simSteps++; } }
     for (const u of S.units) { if (!u.alive) continue; const f = footOf(u), b = before.get(u); if (!b) continue; const d = Math.hypot(f.x - b[0], f.y - b[1]); /* 이번 프레임에 새로 나타난 유닛(웨이브)은 제외 */ if (d > S.metrics.maxFramePx) S.metrics.maxFramePx = d; }
     const ts = S.cine ? S.cine.ts : 1, dtv = dtReal * ts; for (const f of S.floaters) f.t += dtReal; S.floaters = S.floaters.filter(f => f.t < 1).slice(-40); /* 피해 숫자는 정지·연출 중에도 실시간으로 사라진다 */
-    if (!S.paused && !S.freezeT) { for (const f of S.fxs) f.t += dtv * Math.min(3, S.speed); S.fxs = S.fxs.filter(f => !f.done); }
+    if (!S.paused && S.freezeT <= 0) { for (const f of S.fxs) f.t += dtv * Math.min(3, S.speed); S.fxs = S.fxs.filter(f => !f.done && f.t < 3); /* 안전망: 3초 넘게 남은 이펙트는 지운다 */ }
     if (S.result) { S.resultT += dtReal; if (S.resultT > 2.5) reset(); }
     if (S.follow) { const al = S.units.filter(u => u.side === 'p' && u.alive); if (al.length) { const tc = al.reduce((a, u) => a + u.cf, 0) / al.length + 2.2; S.cam.c += (tc - S.cam.c) * Math.min(1, dtReal * 3); } }
     S.metrics.frames++; render();

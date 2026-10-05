@@ -81,3 +81,4 @@ sprites:   { slime: 'assets/sprites/slime.png' },
 - **게임 연결**: `side.js` 가 `assets/side/bg/{테마}_{sky|far|mid|near|fore}.png`, `assets/side/tile/{테마}_{top|top0~3|front|side}.png` 를 읽는다. 테마는 주소의 `?theme=이름`(기본 `dusk`). 파일이 없는 레이어는 코드로 그린 임시 그림으로 대체되므로 한 장씩 넣어도 된다.
 - **캐릭터 연결**: 유닛 키(`warrior`·`thief`·`elf`·`priest`·`grunt`·`archer`·`brute`)마다 `assets/side/anim/{키}/idle_0.png` 가 있으면 그 키는 전용 시트를 쓴다(없는 동작은 idle로 대체, 키 전체가 없으면 기사 시트+색 입히기).
 - **동작 이름과 대체**: 오의 연출이 쓰는 동작은 `sweep`·`heavy`·`combo`·`shoot`(캐스팅은 `cast`). 시트에 그 동작이 없으면 `sweep`·`combo`·`cast`→`heavy`→`atk`, `shoot`→`atk`, 그래도 없으면 `idle` 순으로 대체한다. 일반 전투는 `idle`·`walk`·`atk`·`hurt`·`die`를 쓴다.
+- **노드 이펙트(`assets/fxpxf`)**: 시트 PNG 대신 `*.pxf.json` 그래프로 이펙트를 두면 로딩 때 렌더된다. 같은 이름이면 `assets/fx` 시트보다 우선. 규격·도구는 SIDE.md "노드 이펙트 시스템", 편집은 `tools/pxf_tool.html`. 그래프 크기는 32/48/64/96/128, 프레임 1~32.

@@ -3,7 +3,7 @@
  * 연출 정의(def) = { dur: 전체 길이(초), hit: 일격 순간(초, 피해·피격 표시가 이 시점에 나온다), steps: [ { t: 시작(초), type, ... } ] }
  * 스텝 종류(type):
  *   dim       { to: 0~1, dur }                  배경(타일)을 어둡게. 유닛은 밝게 남는다
- *   zoom      { to: 1~2.5, dur, focus: target|caster|mid }   화면 확대(초점 기준)
+ *   zoom      { to: 1~2.5, dur, focus: target|caster|mid, pan?: 0~1 }   화면 확대(초점 기준). pan>0 이면 확대하면서 카메라가 초점 쪽으로 옮겨 가 초점이 화면 가운데로 모인다
  *   timescale { to: 0.05~1, dur }               슬로모션(화면 연출 속도)
  *   flash     { alpha, dur, color }             화면 전체 번쩍임(점점 사라짐)
  *   shake     { amp, dur }                      화면 흔들림(점점 줄어듦)
@@ -19,8 +19,8 @@ const Cine = (function () {
   // 값이 시간에 따라 이어지는 트랙(dim·zoom·timescale): 스텝마다 이전 값에서 to 로 dur 동안 부드럽게
   function track(def, type, init, t) { let v = init, last = null; for (const s of sorted(def, type)) { if (t <= s.t) break; const p = clamp((t - s.t) / Math.max(0.001, s.dur || 0.2), 0, 1); v = p >= 1 ? s.to : lerp(v, s.to, EASE.io(p)); last = s; if (p < 1) break; } return { v, last }; }
   function sample(def, t, fxInfo) {
-    const out = { dim: 0, zoom: 1, focus: 'target', ts: 1, flash: [], shake: 0, banner: null, fx: [], lunge: 0 };
-    out.dim = track(def, 'dim', 0, t).v; const z = track(def, 'zoom', 1, t); out.zoom = z.v; out.focus = (z.last && z.last.focus) || 'target'; out.ts = track(def, 'timescale', 1, t).v;
+    const out = { dim: 0, zoom: 1, focus: 'target', pan: 0, ts: 1, flash: [], shake: 0, banner: null, fx: [], lunge: 0 };
+    out.dim = track(def, 'dim', 0, t).v; const z = track(def, 'zoom', 1, t); out.zoom = z.v; out.focus = (z.last && z.last.focus) || 'target'; out.pan = (z.last && z.last.pan) || 0; out.ts = track(def, 'timescale', 1, t).v;
     for (const s of def.steps) {
       const p = (t - s.t) / Math.max(0.001, s.dur || 0.2), on = t >= s.t && p < 1;
       if (s.type === 'flash' && on) out.flash.push({ color: s.color || '#ffffff', a: (s.alpha === undefined ? 0.8 : s.alpha) * (1 - p) });
