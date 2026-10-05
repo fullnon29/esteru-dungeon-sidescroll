@@ -77,6 +77,8 @@
   }
   /* 방향 시트 번호(화면 기준): 0 E · 1 SE(오른쪽 아래) · 2 S(정면) · 3 SW · 4 W · 5 NW · 6 N(뒷모습) · 7 NE. 위쪽 줄(먼 줄) = 화면 위. */
   function faceTo(u, t) { const dc = t.c - u.c, dr = t.r - u.r; if (!dc && !dr) return u.faceH; return ((Math.round(Math.atan2(dr * 120, dc * TILE_W) / (Math.PI / 4)) % 8) + 8) % 8; }
+  /* 일반 공격의 타격 시점(초): 전용 시트에 메타(window.SIDE_META)가 있으면 그 타격 프레임이 화면에 나오는 때, 없으면 기본(애니메이션의 8/15) */
+  function hitTime(u) { const m = window.SIDE_META && window.SIDE_META[skey(u)] && window.SIDE_META[skey(u)].atk; if (m && m.n > 0 && sideSheet(u, 'atk')) return (m.hit + 0.5) / m.n * (15 / FPS.atk); return HITF.atk / FPS.atk; }
   function decide(u) {
     const foes = foesOf(u);
     if (!foes.length) { if (u.side === 'p') { u.face = 0; startStep(u, 1); } return; } // 적이 없으면 아군은 앞으로 행군
@@ -85,7 +87,7 @@
     let tgt = null, inR = foes.filter(o => reach(o, u.range)); if (inR.length) { tgt = inR[0]; for (const o of inR) if (score(o) < score(tgt)) tgt = o; } else { const near = foes.filter(o => Math.abs(o.r - u.r) <= 1), pool = near.length ? near : foes; tgt = pool[0]; for (const o of pool) if (score(o) < score(tgt)) tgt = o; }
     const dc = tgt.c - u.c, dist = Math.abs(dc); if (dc !== 0) u.faceH = dc > 0 ? 0 : 4; const fa = faceTo(u, tgt); u.face = fa; /* 공격·대기 중에는 적 방향(8방향)을 본다 */
     if (u.special && u.sp >= 100 && !S.cine && u.side === 'p') { const st = foes.filter(o => reach(o, u.special.range)); if (st.length || u.special.mode === 'heal') { let t2 = st[0] || tgt; for (const o of st) if (score(o) < score(t2)) t2 = o; startSpecial(u, t2); return; } }
-    if (reach(tgt, u.range)) { if (u.cd <= 0) u.act = { type: 'atk', t: 0, dur: 15 / FPS.atk, hitAt: HITF.atk / FPS.atk, target: tgt, done: false }; return; } /* 사거리 안: 쿨다운 끝나면 공격 */
+    if (reach(tgt, u.range)) { if (u.cd <= 0) u.act = { type: 'atk', t: 0, dur: 15 / FPS.atk, hitAt: hitTime(u), target: tgt, done: false }; return; } /* 사거리 안: 쿨다운 끝나면 공격 */
     if (Math.abs(tgt.r - u.r) > 1 && !foes.some(o => Math.abs(o.r - u.r) <= 1)) { startLane(u, sgn(tgt.r - u.r)); return; } /* 닿는 줄에 적이 하나도 없을 때만(교착 방지) 한 줄 옮겨 선다 */
     u.face = u.faceH; /* 열 방향으로 걸을 때는 옆모습 */
     const dirc = dc !== 0 ? sgn(dc) : (u.side === 'p' ? 1 : -1);
@@ -107,7 +109,7 @@
   }
   /* 노드 그래프 이펙트(assets/fxpxf, fxgraph.js): 로딩 때 한 번 렌더해 스트립으로 만들어 두고, 같은 이름의 assets/fx 시트보다 우선해서 쓴다 */
   const pxfFx = {}, FX_SCALE = Math.max(1, +(new URLSearchParams(location.search).get('fxscale') || 3)); /* 이펙트 렌더 해상도 배율(64px 그래프 → 192px). 각진 도트 대신 부드러운 확대 */
-  (function () { const src = window.PXF_FX, FXG = window.FXGraph; if (!src || !FXG) return; for (const name in src) { try { const g = src[name], r = FXG.render(g, { scale: FX_SCALE }); pxfFx[name] = { smooth: true, img: FXG.strip(r, document), m: { cell: r.size, n: r.frames, fps: r.fps, hit: (g.game && g.game.impactFrame) || 0, scale: 128 / r.size, ox: 0, oy: -34 } }; } catch (e) { console.warn('이펙트 그래프 실패:', name, e.message); } } })();
+  (function () { const src = window.PXF_FX, FXG = window.FXGraph; if (!src || !FXG) return; for (const name in src) { try { const g = src[name], r = FXG.render(g, { scale: FX_SCALE }); pxfFx[name] = { smooth: true, img: FXG.strip(r, document), m: { cell: r.size, n: r.frames, fps: r.fps, hit: (g.game && g.game.impactFrame) || 0, scale: 128 / r.size * ((g.game && g.game.scale) || 1), ox: 0, oy: -34 } }; } catch (e) { console.warn('이펙트 그래프 실패:', name, e.message); } } })();
   const fxGet = name => pxfFx[name] || Assets.fx(name);
   const spawnFx = (name, u) => { if (fxGet(name)) S.fxs.push({ name, u, t: 0 }); };
   function updateUnit(u, dt) {
@@ -234,11 +236,13 @@
   function sheet(key, act, dir) { const k = key + '/' + act + '_' + dir; let o = sheets[k]; if (!o) { o = sheets[k] = { img: new Image(), ok: false }; o.img.onload = () => { o.ok = true; }; o.img.onerror = () => { o.fail = true; }; o.img.src = `assets/side/anim/${key}/${act}_${dir}.png`; } return o.ok ? o.img : null; }
   const PRE_ACTS = ['idle', 'walk', 'atk', 'heavy', 'sweep', 'combo', 'shoot', 'cast', 'hurt', 'die', 'dodge'], preDone = {}, FALL = { sweep: 'heavy', combo: 'heavy', shoot: 'atk', heavy: 'atk', cast: 'heavy' };
   function hasAct(u, act) { /* 연출 동작을 쓸 수 있는가: 전용 시트(또는 기사 시트)에 그 동작이 있으면 그대로, 없으면 heavy */
-    if (act in FPS) return true; const A = ANIM(); return !!((A && A.img[act]) || sheet(u.key, act, 0) || sheet(u.key, act, 1)); }
+    if (act in FPS) return true; const A = ANIM(); return !!((A && A.img[act]) || sheet(skey(u), act, 0) || sheet(skey(u), act, 1)); }
+  const skey = u => { const al = window.SIDE_ALIAS && window.SIDE_ALIAS[u.key]; return al ? al.key : u.key; }, sfilter = u => { const al = window.SIDE_ALIAS && window.SIDE_ALIAS[u.key]; return al && al.filter ? al.filter : ''; };
   function sideSheet(u, act) { /* {img, flip} — W 시트가 없으면 E 시트를 뒤집어 쓴다. 동작 시트가 없으면 idle, 그것도 없으면 null(기사 시트 사용) */
-    if (!sheet(u.key, 'idle', 0)) return null; const d = (u.face >= 3 && u.face <= 5) ? 1 : (u.face === 2 || u.face === 6) ? (u.faceH === 4 ? 1 : 0) : 0; /* 좌우 2방향 시트: 왼쪽 계열(3~5)은 W */
-    if (!preDone[u.key]) { preDone[u.key] = 1; PRE_ACTS.forEach(a => [0, 1].forEach(x => sheet(u.key, a, x))); }
-    for (const a of [act, FALL[act], 'idle']) { if (!a) continue; const im = sheet(u.key, a, d); if (im) return { im, flip: false }; const e = d === 1 && sheet(u.key, a, 0); if (e) return { im: e, flip: true }; }
+    if (!sheet(skey(u), 'idle', 0)) return null; const d = (u.face >= 3 && u.face <= 5) ? 1 : (u.face === 2 || u.face === 6) ? (u.faceH === 4 ? 1 : 0) : 0; /* 좌우 2방향 시트: 왼쪽 계열(3~5)은 W */
+    if (!preDone[skey(u)]) { preDone[skey(u)] = 1; PRE_ACTS.forEach(a => [0, 1].forEach(x => sheet(skey(u), a, x))); }
+    if (act === 'hurt' && !sheet(skey(u), 'hurt', d) && !sheet(skey(u), 'hurt', 0)) { const dm = sheet(skey(u), 'die', d), d0 = sheet(skey(u), 'die', 0); if (dm || d0) return { im: dm || d0, flip: !dm && d === 1, fix: 0 }; } /* 피격 시트가 없으면 쓰러짐의 첫 프레임(움츠림)으로 대신 */
+    for (const a of [act, FALL[act], 'idle']) { if (!a) continue; const im = sheet(skey(u), a, d); if (im) return { im, flip: false }; const e = d === 1 && sheet(skey(u), a, 0); if (e) return { im: e, flip: true }; }
     return null;
   }
   function drawUnit(u) {
@@ -248,11 +252,11 @@
     if (u.alive) { ctx.strokeStyle = u.side === 'p' ? 'rgba(106,168,255,.55)' : 'rgba(255,110,90,.55)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(f.x, f.y + 2, 20 * sc, 5 * sc, 0, 0, 7); ctx.stroke(); }
     const ss = sideSheet(u, an.act);
     if (ss) { /* 전용 시트: 칸 = 높이, 화면 크기는 칸이 256이면 기사 시트(128)와 같게 맞춘다 */
-      const cell = ss.im.naturalHeight, n = Math.max(1, Math.round(ss.im.naturalWidth / cell)), fr = Math.min(n - 1, Math.floor(an.fr * n / 15)), sz = cell * sc * 0.5, foot = 0.8 * sz;
-      ctx.save(); if (!u.alive) ctx.globalAlpha = fade; ctx.filter = u.flash > 0 ? 'brightness(4) saturate(0)' : unitDim(u); ctx.translate(f.x, f.y - foot); if (ss.flip) ctx.scale(-1, 1); ctx.drawImage(ss.im, fr * cell, 0, cell, cell, -sz / 2, 0, sz, sz); ctx.restore();
+      const cell = ss.im.naturalHeight, n = Math.max(1, Math.round(ss.im.naturalWidth / cell)), fr = ss.fix !== undefined ? ss.fix : Math.min(n - 1, Math.floor(an.fr * n / 15)), sz = cell * sc * 0.5, foot = 0.8 * sz;
+      ctx.save(); if (!u.alive) ctx.globalAlpha = fade; ctx.filter = u.flash > 0 && u.alive ? 'brightness(1.9) saturate(.35) sepia(.25)' : ((sfilter(u) + ' ' + unitDim(u)).replace(/ none/g, '').trim() || 'none'); ctx.translate(f.x, f.y - foot); if (ss.flip) ctx.scale(-1, 1); ctx.drawImage(ss.im, fr * cell, 0, cell, cell, -sz / 2, 0, sz, sz); ctx.restore();
     } else {
     const kd = KNIGHT_DIR[u.face], im = (A.img[an.act] || A.img.idle)[kd]; if (!im) return; const sz = 128 * sc, foot = KNIGHT_FOOT[kd] * sz / 128; /* 기사 시트의 발바닥 y(128칸 기준, 실측 idle 94~97 · walk 90~94) */
-    ctx.save(); if (!u.alive) ctx.globalAlpha = clamp(1 - (u.deathT - 0.9) / 0.8, 0, 1); ctx.filter = u.flash > 0 ? 'brightness(4) saturate(0)' : ((u.tint || '') + ' ' + unitDim(u)).trim() || 'none'; ctx.imageSmoothingEnabled = false; ctx.drawImage(im, an.fr * 128, 0, 128, 128, f.x - sz / 2, f.y - foot, sz, sz); ctx.restore();
+    ctx.save(); if (!u.alive) ctx.globalAlpha = clamp(1 - (u.deathT - 0.9) / 0.8, 0, 1); ctx.filter = u.flash > 0 && u.alive ? 'brightness(1.9) saturate(.35) sepia(.25)' : ((u.tint || '') + ' ' + unitDim(u)).trim() || 'none'; ctx.imageSmoothingEnabled = false; ctx.drawImage(im, an.fr * 128, 0, 128, 128, f.x - sz / 2, f.y - foot, sz, sz); ctx.restore();
     }
     if (u.alive) { const w = 40 * f.s, p = u.hp / u.max, y = f.y - 112 * sc; ctx.fillStyle = '#000a'; ctx.fillRect(f.x - w / 2, y, w, 5); ctx.fillStyle = u.side === 'p' ? (p < 0.3 ? '#ef6b6b' : '#6fd08c') : '#e07a5a'; ctx.fillRect(f.x - w / 2, y, w * p, 5); if (u.side === 'p') { ctx.fillStyle = '#000a'; ctx.fillRect(f.x - w / 2, y + 6, w, 3); ctx.fillStyle = u.sp >= 100 ? '#ffd24a' : '#6aa8ff'; ctx.fillRect(f.x - w / 2, y + 6, w * u.sp / 100, 3); } }
   }
@@ -329,10 +333,23 @@
   document.querySelectorAll('[data-tilt]').forEach(b => b.onclick = () => { [LV, FAR_Y, NEAR_Y] = TILTS[b.dataset.tilt]; layout(); document.querySelectorAll('[data-tilt]').forEach(x => x.classList.toggle('on', x === b)); });
   document.querySelectorAll('[data-tw]').forEach(b => b.onclick = () => { TILE_W = +b.dataset.tw; document.querySelectorAll('[data-tw]').forEach(x => x.classList.toggle('on', x === b)); }); /* 칸 폭(=같은 줄 유닛 사이의 최소 간격) */
   document.querySelectorAll('[data-persp]').forEach(b => b.onclick = () => { PERSP = +b.dataset.persp; layout(); document.querySelectorAll('[data-persp]').forEach(x => x.classList.toggle('on', x === b)); });
+  /* 녹화: 게임 캔버스(캐릭터·이펙트·파티 카드·연출 띠 포함)를 webm 으로 저장. 창이 가려지면(탭 숨김) 화면이 그려지지 않아 영상이 멈춘다 */
+  let rec = null, recT0 = 0, recTimer = 0;
+  const RECQ = { low: { fps: 15, bps: 700000, label: '저용량' }, mid: { fps: 20, bps: 2000000, label: '보통' }, high: { fps: 30, bps: 5000000, label: '고화질' } };
+  function recStop() { if (rec && rec.state !== 'inactive') rec.stop(); }
+  function recStart() {
+    if (!window.MediaRecorder || !cv.captureStream) { alert('이 브라우저는 캔버스 녹화를 지원하지 않습니다.'); return; }
+    const q = RECQ[$('recQ').value] || RECQ.mid, mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(m => MediaRecorder.isTypeSupported(m)), chunks = [];
+    rec = new MediaRecorder(cv.captureStream(q.fps), { mimeType: mime, videoBitsPerSecond: q.bps }); recT0 = performance.now();
+    rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+    rec.onstop = () => { clearInterval(recTimer); $('bRec').textContent = '⏺ 녹화'; $('bRec').classList.remove('on'); const blob = new Blob(chunks, { type: 'video/webm' }); window.__lastRec = blob; if (!blob.size) return; const d = new Date(), pad = n => String(n).padStart(2, '0'), a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `side_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.webm`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 20000); rec = null; };
+    rec.start(1000); $('bRec').classList.add('on'); recTimer = setInterval(() => { const t = (performance.now() - recT0) / 1000; $('bRec').textContent = '⏹ 녹화 중 ' + Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0'); if (t > 180) recStop(); /* 안전: 최대 3분 */ }, 250);
+  }
+  $('bRec').onclick = () => (rec && rec.state !== 'inactive') ? recStop() : recStart();
   $('bNew').onclick = reset; $('bCam').onclick = () => { S.follow = !S.follow; $('bCam').classList.toggle('on', S.follow); };
   const forceSpecial = () => { const u = S.units.filter(o => o.side === 'p' && o.alive && o.special).sort((a, b) => b.sp - a.sp)[0], t = u && foesOf(u).sort((a, b) => Math.abs(a.c - u.c) - Math.abs(b.c - u.c))[0]; if (u && t && !S.cine) { u.sp = 100; startSpecial(u, t); } };
   $('bSpecial').onclick = forceSpecial;
-  window.addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); $('bPause').click(); } else if (/^[1-4]$/.test(e.key)) setSpeed([1, 2, 4, 8][+e.key - 1]); else if (e.key === 's' || e.key === 'S') forceSpecial(); else if (e.key === 'r' || e.key === 'R') reset(); else if (/^[!@#]$/.test(e.key)) setRows({ '!': 3, '@': 4, '#': 5 }[e.key]); });
+  window.addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); $('bPause').click(); } else if (/^[1-4]$/.test(e.key)) setSpeed([1, 2, 4, 8][+e.key - 1]); else if (e.key === 's' || e.key === 'S') forceSpecial(); else if (e.key === 'r' || e.key === 'R') reset(); else if (e.key === 'v' || e.key === 'V') $('bRec').click(); else if (/^[!@#]$/.test(e.key)) setRows({ '!': 3, '@': 4, '#': 5 }[e.key]); });
   setInterval(() => { const m = S.metrics; $('metrics').textContent = `전투 ${S.t.toFixed(1)}초 · 웨이브 ${S.wave} · 처치 ${m.kills} · 한 프레임 최대 이동 ${m.maxFramePx.toFixed(1)}px · 고정 시간 단계 ${m.simSteps}`; }, 500);
   layout(); reset(); window.__side = { S, frame, render, reset, tick, Hh, setSpeed, setRows, forceSpecial, proj, footOf, sideSheet, unitAnim };
   requestAnimationFrame(loop);
