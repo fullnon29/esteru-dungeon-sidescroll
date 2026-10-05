@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>에스테르의 미궁 · 횡스크롤 전투 프로토타입</title>
+<style>
+  :root { --bg:#0e1118; --panel:#1a1f2e; --line:#2c3350; --txt:#e4e8f5; --dim:#8d96b4; --acc:#6aa8ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:14px/1.5 "Malgun Gothic",system-ui,sans-serif; }
+  header { padding:10px 18px; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:baseline; flex-wrap:wrap; }
+  h1 { margin:0; font-size:17px; } header small { color:var(--dim); }
+  main { max-width:1000px; margin:12px auto; padding:0 12px; }
+  canvas { display:block; width:100%; max-width:960px; margin:0 auto; background:#000; border:1px solid var(--line); border-radius:6px; image-rendering:auto; }
+  .bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:8px 0; }
+  button { background:#252b40; color:var(--txt); border:1px solid var(--line); border-radius:6px; padding:5px 12px; font:inherit; cursor:pointer; } button:hover { border-color:var(--acc); } button.on { background:#3b4a78; border-color:var(--acc); }
+  .dim { color:var(--dim); font-size:12px; } code { background:#10131c; padding:0 4px; border-radius:3px; }
+</style>
+</head>
+<body>
+<header><h1>횡스크롤 전투 프로토타입</h1><small>고저차가 있는 횡스크롤 · 동작 큐(이동·공격이 겹치지 않음) · 연속 이동 · 오의 연출(cine.js) 재사용</small></header>
+<main>
+  <div class="bar">
+    <button id="bPause">⏸ 일시정지</button>
+    <span class="dim">배속</span><button data-sp="1" class="on">×1</button><button data-sp="2">×2</button><button data-sp="4">×4</button><button data-sp="8">×8</button>
+    <button id="bNew">↻ 새 전투</button><button id="bSpecial">✦ 오의 발동</button><button id="bCam" class="on">🎥 카메라 따라가기</button>
+  </div>
+  <canvas id="cv" width="960" height="540"></canvas>
+  <div class="dim" style="margin-top:6px" id="metrics"></div>
+  <div class="dim">키보드: <code>Space</code> 일시정지 · <code>1~4</code> 배속(1·2·4·8) · <code>S</code> 오의 · <code>R</code> 새 전투. 파티(왼쪽, 파랑)가 오른쪽의 계단식 고지대 적을 올라가며 싸운다. 스프라이트는 기사 시트를 색만 바꿔 임시로 쓴다.</div>
+</main>
+<script>window.ASSET_VER = 'side1';</script>
+<script src="assets/manifest.js"></script>
+<script src="assets/anim/anims.js"></script>
+<script src="assets/fx/fx_manifest.js"></script>
+<script src="assets/cine/cine_manifest.js"></script>
+<script src="assets.js"></script>
+<script src="cine.js"></script>
+<script src="side.js"></script>
+</body>
+</html>
