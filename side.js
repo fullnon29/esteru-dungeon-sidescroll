@@ -209,13 +209,27 @@
     return { act: 'idle', fr: Math.floor(u.idleT * FPS.idle) % 15 };
   }
   const footOf = u => proj(u.cf + u.kx, u.rf || u.r + 0.5, u.hf);
+  /* 횡스크롤 전용 캐릭터 시트: assets/side/anim/{키}/{동작}_{0:E|1:W}.png — 가로 스트립, 칸은 정사각(높이=칸 크기), 없으면 기사 시트로 대체 */
+  const sheets = {};
+  function sheet(key, act, dir) { const k = key + '/' + act + '_' + dir; let o = sheets[k]; if (!o) { o = sheets[k] = { img: new Image(), ok: false }; o.img.onload = () => { o.ok = true; }; o.img.onerror = () => { o.fail = true; }; o.img.src = `assets/side/anim/${key}/${act}_${dir}.png`; } return o.ok ? o.img : null; }
+  function sideSheet(u, act) { /* {img, flip} — W 시트가 없으면 E 시트를 뒤집어 쓴다. 동작 시트가 없으면 idle, 그것도 없으면 null(기사 시트 사용) */
+    if (!sheet(u.key, 'idle', 0)) return null; const d = u.face === 4 ? 1 : 0;
+    for (const a of [act, 'idle']) { const im = sheet(u.key, a, d); if (im) return { im, flip: false }; const e = d === 1 && sheet(u.key, a, 0); if (e) return { im: e, flip: true }; }
+    return null;
+  }
   function drawUnit(u) {
     const A = ANIM(), an = unitAnim(u), f = footOf(u), sc = f.s * u.scale * USC; if (!A || !an) return;
     const fade = u.alive ? 1 : clamp(1 - (u.deathT - 0.9) / 0.8, 0, 1); if (fade <= 0) return; /* 쓰러진 유닛은 그림자·표식도 몸과 함께 사라진다 */
     ctx.save(); ctx.translate(f.x, f.y + 1); ctx.scale(1, 0.26); const sg = ctx.createRadialGradient(0, 0, 2, 0, 0, 30 * sc); sg.addColorStop(0, 'rgba(10,6,16,.55)'); sg.addColorStop(0.65, 'rgba(10,6,16,.32)'); sg.addColorStop(1, 'rgba(10,6,16,0)'); ctx.globalAlpha = fade; ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(0, 0, 30 * sc, 0, 7); ctx.fill(); ctx.restore();
     if (u.alive) { ctx.strokeStyle = u.side === 'p' ? 'rgba(106,168,255,.55)' : 'rgba(255,110,90,.55)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(f.x, f.y + 2, 20 * sc, 5 * sc, 0, 0, 7); ctx.stroke(); }
+    const ss = sideSheet(u, an.act);
+    if (ss) { /* 전용 시트: 칸 = 높이, 화면 크기는 칸이 256이면 기사 시트(128)와 같게 맞춘다 */
+      const cell = ss.im.naturalHeight, n = Math.max(1, Math.round(ss.im.naturalWidth / cell)), fr = Math.min(n - 1, Math.floor(an.fr * n / 15)), sz = cell * sc * 0.5, foot = 0.8 * sz;
+      ctx.save(); if (!u.alive) ctx.globalAlpha = fade; ctx.filter = u.flash > 0 ? 'brightness(4) saturate(0)' : 'none'; ctx.translate(f.x, f.y - foot); if (ss.flip) ctx.scale(-1, 1); ctx.drawImage(ss.im, fr * cell, 0, cell, cell, -sz / 2, 0, sz, sz); ctx.restore();
+    } else {
     const im = (A.img[an.act] || A.img.idle)[u.face]; if (!im) return; const sz = 128 * sc, foot = (A.m.foot || 102) * sz / 128;
     ctx.save(); if (!u.alive) ctx.globalAlpha = clamp(1 - (u.deathT - 0.9) / 0.8, 0, 1); ctx.filter = u.flash > 0 ? 'brightness(4) saturate(0)' : (u.tint || 'none'); ctx.imageSmoothingEnabled = false; ctx.drawImage(im, an.fr * 128, 0, 128, 128, f.x - sz / 2, f.y - foot, sz, sz); ctx.restore();
+    }
     if (u.alive) { const w = 40 * f.s, p = u.hp / u.max, y = f.y - 112 * sc; ctx.fillStyle = '#000a'; ctx.fillRect(f.x - w / 2, y, w, 5); ctx.fillStyle = u.side === 'p' ? (p < 0.3 ? '#ef6b6b' : '#6fd08c') : '#e07a5a'; ctx.fillRect(f.x - w / 2, y, w * p, 5); if (u.side === 'p') { ctx.fillStyle = '#000a'; ctx.fillRect(f.x - w / 2, y + 6, w, 3); ctx.fillStyle = u.sp >= 100 ? '#ffd24a' : '#6aa8ff'; ctx.fillRect(f.x - w / 2, y + 6, w * u.sp / 100, 3); } }
   }
   function fxDraw(name, f, fr, ox, oy, scl) { const o = Assets.fx(name); if (!o) return; const m = o.m, sz = m.cell * scl * f.s * USC; ctx.imageSmoothingEnabled = false; ctx.drawImage(o.img, fr * m.cell, 0, m.cell, m.cell, f.x + ox * f.s * USC - sz / 2, f.y + oy * f.s * USC - sz / 2, sz, sz); }
